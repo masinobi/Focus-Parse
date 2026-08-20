@@ -1,0 +1,234 @@
+"use client";
+
+import * as React from "react";
+import { AudioLines, FileText, Loader2, Sparkles, Upload, X } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { db, type DocSummary } from "@/lib/db";
+import { parseDocument } from "@/lib/parse";
+import { extractPdf } from "@/lib/pdf";
+import { SAMPLE_DOCUMENT } from "@/lib/sample";
+import { useFocusStore } from "@/store/useFocusStore";
+
+export function DocumentLoader() {
+  const [pasted, setPasted] = React.useState("");
+  const [dragging, setDragging] = React.useState(false);
+  const [recent, setRecent] = React.useState<DocSummary[]>([]);
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const fileRef = React.useRef<HTMLInputElement>(null);
+
+  const loadDoc = useFocusStore((s) => s.loadDoc);
+  const hydrateSession = useFocusStore((s) => s.hydrateSession);
+
+  React.useEffect(() => {
+    void db.listDocs().then(setRecent);
+  }, []);
+
+  const ingest = React.useCallback(
+    (source: string, name?: string) => {
+      if (!source.trim()) return;
+      loadDoc(parseDocument(source, name));
+    },
+    [loadDoc]
+  );
+
+  const readFile = React.useCallback(
+    async (file: File) => {
+      setError(null);
+
+      const isPdf =
+        file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+
+      if (!isPdf) {
+        setBusy(`Reading ${file.name}…`);
+        const text = await file.text();
+        setBusy(null);
+        ingest(text, file.name);
+        return;
+      }
+
+      try {
+        setBusy("Opening PDF…");
+        const buffer = await file.arrayBuffer();
+        const markdown = await extractPdf(buffer, ({ page, pages }) => {
+          setBusy(`Extracting text — page ${page} of ${pages}`);
+        });
+
+        if (!markdown.trim()) {
+          setError(
+            `No text layer found in ${file.name}. Scanned PDFs need OCR before FocusParse can read them.`
+          );
+          return;
+        }
+        ingest(markdown, file.name);
+      } catch (cause) {
+        setError(
+          `Could not read ${file.name}: ${
+            cause instanceof Error ? cause.message : "unknown error"
+          }`
+        );
+      } finally {
+        setBusy(null);
+      }
+    },
+    [ingest]
+  );
+
+  /** Drop a stored document and its reading session. */
+  const forget = async (id: string) => {
+    await db.deleteDoc(id);
+    setRecent(await db.listDocs());
+  };
+
+  const openRecent = async (id: string) => {
+    const doc = await db.getDoc(id);
+    if (!doc) return;
+    loadDoc(doc);
+    await hydrateSession(doc.id);
+  };
+
+  return (
+    <div className="flex h-full items-center justify-center overflow-y-auto p-8">
+      <div className="w-full max-w-2xl">
+        <div className="mb-8 flex items-center gap-2.5">
+          <AudioLines className="h-6 w-6 text-primary" />
+          <h1 className="text-2xl font-semibold tracking-tight">FocusParse</h1>
+        </div>
+
+        <p className="mb-8 max-w-lg text-sm leading-relaxed text-muted-foreground">
+          Synchronized audio-visual ingestion with active re-encoding. Load a PDF,
+          markdown or text document — headings become intercept boundaries, sentences
+          become the pacing unit.
+        </p>
+
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) void readFile(file);
+          }}
+          className={`flex flex-col items-center justify-center rounded-lg border border-dashed px-6 py-10 transition-colors ${
+            dragging ? "border-primary bg-primary/5" : "border-border"
+          }`}
+        >
+          <Upload className="mb-3 h-5 w-5 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            Drop a <span className="text-foreground">.pdf</span>,{" "}
+            <span className="text-foreground">.md</span> or{" "}
+            <span className="text-foreground">.txt</span> file here
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground/70">
+            PDFs are parsed locally — headings are recovered from the typography.
+          </p>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".md,.markdown,.txt,.pdf,text/plain,text/markdown,application/pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void readFile(file);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            disabled={busy !== null}
+            onClick={() => fileRef.current?.click()}
+          >
+            Choose file
+          </Button>
+
+          {busy && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {busy}
+            </p>
+          )}
+
+          {error && (
+            <p className="mt-3 max-w-sm text-center text-xs text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <div className="my-5 flex items-center gap-3">
+          <span className="h-px flex-1 bg-border" />
+          <span className="text-xs uppercase tracking-wider text-muted-foreground">
+            or paste
+          </span>
+          <span className="h-px flex-1 bg-border" />
+        </div>
+
+        <Textarea
+          value={pasted}
+          onChange={(e) => setPasted(e.target.value)}
+          placeholder="# Paste markdown or plain text…"
+          className="min-h-[140px] resize-none font-mono text-xs"
+        />
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button onClick={() => ingest(pasted)} disabled={!pasted.trim()}>
+            Parse document
+          </Button>
+          <Button
+            variant="ghost"
+            className="gap-2"
+            onClick={() => ingest(SAMPLE_DOCUMENT, "The Drift Problem")}
+          >
+            <Sparkles className="h-4 w-4" />
+            Load the sample
+          </Button>
+        </div>
+
+        {recent.length > 0 && (
+          <div className="mt-10">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Recent
+            </p>
+            <div className="divide-y rounded-md border">
+              {recent.slice(0, 8).map((item) => (
+                <div
+                  key={item.id}
+                  className="group flex items-center transition-colors hover:bg-accent/60"
+                >
+                  <button
+                    type="button"
+                    onClick={() => void openRecent(item.id)}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
+                  >
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-sm">{item.title}</span>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {item.wordCount.toLocaleString()} words
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void forget(item.id)}
+                    className="mr-2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+                    aria-label={`Remove ${item.title}`}
+                    title="Remove from this list"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

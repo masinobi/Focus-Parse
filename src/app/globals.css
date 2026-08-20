@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 10% 3.9%;
+    --radius: 0.5rem;
+
+    --entity: 199 89% 48%;
+    --entity-foreground: 0 0% 100%;
+    --mechanism: 271 81% 56%;
+    --mechanism-foreground: 0 0% 100%;
+    --output: 142 71% 45%;
+    --output-foreground: 0 0% 100%;
+
+    --pace-active: 47 96% 53%;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+
+    --entity: 199 89% 60%;
+    --entity-foreground: 199 90% 8%;
+    --mechanism: 271 91% 72%;
+    --mechanism-foreground: 271 90% 10%;
+    --output: 142 69% 58%;
+    --output-foreground: 142 80% 8%;
+
+    --pace-active: 47 96% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  /* Word-level pacing highlight in the ingestion pane. */
+  .fp-word {
+    @apply rounded-[3px] px-[1px] transition-colors duration-75;
+  }
+  .fp-word-active {
+    background-color: hsl(var(--pace-active) / 0.28);
+    box-shadow: inset 0 -2px 0 0 hsl(var(--pace-active));
+    color: hsl(var(--foreground));
+  }
+  .fp-word-read {
+    @apply text-muted-foreground/70;
+  }
+  .fp-bionic-lead {
+    @apply font-bold text-foreground;
+  }
+}
+
+/* Reader typography: wide measure is the enemy of pacing. */
+.fp-measure {
+  max-width: 62ch;
+}
+
+.fp-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+.fp-scroll::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-border;
+}
