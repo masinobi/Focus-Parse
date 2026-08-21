@@ -137,6 +137,30 @@ carrier. Note it compiles to **CommonJS**, unlike scan-tables — `quiz.ts` and
 `parse.ts` import each other without file extensions, which Node's ESM resolver
 rejects. Current state: 16/16 grids questionable, 0 on every must-be-zero line.
 
+**Measure a voice before trusting it.** `/voice-check` (dev route) speaks real
+parser output through every installed voice and resolves each boundary event
+with the same `tokenAtCharIndex` the engine uses. Word-exact pacing is a
+property of the *voice*, not the app, and no amount of listening reveals which
+ones have it — a voice firing no boundary events sounds identical to one that
+does. Run it after installing any new voice.
+
+Baseline on this machine (Chrome, 2026-08-21) — David, Mark and Zira are all
+**word-exact**, 100% coverage and precision. Two findings worth keeping:
+
+- **First boundary lands at 310–532ms.** David is the worst at 532ms, past the
+  320ms estimator grace, so the estimator visibly covers the opening of every
+  sentence before real events arrive. Zira is the best at 310ms.
+- **`rate` is not linear.** 2.0x produces only ~1.4x the speed of 1.0x on all
+  three. The transport advertises up to 3.0x; the reader is not getting it.
+
+Three separate false alarms came out of writing that probe, all from the same
+root: an expanded acronym is one token spoken as several words. Boundaries land
+mid-token by design, so precision must be measured against **word starts in the
+spoken string** rather than token starts, and monotonicity must count only a
+*strict* decrease — repeated boundaries on one token are the caret holding,
+which is what the design intends. If a metric reports the same suspicious number
+for every voice, suspect the metric.
+
 **Beware HMR when driving the app.** Hot-reloading the store module leaves the
 keyboard hook's listener detached, and *every* key silently stops working —
 including `Space`, which predates any of this. It looks exactly like a keybinding

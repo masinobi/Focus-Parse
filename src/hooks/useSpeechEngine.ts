@@ -14,14 +14,14 @@ import {
  * Grace period before the interpolating fallback is allowed to move the
  * highlight. Real `boundary` events almost always arrive inside this window.
  */
-const ESTIMATOR_GRACE_MS = 320;
+export const ESTIMATOR_GRACE_MS = 320;
 const ESTIMATOR_TICK_MS = 55;
 
 /** No boundary, no end, nothing speaking: the engine dropped the utterance. */
 const STALL_TIMEOUT_MS = 1600;
 
 /** Chrome drops a `speak()` issued in the same tick as a `cancel()`. */
-const CANCEL_SETTLE_MS = 60;
+export const CANCEL_SETTLE_MS = 60;
 
 /** Baseline used only by the fallback estimator. */
 const ESTIMATOR_WPM = 185;
