@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { tokenAtCharIndex } from "@/lib/parse";
-import { useFocusStore } from "@/store/useFocusStore";
+import { buildCloze, buildGridQuestion } from "@/lib/quiz";
+import {
+  CLOZE_INTERVAL_TOKENS,
+  MAX_GRID_ATTEMPTS,
+  useFocusStore,
+} from "@/store/useFocusStore";
 
 /**
  * Grace period before the interpolating fallback is allowed to move the
@@ -258,8 +263,16 @@ export function useSpeechEngine(): SpeechEngineStatus {
       const leaving = doc.chunks[chunkIndex].section;
       const entering = doc.chunks[next].section;
 
-      // A structural boundary into a major header arms the cognitive intercept:
-      // the summary is owed for the section just finished.
+      /*
+       * Three rungs of a single ladder, in descending cost. At most one fires
+       * per boundary: a boundary that owes a summary does not also owe a grid
+       * question, and stacking two stops back to back turns enforcement into
+       * obstruction. The cheaper rungs come round again within a few hundred
+       * words, so nothing is lost by yielding to the expensive one.
+       */
+
+      // 1. A structural boundary into a major header arms the cognitive
+      //    intercept: the summary is owed for the section just finished.
       if (
         entering !== leaving &&
         doc.sections[entering]?.intercept &&
@@ -268,6 +281,46 @@ export function useSpeechEngine(): SpeechEngineStatus {
         state.advanceToken(doc.chunks[chunkIndex].tokenEnd - 1);
         state.armIntercept(leaving, next);
         return;
+      }
+
+      // 2. Leaving a grid. The matrix was just read out card by card and every
+      //    cell is structured data, so the question and its marking need no
+      //    model — the answer is already in the document. Only armed when a
+      //    question can actually be built: an unanswerable grid must not stop
+      //    the reader.
+      const leavingBlock = doc.chunks[chunkIndex].block;
+      if (doc.chunks[next].block !== leavingBlock) {
+        const block = doc.blocks[leavingBlock];
+        const attempts = state.gridAttempts[leavingBlock] ?? 0;
+
+        if (
+          block?.kind === "table" &&
+          block.steps?.length &&
+          !state.gridsPassed[leavingBlock] &&
+          attempts < MAX_GRID_ATTEMPTS &&
+          buildGridQuestion(block, attempts)
+        ) {
+          state.advanceToken(doc.chunks[chunkIndex].tokenEnd - 1);
+          state.armGridCheck(leavingBlock, next);
+          return;
+        }
+      }
+
+      // 3. Reading cadence. The cheap rung: a few blanks drawn from the stretch
+      //    just heard, marked locally, several times between intercepts.
+      const readTo = doc.chunks[chunkIndex].tokenEnd;
+      if (readTo - state.lastCheckToken >= CLOZE_INTERVAL_TOKENS) {
+        const cloze = buildCloze(doc, state.lastCheckToken, readTo);
+        if (cloze) {
+          state.advanceToken(readTo - 1);
+          state.armCloze(cloze, next);
+          return;
+        }
+        // Nothing in that stretch was worth asking about — narrative passages
+        // and reference lists both do this. Slide the window forward so the
+        // next attempt measures from here instead of compounding into a check
+        // that spans half the document.
+        state.noteCheckPoint(readTo);
       }
 
       speakFromToken(doc.chunks[next].tokenStart);

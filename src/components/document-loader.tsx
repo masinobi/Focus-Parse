@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   AudioLines,
   FileText,
+  Layers,
   Loader2,
   Pencil,
   Sparkles,
@@ -11,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 
+import { ReviewSession } from "@/components/review-session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,6 +32,9 @@ export function DocumentLoader() {
   const [renamingId, setRenamingId] = React.useState<string | null>(null);
   const [renameDraft, setRenameDraft] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  /** How many retrieval items are owed right now. */
+  const [due, setDue] = React.useState(0);
+  const [reviewing, setReviewing] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   const loadDoc = useFocusStore((s) => s.loadDoc);
@@ -37,6 +42,7 @@ export function DocumentLoader() {
 
   React.useEffect(() => {
     void db.listDocs().then(setRecent);
+    void db.countDue().then(setDue);
   }, []);
 
   const ingest = React.useCallback(
@@ -93,6 +99,7 @@ export function DocumentLoader() {
   const forget = async (id: string) => {
     await db.deleteDoc(id);
     setRecent(await db.listDocs());
+    setDue(await db.countDue());
   };
 
   const commitRename = async (id: string) => {
@@ -111,6 +118,17 @@ export function DocumentLoader() {
     await hydrateSession(doc.id);
   };
 
+  if (reviewing) {
+    return (
+      <ReviewSession
+        onDone={() => {
+          setReviewing(false);
+          void db.countDue().then(setDue);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-full items-center justify-center overflow-y-auto p-8">
       <div className="w-full max-w-2xl">
@@ -124,6 +142,29 @@ export function DocumentLoader() {
           markdown or text document — headings become intercept boundaries, sentences
           become the pacing unit.
         </p>
+
+        {/* Retrieval debt comes before new material. Reading a tenth guideline
+            while the first nine evaporate is motion, not progress. */}
+        {due > 0 && (
+          <button
+            type="button"
+            onClick={() => setReviewing(true)}
+            className="mb-6 flex w-full items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-3 text-left transition-colors hover:bg-primary/10"
+          >
+            <Layers className="h-4 w-4 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1 text-sm">
+              <span className="font-medium">
+                {due} {due === 1 ? "item is" : "items are"} due for review
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Terms you missed and sections you summarized, asked again.
+              </span>
+            </span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              ~{Math.max(1, Math.round((due * 15) / 60))} min
+            </span>
+          </button>
+        )}
 
         <div
           onDragOver={(e) => {
