@@ -162,6 +162,45 @@ the structure map to rename it; Enter commits, Escape reverts, and the new name 
 written straight to IndexedDB. Recent documents can be renamed in place from the
 loader without opening them, and pasted text can be named up front.
 
+## Kinetic visual anchors
+
+Four sensory-grounding layers, each independently toggleable from the top bar and
+all on by default:
+
+- **Block caret** — a solid, unrounded block that snaps between words with
+  `transition: none`. The hard edge and the instant move *are* the feature; a soft
+  fade would blur the rhythm it exists to supply. Text inverts to the page
+  background inside the block (measured at 13.4:1 contrast).
+- **Syllabic pulse** — the active word scales to 110% on a transform, so it can never
+  reflow the paragraph. The animation restarts naturally on each word because the
+  class moves to a new element, and its duration is derived from measured WPM
+  (`--fp-pulse-ms`) so the beat tracks the pace rather than running at a fixed rate.
+  Suppressed under `prefers-reduced-motion`.
+- **Clause spotlight** — everything outside the live clause drops to a low-contrast
+  grey. Clause boundaries are assigned during parsing at commas, semicolons, colons
+  and dashes, so this is structural rather than a fixed-width window.
+- **Acronym badges** — see below.
+
+## Acronym badges
+
+[src/lib/acronyms.ts](src/lib/acronyms.ts) carries ~60 clinical data management terms
+across five colour-coded categories (standards, data systems, regulatory, operational,
+safety). The split is the point: **the eye gets a short badge, the ear gets the
+expansion in full.** "eCRF" renders as a badge and is *spoken* as "electronic case
+report form" — reading four letters teaches nothing, hearing the term every time
+builds the association.
+
+That required breaking an invariant the pacing engine was built on. Displayed text and
+spoken text used to be the same string, which is what made word-level sync exact. Now
+each chunk carries a separate `speech` string, and every token stores a `speechOffset`
+alongside its display `offset`. Boundary events are resolved against `speechOffset`, so
+the highlight stays on the single word "EDC" for the whole time the synthesizer is
+saying "electronic data capture", then moves on correctly.
+
+Matching is case-sensitive and whole-token, tolerating surrounding punctuation and a
+plural or possessive suffix. Case-sensitivity is deliberate: `AE` is an adverse event,
+`ae` is a fragment, and lowercasing would badge ordinary words like "pi".
+
 ## Brown-noise masking
 
 [src/hooks/useBrownNoise.ts](src/hooks/useBrownNoise.ts) synthesizes brown (red) noise

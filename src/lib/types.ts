@@ -14,9 +14,19 @@ export interface Token {
   i: number;
   text: string;
   offset: number;
+  /**
+   * Offset of this token inside its chunk's *spoken* string, which diverges
+   * from the displayed string wherever an acronym is expanded for the ear.
+   * Boundary events are resolved against this, not `offset`.
+   */
+  speechOffset: number;
   chunk: number;
   block: number;
   section: number;
+  /** Global clause index, used by the clause spotlight. */
+  clause: number;
+  /** Dictionary key when this token is a recognised acronym. */
+  acronym?: string;
 }
 
 /**
@@ -27,6 +37,11 @@ export interface Token {
 export interface Chunk {
   i: number;
   text: string;
+  /**
+   * What is actually uttered. Equal to `text` unless the chunk contains an
+   * acronym, which is expanded so the ear hears the full term.
+   */
+  speech: string;
   block: number;
   section: number;
   tokenStart: number;

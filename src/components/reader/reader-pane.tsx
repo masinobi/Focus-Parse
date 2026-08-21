@@ -4,6 +4,7 @@ import * as React from "react";
 
 import { BlockView } from "@/components/reader/block-view";
 import { RsvpView } from "@/components/reader/rsvp-view";
+import { cn } from "@/lib/utils";
 import { useFocusStore } from "@/store/useFocusStore";
 
 /** Keep the active word inside this vertical band of the viewport. */
@@ -23,10 +24,20 @@ export function ReaderPane() {
   const view = useFocusStore((s) => s.view);
   const tokenIndex = useFocusStore((s) => s.tokenIndex);
   const seekToken = useFocusStore((s) => s.seekToken);
+  const anchors = useFocusStore((s) => s.anchors);
+  const wpm = useFocusStore((s) => s.effectiveWpm());
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const deferred = Boolean(doc && doc.tokens.length > DEFER_THRESHOLD_TOKENS);
+  const activeClause = doc?.tokens[tokenIndex]?.clause ?? -1;
+
+  /**
+   * The pulse should beat with the pace, not at a fixed rate, so its duration
+   * is derived from measured words-per-minute and capped so it always finishes
+   * before the next word lands.
+   */
+  const pulseMs = Math.max(90, Math.min(420, Math.round((60000 / wpm) * 0.8)));
 
   /** First and last token index owned by each block, for memo clamping. */
   const blockRanges = React.useMemo(() => {
@@ -85,7 +96,15 @@ export function ReaderPane() {
 
   return (
     <div ref={scrollRef} className="fp-scroll h-full overflow-y-auto px-8 py-10">
-      <article className="fp-measure mx-auto font-reader text-[1.0625rem] leading-[1.85] text-foreground/90">
+      <article
+        style={{ "--fp-pulse-ms": `${pulseMs}ms` } as React.CSSProperties}
+        className={cn(
+          "fp-measure mx-auto font-reader text-[1.0625rem] leading-[1.85] text-foreground/90",
+          anchors.caret && "fp-anchor-caret",
+          anchors.pulse && "fp-anchor-pulse",
+          anchors.spotlight && "fp-anchor-spotlight"
+        )}
+      >
         {doc.blocks.map((block, i) => {
           const range = blockRanges[i];
           const clamped =
@@ -103,7 +122,15 @@ export function ReaderPane() {
               doc={doc}
               block={block}
               activeToken={clamped}
+              activeClause={
+                range.start === -1 ||
+                tokenIndex < range.start ||
+                tokenIndex >= range.end
+                  ? -1
+                  : activeClause
+              }
               bionic={view === "bionic"}
+              badges={anchors.badges}
               onSeek={seekToken}
               deferHeight={estimates ? estimates[i] : undefined}
             />

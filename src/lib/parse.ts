@@ -1,3 +1,4 @@
+import { matchAcronym, spokenForm } from "./acronyms";
 import type { Block, BlockKind, Chunk, ParsedDoc, Section, Token } from "./types";
 
 /**
@@ -18,6 +19,9 @@ const MIN_INTERCEPT_WORDS = 60;
  * structure could not be recovered still get paced checkpoints.
  */
 const MAX_STRETCH_WORDS = 700;
+
+/** Trailing punctuation that closes a clause. */
+const CLAUSE_BREAK = /[,;:]["'’”)\]]?$|[—–]$/;
 
 /** Periods that do not end a sentence. */
 const ABBREVIATIONS = new Set([
@@ -296,6 +300,7 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
   const blocks: Block[] = [];
   const chunks: Chunk[] = [];
   const tokens: Token[] = [];
+  let clauseIndex = 0;
 
   pending.forEach((p, b) => {
     const block: Block = {
@@ -314,22 +319,42 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
         const chunkIndex = chunks.length;
         const tokenStart = tokens.length;
 
+        // The spoken string is assembled alongside the tokens so every token
+        // knows where it lands in the utterance, even when an acronym expands
+        // from four characters to forty.
+        let speech = "";
+
         for (const m of Array.from(piece.matchAll(/\S+/g))) {
+          const raw = m[0];
+          if (speech) speech += " ";
+          const speechOffset = speech.length;
+          speech += spokenForm(raw);
+
           tokens.push({
             i: tokens.length,
-            text: m[0],
+            text: raw,
             offset: m.index ?? 0,
+            speechOffset,
             chunk: chunkIndex,
             block: b,
             section: 0,
+            clause: clauseIndex,
+            acronym: matchAcronym(raw)?.key,
           });
+
+          // A clause ends at a comma, semicolon, colon or dash.
+          if (CLAUSE_BREAK.test(raw)) clauseIndex += 1;
         }
 
         if (tokens.length === tokenStart) continue;
 
+        // Every sentence starts a new clause, whatever its punctuation.
+        clauseIndex += 1;
+
         chunks.push({
           i: chunkIndex,
           text: piece,
+          speech,
           block: b,
           section: 0,
           tokenStart,
@@ -414,7 +439,13 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
   };
 }
 
-/** Binary search: which token owns this utterance-relative character index. */
+/**
+ * Binary search: which token owns this utterance-relative character index.
+ *
+ * Searches `speechOffset`, because the index reported by a boundary event is
+ * relative to the string that was spoken — which is longer than the displayed
+ * text wherever an acronym was expanded.
+ */
 export function tokenAtCharIndex(
   doc: ParsedDoc,
   chunkIndex: number,
@@ -429,7 +460,7 @@ export function tokenAtCharIndex(
 
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    if (doc.tokens[mid].offset <= charIndex) {
+    if (doc.tokens[mid].speechOffset <= charIndex) {
       found = mid;
       lo = mid + 1;
     } else {

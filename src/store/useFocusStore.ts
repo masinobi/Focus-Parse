@@ -15,6 +15,18 @@ const BASELINE_WPM = 185;
 /** Boundary gaps longer than this are treated as stalls, not reading time. */
 const MAX_TICK_GAP_MS = 1500;
 
+/** Kinetic visual anchors — sensory grounding for the reading pane. */
+export interface AnchorSettings {
+  /** Solid block cursor that snaps word to word, instead of a soft highlight. */
+  caret: boolean;
+  /** Active word pulses in time with the pacing cadence. */
+  pulse: boolean;
+  /** Everything outside the active clause fades back. */
+  spotlight: boolean;
+  /** Recognised acronyms render as colour-coded badges. */
+  badges: boolean;
+}
+
 interface InterceptState {
   open: boolean;
   section: number | null;
@@ -38,6 +50,8 @@ interface FocusState {
    */
   seekNonce: number;
 
+  anchors: AnchorSettings;
+
   intercept: InterceptState;
   summaries: Record<number, string>;
   nodes: FlowNode[];
@@ -57,6 +71,7 @@ interface FocusState {
   nudgeRate: (delta: number) => void;
   setView: (view: ViewMode) => void;
   setVoice: (uri: string | null) => void;
+  toggleAnchor: (key: keyof AnchorSettings) => void;
 
   /**
    * Position update driven by the synthesizer itself (word boundaries, chunk
@@ -95,6 +110,8 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   chunkIndex: 0,
   voiceURI: null,
   seekNonce: 0,
+
+  anchors: { caret: true, pulse: true, spotlight: true, badges: true },
 
   intercept: { open: false, section: null, resumeChunk: null },
   summaries: {},
@@ -177,6 +194,9 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   setView: (view) => set({ view }),
 
   setVoice: (voiceURI) => set({ voiceURI }),
+
+  toggleAnchor: (key) =>
+    set((s) => ({ anchors: { ...s.anchors, [key]: !s.anchors[key] } })),
 
   advanceToken: (index) => {
     const doc = get().doc;

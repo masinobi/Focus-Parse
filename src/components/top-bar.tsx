@@ -13,6 +13,10 @@ import {
   Upload,
   Volume2,
   Waves,
+  SquareChevronRight,
+  Activity,
+  Focus,
+  Tags,
 } from "lucide-react";
 
 import { EditableTitle } from "@/components/editable-title";
@@ -22,6 +26,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import type { BrownNoiseController } from "@/hooks/useBrownNoise";
 import { MAX_RATE, MIN_RATE, RATE_STEP, useFocusStore } from "@/store/useFocusStore";
+import type { AnchorSettings } from "@/store/useFocusStore";
 import type { ViewMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +34,17 @@ const VIEWS: { id: ViewMode; label: string; icon: React.ElementType }[] = [
   { id: "standard", label: "Standard", icon: Rows3 },
   { id: "bionic", label: "Bionic", icon: Type },
   { id: "rsvp", label: "RSVP", icon: ScanLine },
+];
+
+const ANCHORS: {
+  id: keyof AnchorSettings;
+  label: string;
+  icon: React.ElementType;
+}[] = [
+  { id: "caret", label: "Block caret", icon: SquareChevronRight },
+  { id: "pulse", label: "Syllabic pulse", icon: Activity },
+  { id: "spotlight", label: "Clause spotlight", icon: Focus },
+  { id: "badges", label: "Acronym badges", icon: Tags },
 ];
 
 interface TopBarProps {
@@ -52,6 +68,8 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
   const setRate = useFocusStore((s) => s.setRate);
   const setView = useFocusStore((s) => s.setView);
   const setVoice = useFocusStore((s) => s.setVoice);
+  const anchors = useFocusStore((s) => s.anchors);
+  const toggleAnchor = useFocusStore((s) => s.toggleAnchor);
   const clearDoc = useFocusStore((s) => s.clearDoc);
   const renameDoc = useFocusStore((s) => s.renameDoc);
 
@@ -147,6 +165,27 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
             >
               <Icon className="h-3.5 w-3.5" />
               {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center rounded-md border p-0.5">
+          {ANCHORS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => toggleAnchor(id)}
+              aria-pressed={anchors[id]}
+              aria-label={label}
+              title={label}
+              className={cn(
+                "rounded-[4px] p-1.5 transition-colors",
+                anchors[id]
+                  ? "bg-secondary text-secondary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
         </div>

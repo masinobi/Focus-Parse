@@ -138,8 +138,10 @@ export function useSpeechEngine(): SpeechEngineStatus {
       }
 
       const chunk = doc.chunks[token.chunk];
-      const startOffset = token.offset;
-      const text = chunk.text.slice(startOffset);
+      // Speak from the token's position in the *spoken* string, which differs
+      // from the displayed string wherever an acronym is expanded.
+      const startOffset = token.speechOffset;
+      const text = chunk.speech.slice(startOffset);
 
       if (!text.trim()) {
         finishChunk(chunk.i);

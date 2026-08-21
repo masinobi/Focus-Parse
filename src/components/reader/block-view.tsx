@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { ACRONYMS } from "@/lib/acronyms";
 import { bionicSplit } from "@/lib/parse";
 import type { Block, ParsedDoc } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -16,7 +17,13 @@ interface BlockViewProps {
    * spoken word in a different block.
    */
   activeToken: number;
+  /**
+   * Clause the reading position sits in, pre-clamped like `activeToken` so a
+   * block containing neither never re-renders as the position moves.
+   */
+  activeClause: number;
   bionic: boolean;
+  badges: boolean;
   onSeek: (tokenIndex: number) => void;
   /**
    * Estimated rendered height in pixels. When set, the block is marked
@@ -31,16 +38,21 @@ function Word({
   index,
   text,
   state,
+  inClause,
   bionic,
+  acronym,
   onSeek,
 }: {
   index: number;
   text: string;
   state: "read" | "active" | "ahead";
+  inClause: boolean;
   bionic: boolean;
+  acronym?: string;
   onSeek: (tokenIndex: number) => void;
 }) {
-  const content = bionic ? bionicSplit(text) : null;
+  const content = bionic && !acronym ? bionicSplit(text) : null;
+  const category = acronym ? ACRONYMS[acronym]?.category : undefined;
 
   return (
     <span
@@ -49,14 +61,18 @@ function Word({
       role="button"
       tabIndex={-1}
       onClick={() => onSeek(index)}
+      title={acronym ? ACRONYMS[acronym]?.expansion : undefined}
       className={cn(
         "fp-word cursor-pointer",
         state === "read" && "fp-word-read",
         state === "active" && "fp-word-active",
-        state === "ahead" && "hover:bg-accent/60"
+        state === "ahead" && "hover:bg-accent/60",
+        inClause && "fp-word-clause"
       )}
     >
-      {content ? (
+      {category ? (
+        <span className={cn("fp-badge", `fp-badge-${category}`)}>{text}</span>
+      ) : content ? (
         <>
           <span className="fp-bionic-lead">{content[0]}</span>
           {content[1]}
@@ -72,7 +88,9 @@ const BlockViewImpl = ({
   doc,
   block,
   activeToken,
+  activeClause,
   bionic,
+  badges,
   onSeek,
   deferHeight,
 }: BlockViewProps) => {
@@ -104,13 +122,16 @@ const BlockViewImpl = ({
     for (let i = chunk.tokenStart; i < chunk.tokenEnd; i++) {
       if (!first) words.push(" ");
       first = false;
+      const token = doc.tokens[i];
       words.push(
         <Word
           key={i}
           index={i}
-          text={doc.tokens[i].text}
+          text={token.text}
           state={i < activeToken ? "read" : i === activeToken ? "active" : "ahead"}
+          inClause={token.clause === activeClause}
           bionic={bionic}
+          acronym={badges ? token.acronym : undefined}
           onSeek={onSeek}
         />
       );

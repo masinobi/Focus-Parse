@@ -81,6 +81,8 @@
   /* Word-level pacing highlight in the ingestion pane. */
   .fp-word {
     @apply rounded-[3px] px-[1px] transition-colors duration-75;
+    /* inline-block so the pulse transform cannot reflow the paragraph. */
+    display: inline-block;
   }
   .fp-word-active {
     background-color: hsl(var(--pace-active) / 0.28);
@@ -92,6 +94,91 @@
   }
   .fp-bionic-lead {
     @apply font-bold text-foreground;
+  }
+
+  /* ---- Anchor: terminal block caret -------------------------------------
+     A solid, unrounded block that snaps between words with no transition.
+     The point is the hard edge and the instant move: a soft fade would blur
+     exactly the rhythm this is meant to supply. */
+  .fp-anchor-caret .fp-word {
+    transition: none;
+    border-radius: 0;
+  }
+  /* The `.fp-word-clause` variants carry extra specificity so the caret's
+     inverted text survives the spotlight rules below, which would otherwise
+     win on source order and leave white text on the amber block. */
+  .fp-anchor-caret .fp-word-active,
+  .fp-anchor-caret .fp-word-active.fp-word-clause {
+    background-color: hsl(var(--pace-active));
+    color: hsl(var(--background));
+    box-shadow: none;
+    font-weight: 500;
+  }
+  .fp-anchor-caret .fp-word-active .fp-bionic-lead,
+  .fp-anchor-caret .fp-word-active.fp-word-clause .fp-bionic-lead {
+    color: hsl(var(--background));
+  }
+
+  /* ---- Anchor: syllabic pulse -------------------------------------------
+     Restarts on every word because the class moves to a new element, and its
+     duration tracks the measured pace so the beat stays with the audio. */
+  .fp-anchor-pulse .fp-word-active {
+    animation: fp-pulse var(--fp-pulse-ms, 260ms) ease-out;
+    transform-origin: center bottom;
+  }
+
+  /* ---- Anchor: clause spotlight -----------------------------------------
+     Peripheral text drops to a low-contrast grey so only the live clause
+     carries any brightness. */
+  .fp-anchor-spotlight .fp-word {
+    color: hsl(var(--muted-foreground) / 0.28);
+  }
+  .fp-anchor-spotlight .fp-word-clause {
+    color: hsl(var(--foreground));
+  }
+  .fp-anchor-spotlight .fp-word-clause.fp-word-read {
+    color: hsl(var(--foreground) / 0.75);
+  }
+  .fp-anchor-spotlight .fp-bionic-lead {
+    color: inherit;
+  }
+  .fp-anchor-spotlight .fp-word-clause .fp-bionic-lead {
+    color: hsl(var(--foreground));
+  }
+
+  /* ---- Acronym badges ---------------------------------------------------- */
+  .fp-badge {
+    @apply rounded px-1 py-0 text-[0.82em] font-semibold uppercase tracking-wide;
+    border: 1px solid currentColor;
+    line-height: 1.35;
+  }
+  .fp-badge-standard { color: hsl(var(--entity)); }
+  .fp-badge-data { color: hsl(var(--mechanism)); }
+  .fp-badge-regulatory { color: hsl(var(--destructive)); }
+  .fp-badge-operational { color: hsl(var(--output)); }
+  .fp-badge-safety { color: hsl(var(--pace-active)); }
+
+  .fp-anchor-caret .fp-word-active .fp-badge,
+  .fp-anchor-caret .fp-word-active.fp-word-clause .fp-badge {
+    color: hsl(var(--background));
+  }
+}
+
+@keyframes fp-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fp-anchor-pulse .fp-word-active {
+    animation: none;
   }
 }
 
