@@ -295,11 +295,21 @@ export function buildCloze(
 
   const ranked = Array.from(byKey.values()).sort((a, b) => b.score - a.score);
   const blanks: ClozeBlank[] = [];
+  /**
+   * One blank per sentence. Two blanks cut from the same carrier print that
+   * sentence twice with different holes, and each copy then shows the other's
+   * answer in full — the leak the single-carrier check cannot see because it
+   * only ever looks at one blank at a time.
+   */
+  const usedChunks = new Set<number>();
 
   for (const candidate of ranked) {
     if (blanks.length >= max) break;
-    const blank = carrierFor(doc, candidate);
-    if (blank) blanks.push(blank);
+    const blank = carrierFor(doc, candidate, usedChunks);
+    if (blank) {
+      blanks.push(blank);
+      usedChunks.add(doc.tokens[blank.tokenIndex].chunk);
+    }
   }
 
   if (blanks.length < MIN_BLANKS) return null;
@@ -314,14 +324,20 @@ export function buildCloze(
 /**
  * Find an occurrence of a candidate that yields an answerable blank.
  *
- * The load-bearing rule is the last one: if the term survives elsewhere in the
- * same sentence, the blank can be read straight off the page and tests nothing.
+ * Two rules keep a blank honest, and both are about the answer being visible
+ * somewhere it should not be: the term must not survive elsewhere in its own
+ * carrier, and the carrier must not already be in use by another blank.
  */
-function carrierFor(doc: ParsedDoc, candidate: Candidate): ClozeBlank | null {
+function carrierFor(
+  doc: ParsedDoc,
+  candidate: Candidate,
+  usedChunks: ReadonlySet<number>
+): ClozeBlank | null {
   for (const tokenIndex of candidate.occurrences) {
     const token = doc.tokens[tokenIndex];
     const chunk = doc.chunks[token.chunk];
     if (!chunk) continue;
+    if (usedChunks.has(chunk.i)) continue;
     if (EXCLUDED_BLOCKS.has(doc.blocks[token.block]?.kind)) continue;
     if (chunk.tokenEnd - chunk.tokenStart < MIN_CARRIER_TOKENS) continue;
 
