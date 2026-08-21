@@ -88,6 +88,32 @@ function stripGluedCitation(
   return URL_CONTEXT.test(before) ? match : keep;
 }
 
+/**
+ * Evidence grades are shown but never spoken.
+ *
+ * "[III]" is meaningful on the page — it states how strong the backing for a
+ * recommendation is — but read aloud it lands as a bare "three" in the middle
+ * of a paragraph and derails the sentence. Any trailing punctuation is kept so
+ * the synthesizer still gets its sentence-ending pause.
+ */
+const EVIDENCE_GRADE = /\[[IVXLCDM]{1,6}\]/g;
+
+/**
+ * What the synthesizer is given for one displayed token.
+ *
+ * The grade is matched anywhere in the token rather than as the whole of it,
+ * because it is not always spaced off: "patient.[III]" is one token, and an
+ * anchored pattern silently misses it.
+ */
+function speechFor(token: string): string {
+  const stripped = token
+    .replace(EVIDENCE_GRADE, "")
+    // "patient.[III]." would otherwise leave a doubled terminator.
+    .replace(/([.,;:])+$/, "$1");
+
+  return stripped ? spokenForm(stripped) : "";
+}
+
 /** Traditional reference symbols fused to a word: `Smith†`, `method‡`. */
 const CITATION_SYMBOL = /([A-Za-z])[*†‡§¶‖]+/g;
 
@@ -389,9 +415,15 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
 
         for (const m of Array.from(piece.matchAll(/\S+/g))) {
           const raw = m[0];
-          if (speech) speech += " ";
+          const spoken = speechFor(raw);
+
+          // A silent token contributes no separator either, so it leaves no gap
+          // in the utterance. Its offset then coincides with the next token's,
+          // and the boundary search resolves forward — the caret steps over it
+          // rather than dwelling on a word that is never voiced.
+          if (spoken && speech && !/^[.,;:]/.test(spoken)) speech += " ";
           const speechOffset = speech.length;
-          speech += spokenForm(raw);
+          speech += spoken;
 
           tokens.push({
             i: tokens.length,

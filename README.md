@@ -96,7 +96,18 @@ a sentence end (`stamps.13`, `data."8,19`), and reference symbols fused to a wor
 
 Bracketed **roman numerals are deliberately kept**: in GCDMP guidance `[I]`, `[III]`,
 `[VI]` are evidence-grade markers stating how strong the backing for a recommendation
-is. That is content, not clutter — a single GCDMP chapter carries 114 of them.
+is. That is content, not clutter — a single GCDMP chapter carries 115 of them.
+
+They are **shown but never spoken**. Read aloud, "[III]" lands as a bare "three" in the
+middle of a paragraph and derails the sentence, so the token contributes nothing to the
+utterance — not even a separator. Any trailing punctuation survives, so the synthesizer
+keeps its sentence-ending pause. The grade is matched anywhere in a token rather than
+as the whole of it, because it is not always spaced off: `patient.[III]` is a single
+token, and an anchored pattern misses it.
+
+A silent token's speech offset coincides with the next token's, so the boundary search
+resolves forward and the caret steps over it rather than dwelling on a word that is
+never voiced.
 
 Not corrupting real numbers is the hard part, and the rules are shaped entirely around
 it:
