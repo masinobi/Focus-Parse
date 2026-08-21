@@ -121,6 +121,35 @@ it:
   digit run: `10.47912/jscdm.411` is indistinguishable from a sentence plus a marker
   except by what precedes it.
 
+## Grid detection
+
+[src/lib/tables.ts](src/lib/tables.ts) recovers tables from PDF glyph
+coordinates. **Detection only** — nothing in it changes how a document is parsed
+or spoken yet.
+
+The signal is alignment: a run of consecutive rows that each split into three or
+more cells, where those cells share column positions. Prose never produces three
+aligned break positions down several consecutive lines. Cells are split at
+horizontal gaps above 1.2x the body size — word spacing inside a cell stays well
+under half that.
+
+The one non-obvious rule is the row-gap tolerance. Real table rows wrap: a long
+first-column label continues on the next line with nothing beside it, splitting
+into one cell rather than three. Closing the run there reports a single table as
+several — on one page, a 26-row costing grid came back as fragments of 6 and 10
+rows with a data row mistaken for the header. Allowing two such rows inside a run
+fixes it; the column check afterwards is what stops the tolerance from gluing
+genuinely separate tables together.
+
+Run it over a corpus to measure the hit rate rather than guessing:
+
+```bash
+node scripts/scan-tables.mjs "path/to/pdfs" --verbose
+```
+
+The script compiles `tables.ts` and runs that same module, so the report and the
+app can never drift apart.
+
 ## Pacing checkpoints
 
 Intercepts cannot depend on heading recovery succeeding, so any stretch longer than
