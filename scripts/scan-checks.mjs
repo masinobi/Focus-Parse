@@ -162,6 +162,7 @@ let checks = 0;
 let blanksTotal = 0;
 let leaked = 0;
 let selfReject = 0;
+let sharedCarrier = 0;
 const byKind = { acronym: 0, numeric: 0, capitalized: 0 };
 
 for (const file of files.filter((f) => f.toLowerCase().endsWith(".md"))) {
@@ -177,6 +178,13 @@ for (const file of files.filter((f) => f.toLowerCase().endsWith(".md"))) {
     checks += 1;
     fileChecks += 1;
     blanksTotal += cloze.blanks.length;
+
+    // One blank per sentence. Two cut from the same carrier print that sentence
+    // twice with different holes, and each copy then shows the other's answer
+    // in full — a leak the per-blank check below cannot see, because it only
+    // ever looks at one blank at a time.
+    const carriers = new Set(cloze.blanks.map((b) => doc.tokens[b.tokenIndex].chunk));
+    if (carriers.size !== cloze.blanks.length) sharedCarrier += 1;
 
     for (const blank of cloze.blanks) {
       // The blank must not be readable off its own carrier.
@@ -229,3 +237,4 @@ console.log(
 );
 console.log(`  answer visible in its own carrier: ${leaked}   (must be 0)`);
 console.log(`  carrier missing its blank: ${selfReject}   (must be 0)`);
+console.log(`  two blanks sharing one carrier: ${sharedCarrier}   (must be 0)`);
