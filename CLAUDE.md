@@ -169,6 +169,22 @@ Two rate figures in that run are noise rather than signal — Rosa reported 4.35
 and Brian Multilingual reported nothing. The rate test is two timed utterances,
 so network jitter contaminates it; treat rate on network voices as approximate.
 
+**The estimator grace is learned, not fixed.** That measurement is why. Every
+voice measured is slower to its first boundary than the old 320ms constant, so
+the estimator was moving the caret on a guess at the start of most sentences —
+and because highlight movement is monotonic within an utterance, the real events
+then had to catch up to the guess before the caret moved again. A late voice
+therefore read as a caret that lurched and then stalled.
+
+`graceFor` now waits on what the selected voice has actually done: 1.5x its
+smoothed first-boundary latency, seeded at 1200ms for an unheard network voice
+and 320ms for a local one, capped at 2800ms, and dropped back to the baseline
+once a voice has gone two utterances without firing anything — otherwise a
+genuinely boundary-free voice would sit in silence before pacing began. A/B on
+the sample document, 16 seconds each and identical reading progress: the
+estimator engaged **4 times on the old constant, once on the learned grace**,
+and that once is the first utterance, before there is anything to learn from.
+
 Three separate false alarms came out of writing that probe, all from the same
 root: an expanded acronym is one token spoken as several words. Boundaries land
 mid-token by design, so precision must be measured against **word starts in the
