@@ -539,6 +539,32 @@ not need the original file. The engine additionally falls back to display text w
 chunk has no speech string, so a stale shape degrades to reading without acronym
 expansion rather than failing to play.
 
+## Choosing a voice
+
+Word-exact pacing is a property of the **voice**, not of this app. The engine
+resolves each `boundary` event's `charIndex` back to a token; a voice that fires
+none falls back to the estimator, and one that fires them at offsets addressing
+a different string moves the caret confidently to the wrong word. Neither
+failure is audible.
+
+`/voice-check` measures it. It speaks real parser output — deliberately
+including acronyms, because expansion is what makes the displayed and spoken
+strings diverge — through every installed voice, and resolves every boundary
+with the same `tokenAtCharIndex` the reader uses, so a voice that passes there
+passes here. It reports:
+
+| | |
+| --- | --- |
+| Coverage | share of words the caret would actually visit |
+| Precision | share of boundaries landing on a word start in the spoken text |
+| First event | latency to the first boundary, against the 320ms estimator grace |
+| Rate 1x/2x | whether the voice honours `rate` at all |
+| Long text | whether a string past the 180-character cap is truncated |
+
+Verdicts are `word-exact`, `partial`, `estimator-only` or `failed`. Install
+better-sounding voices first — on Windows, Settings → Accessibility → Narrator →
+*Add natural voices* — then run the probe and keep the ones that survive it.
+
 ## Browser support
 
 Word-exact sync needs `SpeechSynthesis` boundary events: Chrome and Edge are the
