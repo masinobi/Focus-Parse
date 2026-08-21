@@ -101,6 +101,31 @@ const BlockViewImpl = ({
       }
     : undefined;
 
+  if (block.kind === "table") {
+    const rows = block.grid?.rows.length ?? 0;
+    const columns = block.grid?.header.length ?? 0;
+    const firstToken = doc.chunks[block.chunks[0]]?.tokenStart ?? -1;
+
+    // The grid's own words are never laid out in the flow, so this marker is
+    // the only way to seek into it by hand.
+    return (
+      <button
+        type="button"
+        data-block={block.i}
+        data-grid-entry={firstToken}
+        style={style}
+        onClick={() => firstToken >= 0 && onSeek(firstToken)}
+        className="my-5 flex w-full items-center gap-3 rounded-md border border-dashed bg-muted/30 px-4 py-3 text-left font-sans text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:bg-accent/40"
+      >
+        <span className="flex-1">
+          {block.grid?.caption ?? "Grid"} — {rows} rows × {columns} columns,
+          flattened into {block.steps?.length ?? 0} steps.
+        </span>
+        <span className="shrink-0 text-xs uppercase tracking-wider">Play grid</span>
+      </button>
+    );
+  }
+
   if (block.kind === "code") {
     return (
       <div className="relative my-5" style={style}>

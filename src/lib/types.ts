@@ -1,8 +1,18 @@
+import type { GridData, GridStep } from "./tables";
+
 export type LogicTag = "entity" | "mechanism" | "output";
 
 export type ViewMode = "standard" | "bionic" | "rsvp";
 
-export type BlockKind = "h1" | "h2" | "h3" | "p" | "li" | "quote" | "code";
+export type BlockKind =
+  | "h1"
+  | "h2"
+  | "h3"
+  | "p"
+  | "li"
+  | "quote"
+  | "code"
+  | "table";
 
 /**
  * One spoken word. `offset` is the character index of the word *inside its own
@@ -59,6 +69,10 @@ export interface Block {
   /** Verbatim payload for code blocks (never spoken). */
   raw?: string;
   ordinal?: number;
+  /** Recovered grid, for `table` blocks. */
+  grid?: GridData;
+  /** The grid flattened into one step per chunk, aligned with `chunks`. */
+  steps?: GridStep[];
 }
 
 export interface Section {

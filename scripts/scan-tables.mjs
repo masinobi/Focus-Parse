@@ -31,7 +31,7 @@ execFileSync(
    "--target", "es2020", "--moduleResolution", "bundler", "--skipLibCheck"],
   { stdio: "inherit" }
 );
-const { detectTablesOnPage } = await import(
+const { detectTablesOnPage, toGrid, flattenGrid } = await import(
   pathToFileURL(join(out, "tables.js")).href
 );
 
@@ -83,8 +83,13 @@ for (const file of files) {
     );
     console.log(`        header: ${t.header.map((h) => h.slice(0, 22)).join(" | ")}`);
     if (verbose) {
-      for (const r of t.rows.slice(1, 5)) {
-        console.log(`        row:    ${r.cells.map((c) => c.text.slice(0, 22)).join(" | ")}`);
+      const grid = toGrid(t);
+      console.log(`        grid header: ${grid.header.map((h) => h.slice(0, 20)).join(" | ")}`);
+      for (const r of grid.rows.slice(0, 3)) {
+        console.log(`        grid row:    ${r.map((c) => c.slice(0, 20)).join(" | ")}`);
+      }
+      for (const s of flattenGrid(grid).slice(0, 4)) {
+        console.log(`        step: ${s.row}  ->  ${s.column}  ->  ${s.value}`.slice(0, 110));
       }
     }
   }

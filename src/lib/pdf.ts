@@ -1,5 +1,14 @@
 import type { TextItem } from "pdfjs-dist/types/src/display/api";
 
+import {
+  detectTablesOnPage,
+  flattenGrid,
+  toGrid,
+  FLATTEN_MIN_CONFIDENCE,
+  FLATTEN_MIN_STEPS,
+  type GridData,
+} from "./tables";
+
 /**
  * PDF ingestion.
  *
@@ -42,6 +51,8 @@ interface Line {
   page: number;
   /** True when the line sits in the top or bottom margin strip of the page. */
   edge: boolean;
+  /** Present on the synthetic line that stands in for a recovered grid. */
+  grid?: GridData;
 }
 
 interface PageItems {
@@ -427,6 +438,16 @@ function toMarkdown(pages: Line[][], body: BodyStyle): string {
     const levels = classifyHeadings(lines, body);
 
     lines.forEach((line, index) => {
+      // A recovered grid rides through the markdown intermediate as a fenced
+      // payload, so it lands in the document at the position it occupied on
+      // the page.
+      if (line.grid) {
+        flush();
+        out.push("```fp-grid", JSON.stringify(line.grid), "```", "");
+        previous = null;
+        return;
+      }
+
       const level = levels[index];
 
       if (level) {
@@ -480,7 +501,56 @@ function assemble(pages: PageItems[]): string {
   const roughBody =
     dominant(allItems.map((i) => ({ key: Math.round(i.size * 2) / 2, weight: i.str.length }))) ?? 10;
 
-  const lined = pages.map((page, i) => buildLines(page, i + 1, roughBody));
+  const lined = pages.map((page, i) => {
+    const grids = detectTablesOnPage(
+      page.items.map((it) => ({
+        str: it.str,
+        x: it.x,
+        width: it.xEnd - it.x,
+        y: it.y,
+        size: it.size,
+      })),
+      i + 1
+    )
+      .filter((t) => t.confidence >= FLATTEN_MIN_CONFIDENCE)
+      .map((t) => ({ table: t, grid: toGrid(t) }))
+      .filter(({ grid }) => flattenGrid(grid).length >= FLATTEN_MIN_STEPS);
+
+    // A grid's glyphs must leave the prose stream, or the same content is both
+    // flattened into steps and linearized into the unreadable run this exists
+    // to replace.
+    const spans = grids.map(({ table }) => {
+      const ys = table.rows.map((r) => r.y);
+      return { top: Math.max(...ys), bottom: Math.min(...ys) };
+    });
+
+    const prose: PageItems = {
+      ...page,
+      items: page.items.filter(
+        (it) => !spans.some((s) => it.y <= s.top + 2 && it.y >= s.bottom - 2)
+      ),
+    };
+
+    const lines = buildLines(prose, i + 1, roughBody);
+
+    grids.forEach(({ grid }, g) => {
+      lines.push({
+        text: "",
+        size: roughBody,
+        family: "grid",
+        bold: false,
+        x: 0,
+        xEnd: page.width,
+        y: spans[g].top,
+        band: 0,
+        page: i + 1,
+        edge: false,
+        grid,
+      });
+    });
+
+    return lines.sort((a, b) => (a.band !== b.band ? a.band - b.band : b.y - a.y));
+  });
   const cleaned = stripFurniture(lined);
   const flat = cleaned.flat();
   if (!flat.length) return "";

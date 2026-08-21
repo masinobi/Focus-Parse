@@ -27,8 +27,16 @@ export interface Glyph {
 export interface TableCell {
   text: string;
   x: number;
-  /** Index of the column this cell snapped to, or -1 if it aligned to none. */
+  /** Column this cell was bucketed into. */
   column: number;
+  /**
+   * True when the cell's left edge genuinely matches the column's, rather than
+   * merely falling in its bucket. Header cells are frequently laid out to a
+   * different rule than the data beneath them — a right-aligned money column
+   * under a left-aligned label — so a bucketed header name can be plain wrong.
+   * Only aligned header cells are trusted as column names.
+   */
+  aligned: boolean;
 }
 
 export interface TableRow {
@@ -200,17 +208,32 @@ export function detectTablesOnPage(
     if (columns.length < MIN_COLUMNS) return;
 
     const tolerance = body * COLUMN_TOLERANCE_RATIO;
-    const snap = (x: number) =>
-      columns.findIndex((c) => Math.abs(c - x) <= tolerance);
+
+    /**
+     * Which column a cell belongs to. Bucketed rather than tolerance-matched:
+     * a header spans wider than the data beneath it, and only the positions
+     * that recur across rows become columns, so a header cell can sit between
+     * two of them. Requiring a tolerance match drops it, and the flattened
+     * steps then lose their column names.
+     */
+    const bucket = (x: number) => {
+      let index = 0;
+      for (let c = 0; c < columns.length; c++) {
+        if (columns[c] <= x + tolerance) index = c;
+      }
+      return index;
+    };
 
     let aligned = 0;
     let total = 0;
     const built: TableRow[] = run.map((r) => {
       const cells = r.cells.map((c) => {
-        const column = snap(c.x);
+        const column = bucket(c.x);
+        const exact = Math.abs(columns[column] - c.x) <= tolerance;
         total += 1;
-        if (column >= 0) aligned += 1;
-        return { text: c.text, x: c.x, column };
+        // Confidence still measures true alignment, not the bucket fallback.
+        if (exact) aligned += 1;
+        return { text: c.text, x: c.x, column, aligned: exact };
       });
       return { y: r.y, cells };
     });
@@ -268,4 +291,123 @@ export function detectTablesOnPage(
   closeRun(lastGood + 1);
 
   return tables;
+}
+
+/** Serializable grid, stripped of geometry — what the document model stores. */
+export interface GridData {
+  caption: string | null;
+  header: string[];
+  rows: string[][];
+}
+
+/**
+ * Normalize a detected table into a rectangular grid.
+ *
+ * Two things have to be undone. Cells are snapped to their column index so a
+ * row missing a value keeps its shape rather than shifting everything left. And
+ * wrapped rows are folded back: a row with no cell in the first column is a
+ * continuation of the row above, not a row of its own — a label like "Create
+ * Data Management" continuing as "Plan" on the next line.
+ */
+export function toGrid(table: DetectedTable): GridData {
+  const width = table.columns.length;
+  const rows: string[][] = [];
+
+  // Column names come only from header cells that truly align. A name placed
+  // in the wrong column is worse than no name: the flattened step would assert
+  // a relationship the table never stated.
+  const header = new Array<string>(width).fill("");
+  const headerRow = table.rows[0];
+  if (headerRow) {
+    for (const cell of headerRow.cells) {
+      if (!cell.aligned || cell.column < 0) continue;
+      header[cell.column] = header[cell.column]
+        ? `${header[cell.column]} ${cell.text}`
+        : cell.text;
+    }
+  }
+
+  for (const row of table.rows) {
+    const cells = new Array<string>(width).fill("");
+    let hasLabel = false;
+
+    for (const cell of row.cells) {
+      if (cell.column < 0) continue;
+      cells[cell.column] = cells[cell.column]
+        ? `${cells[cell.column]} ${cell.text}`
+        : cell.text;
+      if (cell.column === 0) hasLabel = true;
+    }
+
+    if (!cells.some((c) => c)) continue;
+
+    if (!hasLabel && rows.length) {
+      const previous = rows[rows.length - 1];
+      for (let c = 0; c < width; c++) {
+        if (!cells[c]) continue;
+        previous[c] = previous[c] ? `${previous[c]} ${cells[c]}` : cells[c];
+      }
+      continue;
+    }
+
+    rows.push(cells);
+  }
+
+  return { caption: table.caption, header, rows: rows.slice(1) };
+}
+
+/**
+ * Flatten a grid into a linear sequence of steps.
+ *
+ * A grid read as prose is noise — "Run edit Checks I A/R I I" — because the
+ * relationship between a value and its column header is spatial, and speech has
+ * no spatial dimension. Restoring it explicitly is what makes the content
+ * survive the transfer: each step names its row, its column, and its value.
+ */
+export interface GridStep {
+  row: string;
+  /** Empty when the column name could not be recovered with confidence. */
+  column: string;
+  value: string;
+}
+
+export function flattenGrid(grid: GridData): GridStep[] {
+  const steps: GridStep[] = [];
+
+  for (const row of grid.rows) {
+    const label = row[0]?.trim();
+    if (!label) continue;
+
+    for (let c = 1; c < row.length; c++) {
+      const value = row[c]?.trim();
+      if (!value) continue;
+      steps.push({ row: label, column: grid.header[c]?.trim() ?? "", value });
+    }
+  }
+
+  return steps;
+}
+
+/**
+ * Grids below this confidence are left as prose. A half-recovered grid read as
+ * a sequence of confident-sounding cards asserts structure that is not there,
+ * which is worse than the linearized text it replaces.
+ */
+export const FLATTEN_MIN_CONFIDENCE = 0.75;
+
+/** Fewest steps worth interrupting the reading flow for. */
+export const FLATTEN_MIN_STEPS = 3;
+
+/**
+ * One step as a single string, used for both display and speech.
+ *
+ * Keeping the two identical means the token/offset machinery that drives
+ * word-level highlighting needs no special case here; the card UI renders from
+ * the structured step instead, so nothing is lost by it.
+ */
+export function stepText(step: GridStep): string {
+  const value = step.value.replace(/\s+/g, " ").trim();
+  const row = step.row.replace(/\s+/g, " ").trim();
+  const column = step.column.replace(/\s+/g, " ").trim();
+  return column ? `${row} — ${column}: ${value}` : `${row}: ${value}`;
 }

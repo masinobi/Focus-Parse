@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { BlockView } from "@/components/reader/block-view";
+import { GridCards } from "@/components/reader/grid-cards";
 import { RsvpView } from "@/components/reader/rsvp-view";
 import { cn } from "@/lib/utils";
 import { useFocusStore } from "@/store/useFocusStore";
@@ -89,6 +90,13 @@ export function ReaderPane() {
   }, [tokenIndex, view]);
 
   if (!doc) return null;
+
+  // A grid takes over the pane entirely: the point of the flattener is that the
+  // surrounding page is *not* competing for attention while it plays.
+  const activeBlock = doc.blocks[doc.tokens[tokenIndex]?.block ?? -1];
+  if (activeBlock?.kind === "table" && activeBlock.steps?.length) {
+    return <GridCards doc={doc} block={activeBlock} tokenIndex={tokenIndex} />;
+  }
 
   if (view === "rsvp") {
     return <RsvpView doc={doc} tokenIndex={tokenIndex} />;

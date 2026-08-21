@@ -141,7 +141,40 @@ rows with a data row mistaken for the header. Allowing two such rows inside a ru
 fixes it; the column check afterwards is what stops the tolerance from gluing
 genuinely separate tables together.
 
-Run it over a corpus to measure the hit rate rather than guessing:
+## Matrix flattener
+
+A detected grid does not enter the prose stream at all. Its glyphs are removed
+before lines are assembled — otherwise the same content would be both flattened
+into steps *and* linearized into the unreadable run this exists to replace — and
+a `fp-grid` fence carrying the grid as JSON is spliced in at the position the
+table occupied on the page.
+
+Routing it through the markdown intermediate rather than a side channel keeps
+`source` a complete record, so schema migration can rebuild a document without
+re-reading the original file.
+
+The parser turns each grid into a `table` block with **one chunk per step**, so
+each step is its own utterance and the gaps between them are real sentence
+boundaries rather than pauses the engine has to fake. Display and speech text
+are identical for a step, which leaves the token/offset machinery untouched; the
+cards render from the structured steps, so nothing is lost by it.
+
+When the reading position enters a grid block the pane blacks out and the grid
+plays one card at a time — row, column, value — driven by the reading position
+rather than a clock of its own, so it cannot drift from the audio. A grid's
+words are never laid out in the flow, so the marker left in the text is also the
+only way to seek into it by hand.
+
+Two rules keep it honest. Grids below 0.75 confidence stay as prose: a
+half-recovered grid read as a sequence of confident-sounding cards asserts
+structure that is not there. And a column name is used only when the header cell
+*truly aligns* to the column, rather than merely falling in its bucket — header
+rows are frequently laid out to a different rule than the data beneath them, a
+right-aligned money column under a left-aligned label, and a name placed in the
+wrong column would assert a relationship the table never stated. Where the name
+cannot be recovered the step simply reads `Row: Value`.
+
+Run detection over a corpus to measure the hit rate rather than guessing:
 
 ```bash
 node scripts/scan-tables.mjs "path/to/pdfs" --verbose

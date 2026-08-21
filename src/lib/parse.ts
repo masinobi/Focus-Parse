@@ -1,4 +1,5 @@
 import { matchAcronym, spokenForm } from "./acronyms";
+import { flattenGrid, stepText, type GridData, type GridStep } from "./tables";
 import type { Block, BlockKind, Chunk, ParsedDoc, Section, Token } from "./types";
 
 /**
@@ -12,7 +13,7 @@ const MAX_CHUNK_CHARS = 180;
  * Bump whenever the emitted Token/Chunk shape changes. Version 2 added the
  * separate speech string, per-token speech offsets and clause indices.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * Sections shorter than this do not arm a cognitive intercept. Stopping a
@@ -240,6 +241,29 @@ interface PendingBlock {
   text: string;
   raw?: string;
   ordinal?: number;
+  grid?: GridData;
+  steps?: GridStep[];
+}
+
+/**
+ * Fence info string that PDF extraction uses to hand a recovered grid through
+ * the markdown intermediate. Routing it through markdown rather than a side
+ * channel keeps `source` a complete record, so schema migration can rebuild a
+ * document without re-reading the original file.
+ */
+const GRID_FENCE = "fp-grid";
+
+/** Grid payloads come from our own extractor, but parse defensively anyway. */
+function readGridPayload(json: string): GridData | null {
+  try {
+    const value = JSON.parse(json) as GridData;
+    if (!value || !Array.isArray(value.rows) || !Array.isArray(value.header)) {
+      return null;
+    }
+    return value;
+  } catch {
+    return null;
+  }
 }
 
 
@@ -301,6 +325,7 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
 
   let paragraph: string[] = [];
   let inFence = false;
+  let fenceInfo = "";
   let fence: string[] = [];
 
   const flushParagraph = () => {
@@ -311,14 +336,27 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
   };
 
   for (const line of lines) {
-    if (/^\s*(```|~~~)/.test(line)) {
+    const fenceMark = /^\s*(?:```|~~~)\s*(\S*)/.exec(line);
+    if (fenceMark) {
       if (inFence) {
-        pending.push({ kind: "code", text: "", raw: fence.join("\n") });
+        if (fenceInfo === GRID_FENCE) {
+          const grid = readGridPayload(fence.join("\n"));
+          if (grid) {
+            const steps = flattenGrid(grid);
+            if (steps.length) {
+              pending.push({ kind: "table", text: "", grid, steps });
+            }
+          }
+        } else {
+          pending.push({ kind: "code", text: "", raw: fence.join("\n") });
+        }
         fence = [];
         inFence = false;
+        fenceInfo = "";
       } else {
         flushParagraph();
         inFence = true;
+        fenceInfo = fenceMark[1] ?? "";
       }
       continue;
     }
@@ -400,10 +438,25 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
       text: p.text,
       raw: p.raw,
       ordinal: p.ordinal,
+      grid: p.grid,
+      steps: p.steps,
     };
 
-    if (p.kind !== "code" && p.text) {
-      const pieces = splitSentences(p.text).flatMap((s) => capLength(s));
+    /**
+     * A grid contributes one chunk per flattened step, so each step is its own
+     * utterance and the gaps between them are real sentence boundaries rather
+     * than pauses the engine has to fake. Display and speech text are identical
+     * here, which keeps the token/offset machinery unchanged — the card UI
+     * renders from `steps`, so nothing is lost by it.
+     */
+    const pieces =
+      p.kind === "table"
+        ? (p.steps ?? []).map(stepText)
+        : p.kind === "code" || !p.text
+          ? []
+          : splitSentences(p.text).flatMap((s) => capLength(s));
+
+    {
       for (const piece of pieces) {
         const chunkIndex = chunks.length;
         const tokenStart = tokens.length;
