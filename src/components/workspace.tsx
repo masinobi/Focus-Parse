@@ -13,6 +13,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { useBrownNoise } from "@/hooks/useBrownNoise";
 import { useKeyboardControls } from "@/hooks/useKeyboardControls";
 import { useSpeechEngine } from "@/hooks/useSpeechEngine";
 import { db } from "@/lib/db";
@@ -34,6 +35,7 @@ export function Workspace() {
   const summaries = useFocusStore((s) => s.summaries);
 
   const { supported, voices, estimating } = useSpeechEngine();
+  const noise = useBrownNoise();
   useKeyboardControls();
 
   // Persist reading position and captures, debounced so word-level advances do
@@ -62,7 +64,12 @@ export function Workspace() {
 
   return (
     <main className="flex h-[100dvh] flex-col">
-      <TopBar voices={voices} supported={supported} estimating={estimating} />
+      <TopBar
+        voices={voices}
+        supported={supported}
+        estimating={estimating}
+        noise={noise}
+      />
 
       <div className="min-h-0 flex-1">
         <ResizablePanelGroup direction="horizontal" autoSaveId="focusparse:panes">

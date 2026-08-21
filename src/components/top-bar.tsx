@@ -11,12 +11,15 @@ import {
   ScanLine,
   Type,
   Upload,
+  Volume2,
+  Waves,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import type { BrownNoiseController } from "@/hooks/useBrownNoise";
 import { MAX_RATE, MIN_RATE, RATE_STEP, useFocusStore } from "@/store/useFocusStore";
 import type { ViewMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -31,9 +34,10 @@ interface TopBarProps {
   voices: SpeechSynthesisVoice[];
   supported: boolean;
   estimating: boolean;
+  noise: BrownNoiseController;
 }
 
-export function TopBar({ voices, supported, estimating }: TopBarProps) {
+export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
   const doc = useFocusStore((s) => s.doc);
   const isPlaying = useFocusStore((s) => s.isPlaying);
   const rate = useFocusStore((s) => s.rate);
@@ -140,6 +144,42 @@ export function TopBar({ voices, supported, estimating }: TopBarProps) {
             </button>
           ))}
         </div>
+
+        {noise.supported && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant={noise.enabled ? "secondary" : "ghost"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={noise.toggle}
+              aria-pressed={noise.enabled}
+              aria-label={
+                noise.enabled ? "Turn off masking noise" : "Turn on masking noise"
+              }
+              title="Brown-noise sensory masking"
+            >
+              <Waves
+                className={cn("h-4 w-4", !noise.enabled && "text-muted-foreground")}
+              />
+            </Button>
+
+            {noise.enabled && (
+              <div className="flex items-center gap-1.5">
+                <Volume2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={noise.volume}
+                  onChange={(e) => noise.setVolume(Number(e.target.value))}
+                  className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-secondary accent-primary"
+                  aria-label="Masking noise volume"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           {estimating && (

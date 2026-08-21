@@ -14,7 +14,7 @@ Then open http://localhost:3000 and hit **Load the sample**.
 ## Stack
 
 Next.js 14 (App Router) · TypeScript · Tailwind CSS · shadcn/ui · Zustand · IndexedDB ·
-Web Speech API · pdf.js · optional Gemini or Claude summary grading.
+Web Speech API · Web Audio API · pdf.js · optional Gemini or Claude summary grading.
 
 ## How the pacing works
 
@@ -152,6 +152,30 @@ for that section are hidden behind a toggle so recall comes first.
 
 **Pre-scan structure map** — generated at load from the header hierarchy, with live
 per-section time estimates, progress, and intercept status.
+
+**Sensory masking** — brown noise under the audio, from a toggle and volume slider in
+the top bar. See below.
+
+## Brown-noise masking
+
+[src/hooks/useBrownNoise.ts](src/hooks/useBrownNoise.ts) synthesizes brown (red) noise
+on the native Web Audio API: white noise integrated with a leak term, so the signal is
+a bounded random walk rather than the hiss of white noise. Two seconds are generated
+once into a `Float32Array` and looped by an `AudioBufferSourceNode` — no asset to
+fetch, so it starts instantly and works offline.
+
+One ordering detail carries the algorithm: `lastOut` captures each sample *before* the
+3.5x output gain, so the gain applies to the output only and never re-enters the
+feedback path. Feeding it back would let the walk diverge.
+
+Three things the browser forces:
+
+- The `AudioContext` is constructed on the first toggle, which is a user gesture. A
+  context created at mount would be born suspended.
+- An `AudioBufferSourceNode` is single-use — once stopped it cannot restart — so each
+  toggle-on builds a fresh node while reusing the one context.
+- Gain changes are ramped, never assigned. A step change in gain is audible as a
+  click, on both the toggle and the slider.
 
 ## Known limits
 
