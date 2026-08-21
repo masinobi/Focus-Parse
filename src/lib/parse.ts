@@ -48,9 +48,14 @@ const ABBREVIATIONS = new Set([
  * articles, markdown, and markers set inline rather than superscript.
  */
 
-/** Bracketed citations: [13], [13,14], [8-10], and roman evidence grades [III]. */
-const CITATION_BRACKET =
-  /\[\s*(?:\d{1,3}(?:\s*[,;–—-]\s*\d{1,3})*|[IVXLCDM]{1,6})\s*\]/g;
+/**
+ * Bracketed numeric citations: [13], [13,14], [8-10].
+ *
+ * Deliberately numeric-only. Bracketed roman numerals are left alone because in
+ * GCDMP guidance they are evidence-grade markers — [I], [II], [III] state how
+ * strong the backing for a recommendation is, which is content, not clutter.
+ */
+const CITATION_BRACKET = /\[\s*\d{1,3}(?:\s*[,;–—-]\s*\d{1,3})*\s*\]/g;
 
 /**
  * Digits fused to the end of a sentence: `stamps.13`, `data."8,19`.

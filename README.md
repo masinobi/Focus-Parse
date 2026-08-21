@@ -90,9 +90,13 @@ Removal happens in two layers — geometrically during PDF extraction (above), a
 textually in [src/lib/parse.ts](src/lib/parse.ts) for anything arriving as plain text:
 pasted articles, markdown, and markers set inline rather than superscript.
 
-The text rules cover bracketed citations (`[13]`, `[8–10]`, roman evidence grades like
-`[III]`), digits fused to a sentence end (`stamps.13`, `data."8,19`), and reference
-symbols fused to a word (`Smith†`).
+The text rules cover bracketed *numeric* citations (`[13]`, `[8–10]`), digits fused to
+a sentence end (`stamps.13`, `data."8,19`), and reference symbols fused to a word
+(`Smith†`).
+
+Bracketed **roman numerals are deliberately kept**: in GCDMP guidance `[I]`, `[III]`,
+`[VI]` are evidence-grade markers stating how strong the backing for a recommendation
+is. That is content, not clutter — a single GCDMP chapter carries 114 of them.
 
 Not corrupting real numbers is the hard part, and the rules are shaped entirely around
 it:
