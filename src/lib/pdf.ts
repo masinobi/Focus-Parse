@@ -60,8 +60,29 @@ const H1_RATIO = 1.3;
 /** Text this much larger than the body opens a sub-section. */
 const H2_RATIO = 1.12;
 
-/** Glyphs this much smaller than the body are footnote markers, not prose. */
+/**
+ * Superscript detection.
+ *
+ * Size alone is unreliable: markers here run 5.2–5.8pt against a body that is
+ * 9pt on one page and 10pt on the next, so any fixed ratio catches some and
+ * misses others. What is unambiguous is the *raise* — a marker's baseline sits
+ * a few points above the text it follows, while a same-size numeral that is not
+ * a citation (a page folio, a figure number) shares its neighbour's baseline
+ * exactly.
+ */
+const SUPERSCRIPT_MAX_SIZE = 0.85;
+const SUPERSCRIPT_MIN_RISE = 0.15;
+const SUPERSCRIPT_MAX_RISE = 0.9;
+
+/** Fallback when there is no preceding glyph to measure a raise against. */
 const SUPERSCRIPT_RATIO = 0.62;
+
+/**
+ * What a footnote marker may consist of: digit runs with separators, roman
+ * numerals, or the traditional reference symbols. Requiring this shape keeps
+ * the rule from eating genuinely small prose.
+ */
+const MARKER_TEXT = /^[\s]*(\d{1,3}([,;–—-]\s*\d{1,3})*|[ivxlcdm]{1,6}|[IVXLCDM]{1,6}|[*†‡§¶‖]+)[\s]*$/;
 
 /**
  * A row is also cut at a horizontal gap this wide, in multiples of the body
@@ -163,11 +184,36 @@ function detectBandCuts(items: RawItem[], width: number, body: number): number[]
   return cuts;
 }
 
+/**
+ * A raised, undersized reference marker — the "13" in `time stamps.13`.
+ * Measured against the previous glyph run in content-stream order, which is
+ * reliably the text the marker is attached to.
+ */
+function isReferenceMarker(
+  item: RawItem,
+  previous: RawItem | undefined,
+  body: number
+): boolean {
+  if (!MARKER_TEXT.test(item.str)) return false;
+
+  if (!previous) return item.size < body * SUPERSCRIPT_RATIO;
+  if (item.size > body * SUPERSCRIPT_MAX_SIZE) return false;
+
+  const rise = item.y - previous.y;
+  return rise >= body * SUPERSCRIPT_MIN_RISE && rise <= body * SUPERSCRIPT_MAX_RISE;
+}
+
 /** Group positioned glyph runs into visual lines, split by column band. */
 function buildLines(page: PageItems, pageNumber: number, body: number): Line[] {
   /** Margin strip in which running heads and folios live. */
   const edgeBand = page.height * 0.075;
-  const items = page.items.filter((i) => i.size >= body * SUPERSCRIPT_RATIO);
+  // Drop reference markers before anything else sees them: they are neither
+  // prose to read nor structure to detect.
+  const items = page.items.filter(
+    (item, i, all) =>
+      item.size >= body * SUPERSCRIPT_RATIO &&
+      !isReferenceMarker(item, all[i - 1], body)
+  );
   if (!items.length) return [];
 
   const cuts = detectBandCuts(items, page.width, body);

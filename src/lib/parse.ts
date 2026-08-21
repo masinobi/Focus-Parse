@@ -38,6 +38,54 @@ const ABBREVIATIONS = new Set([
   "oct.", "nov.", "dec.", "u.s.", "u.k.", "a.m.", "p.m.", "ph.d.",
 ]);
 
+/**
+ * In-text reference markers.
+ *
+ * These are noise in both channels: they clutter the line, and the synthesizer
+ * reads them aloud, so "time stamps.13" becomes "time stamps thirteen". PDF
+ * extraction removes them geometrically where it can (a raised baseline is
+ * unambiguous); these patterns catch what arrives as plain text — pasted
+ * articles, markdown, and markers set inline rather than superscript.
+ */
+
+/** Bracketed citations: [13], [13,14], [8-10], and roman evidence grades [III]. */
+const CITATION_BRACKET =
+  /\[\s*(?:\d{1,3}(?:\s*[,;–—-]\s*\d{1,3})*|[IVXLCDM]{1,6})\s*\]/g;
+
+/**
+ * Digits fused to the end of a sentence: `stamps.13`, `data."8,19`.
+ *
+ * Anchored on a *letter* before the punctuation, so decimals and regulation
+ * numbers — 312.62, 21 CFR 11.10 — are never touched. The trailing lookahead
+ * is what keeps it away from dotted identifiers: in a DOI like
+ * `journal.pone.0083049` the run after `e.` is followed by more digits, and
+ * without the guard this rule would quietly eat three of them.
+ */
+const CITATION_GLUED =
+  /([A-Za-z][.!?]["'’”)\]]?)\d{1,3}(?:\s*[,;–—-]\s*\d{1,3})*(?![./\w])/g;
+
+/** URL-ish context in which a trailing digit run is part of an identifier. */
+const URL_CONTEXT = /https?:\/\/|doi\.org|www\.|\/\S*$/;
+
+/**
+ * The lookahead in CITATION_GLUED stops the rule mid-identifier, but it cannot
+ * see a DOI that *ends* in one — `10.47912/jscdm.411` looks exactly like a
+ * sentence followed by a marker. Checking the preceding characters for a URL
+ * settles it.
+ */
+function stripGluedCitation(
+  match: string,
+  keep: string,
+  offset: number,
+  full: string
+): string {
+  const before = full.slice(Math.max(0, offset - 40), offset);
+  return URL_CONTEXT.test(before) ? match : keep;
+}
+
+/** Traditional reference symbols fused to a word: `Smith†`, `method‡`. */
+const CITATION_SYMBOL = /([A-Za-z])[*†‡§¶‖]+/g;
+
 /** Strip inline markdown so the spoken string equals the rendered string. */
 function cleanInline(input: string): string {
   return input
@@ -49,6 +97,10 @@ function cleanInline(input: string): string {
     .replace(/(\*\*|__)(.+?)\1/g, "$2")
     .replace(/(\*|_)(?=\S)(.+?)(?<=\S)\1/g, "$2")
     .replace(/~~(.+?)~~/g, "$1")
+    .replace(CITATION_BRACKET, "")
+    .replace(CITATION_GLUED, stripGluedCitation)
+    .replace(CITATION_SYMBOL, "$1")
+    .replace(/\s+([,.;:!?])/g, "$1")
     .replace(/\\([\\`*_{}[\]()#+\-.!])/g, "$1")
     .replace(/\s+/g, " ")
     .trim();

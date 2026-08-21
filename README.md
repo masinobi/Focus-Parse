@@ -68,11 +68,43 @@ Three things make real documents hard:
   that signal is weak, style-based headings must also be isolated (not inside a run
   of three or more) and followed by prose, which filters author lists, affiliation
   blocks and captions.
-- **Furniture.** Running heads, folios and footnote markers are dropped by repetition
-  across pages within the margin strip, and by relative glyph size.
+- **Furniture.** Running heads and folios are dropped by repetition across pages
+  within the margin strip.
+- **Reference markers.** Superscript citations are removed. Size alone is unreliable —
+  markers run 5.2–5.8pt against a body that is 9pt on one page and 10pt on the next,
+  so any fixed ratio catches some and misses others. The unambiguous signal is the
+  *raise*: a marker's baseline sits ~3pt above the text it follows, while a numeral
+  that is not a citation (a page folio, a figure number) shares its neighbour's
+  baseline exactly. Detection requires both an undersized glyph and a raised
+  baseline, and the text must look like a marker (digit runs, roman numerals, or
+  `*†‡§`).
 
 Structure recovery is best-effort and varies by document — which is why it is not
 load-bearing. See pacing checkpoints below.
+
+## Citation stripping
+
+Reference markers are noise in both channels: they clutter the line, and the
+synthesizer reads them, so "time stamps.13" comes out as "time stamps thirteen".
+Removal happens in two layers — geometrically during PDF extraction (above), and
+textually in [src/lib/parse.ts](src/lib/parse.ts) for anything arriving as plain text:
+pasted articles, markdown, and markers set inline rather than superscript.
+
+The text rules cover bracketed citations (`[13]`, `[8–10]`, roman evidence grades like
+`[III]`), digits fused to a sentence end (`stamps.13`, `data."8,19`), and reference
+symbols fused to a word (`Smith†`).
+
+Not corrupting real numbers is the hard part, and the rules are shaped entirely around
+it:
+
+- The glued-digit rule anchors on a **letter** before the punctuation, so `312.62` and
+  `21 CFR 11.10` are untouchable.
+- A trailing lookahead stops it mid-identifier: in `journal.pone.0083049` the run after
+  `e.` is followed by more digits. Without that guard the rule silently ate three of
+  them — caught by scanning the reference list of a real document, not by unit tests.
+- A URL-context check covers the case the lookahead cannot see, a DOI that *ends* in a
+  digit run: `10.47912/jscdm.411` is indistinguishable from a sentence plus a marker
+  except by what precedes it.
 
 ## Pacing checkpoints
 
