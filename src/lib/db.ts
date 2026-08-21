@@ -1,17 +1,23 @@
 import { parseDocument, SCHEMA_VERSION } from "./parse";
+import { newReview, scheduleReview, type ReviewItem, type ReviewQuality, type ReviewSeed } from "./review";
 import type { ParsedDoc, SessionState } from "./types";
 
 /**
- * Thin IndexedDB layer. Two stores:
+ * Thin IndexedDB layer. Three stores:
  *   documents — the parsed document, keyed by id (source is kept so a document
  *               can be re-parsed after a parser change).
  *   sessions  — per-document reading state: position, flow nodes, summaries.
+ *   reviews   — the spaced-retrieval queue, spanning every document. Indexed by
+ *               `dueAt` so the loader can ask what is due without reading the
+ *               whole queue, and by `docId` so forgetting a document does not
+ *               leave its questions behind.
  */
 
 const DB_NAME = "focusparse";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const DOCS = "documents";
 const SESSIONS = "sessions";
+const REVIEWS = "reviews";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -30,6 +36,13 @@ function open(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(SESSIONS)) {
         db.createObjectStore(SESSIONS, { keyPath: "docId" });
+      }
+      // Added in version 2. Guarded the same way as the others so a fresh
+      // database and an upgraded one take the identical path.
+      if (!db.objectStoreNames.contains(REVIEWS)) {
+        const store = db.createObjectStore(REVIEWS, { keyPath: "id" });
+        store.createIndex("dueAt", "dueAt");
+        store.createIndex("docId", "docId");
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -124,6 +137,9 @@ export const db = {
       tx<undefined>(SESSIONS, "readwrite", (s) => s.delete(id)).then(() => undefined),
       undefined
     );
+    // Reviews outlive the reading session by design, but not the document they
+    // quote: a question whose source text is gone can never be checked again.
+    await db.deleteReviewsForDoc(id);
   },
 
   async saveSession(session: SessionState): Promise<void> {
@@ -142,5 +158,105 @@ export const db = {
       ),
       null
     );
+  },
+
+  /* ---- Spaced retrieval ------------------------------------------------ */
+
+  /**
+   * Record an answer against the queue.
+   *
+   * Upsert rather than insert: the id is derived from the content, so a term
+   * missed twice in two sittings advances one item's schedule instead of
+   * stacking duplicates. The returned item carries the new interval, which the
+   * UI reports back so the reader can see the schedule respond to the answer.
+   */
+  async recordAnswer(
+    seed: ReviewSeed,
+    quality: ReviewQuality,
+    now: number = Date.now()
+  ): Promise<ReviewItem | null> {
+    const existing = await safe(
+      tx<ReviewItem | undefined>(REVIEWS, "readonly", (s) => s.get(seed.id)).then(
+        (v) => v ?? null
+      ),
+      null
+    );
+
+    // Question text is refreshed from the seed — a re-parse can reword a carrier
+    // sentence, and the stored question should follow the document — while the
+    // schedule is taken from what is on disk. The caller may be holding a copy
+    // read minutes ago, and letting a stale copy write back its own ease would
+    // quietly undo progress.
+    const base = existing
+      ? {
+          ...existing,
+          ...seed,
+          ease: existing.ease,
+          intervalDays: existing.intervalDays,
+          reps: existing.reps,
+          lapses: existing.lapses,
+          createdAt: existing.createdAt,
+        }
+      : newReview(seed, now);
+
+    const next = scheduleReview(base, quality, now);
+    await safe(
+      tx<IDBValidKey>(REVIEWS, "readwrite", (s) => s.put(next)).then(
+        () => undefined as void
+      ),
+      undefined as void
+    );
+    return next;
+  },
+
+  async listDue(now: number = Date.now(), limit = 40): Promise<ReviewItem[]> {
+    const due = await safe(
+      tx<ReviewItem[]>(
+        REVIEWS,
+        "readonly",
+        (s) =>
+          s
+            .index("dueAt")
+            .getAll(IDBKeyRange.upperBound(now)) as IDBRequest<ReviewItem[]>
+      ),
+      []
+    );
+    // Oldest debt first — the queue should drain, not churn on recent items.
+    return due.sort((a, b) => a.dueAt - b.dueAt).slice(0, limit);
+  },
+
+  async countDue(now: number = Date.now()): Promise<number> {
+    return safe(
+      tx<number>(REVIEWS, "readonly", (s) =>
+        s.index("dueAt").count(IDBKeyRange.upperBound(now))
+      ),
+      0
+    );
+  },
+
+  async countReviews(): Promise<number> {
+    return safe(
+      tx<number>(REVIEWS, "readonly", (s) => s.count()),
+      0
+    );
+  },
+
+  async deleteReviewsForDoc(docId: string): Promise<void> {
+    const items = await safe(
+      tx<ReviewItem[]>(
+        REVIEWS,
+        "readonly",
+        (s) => s.index("docId").getAll(docId) as IDBRequest<ReviewItem[]>
+      ),
+      []
+    );
+    for (const item of items) {
+      await safe(
+        tx<undefined>(REVIEWS, "readwrite", (s) => s.delete(item.id)).then(
+          () => undefined
+        ),
+        undefined
+      );
+    }
   },
 };
