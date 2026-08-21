@@ -82,7 +82,34 @@ the line assembly *and* spliced back as an `fp-grid` fence. If both happen, the
 same content is flattened into cards and linearized into the unreadable run the
 flattener exists to replace.
 
-**5. `source` is a complete record.** Everything rides through the markdown
+**5. `intercept` and `check` are separate state, deliberately.** The cognitive
+intercept's resume path is load-bearing and well-tested; the two cheap checks
+(grid, cloze) live in a parallel `check` slice rather than being folded into it.
+Anything that gates playback must consult *both* — `setPlaying`, `togglePlaying`
+and the keyboard handler all do. Miss one and audio plays underneath an open
+check.
+
+**6. Only one check fires per sentence boundary.** `finishChunk` evaluates
+intercept, then grid, then cloze, and returns on the first hit. The order is
+descending cost and it is not arbitrary: stacking two stops back to back turns
+enforcement into obstruction. A consequence worth knowing is that a grid ending
+exactly on a section boundary loses its question to the intercept.
+
+**7. A check must never be armed unless it can be answered.** The engine calls
+`buildGridQuestion` before arming a grid check and discards the result — it is
+asking whether a question exists. An armed check with nothing to render is a
+dialog the reader cannot dismiss and cannot answer, which ends the session.
+
+**8. `lastCheckToken` resets on every deliberate seek.** Otherwise skipping
+forward banks credit toward a cloze check drawn over text that was skipped
+rather than heard.
+
+**9. Vigilance clears on any proven interaction.** `presence()` is folded into
+`togglePlaying`, `submitSummary`, `passCheck` and `replayGrid`. Without it a
+check raised moments before a pause is still open on resume with its grace
+window already spent, and the reader is marked absent for coming back.
+
+**10. `source` is a complete record.** Everything rides through the markdown
 intermediate rather than a side channel, so `db.getDoc` can rebuild a document
 with the current parser when `schema` is stale. Schema is currently **3**; bump
 `SCHEMA_VERSION` in `src/lib/parse.ts` whenever the Token/Chunk shape changes, or
@@ -103,6 +130,19 @@ compiles `src/lib/tables.ts` and runs that same module over every PDF, so the
 report and the app cannot drift. Every threshold in `pdf.ts` and `tables.ts` came
 from measuring this corpus.
 
+`node scripts/scan-checks.mjs "<folder>" --verbose` does the same for `quiz.ts`,
+and asserts the invariants that fail silently: an answer duplicated among its own
+distractors, a grid replay re-asking one cell, a blank readable off its own
+carrier. Note it compiles to **CommonJS**, unlike scan-tables — `quiz.ts` and
+`parse.ts` import each other without file extensions, which Node's ESM resolver
+rejects. Current state: 16/16 grids questionable, 0 on every must-be-zero line.
+
+**Beware HMR when driving the app.** Hot-reloading the store module leaves the
+keyboard hook's listener detached, and *every* key silently stops working —
+including `Space`, which predates any of this. It looks exactly like a keybinding
+regression. Reload the page fully before concluding a key is broken; an hour went
+into chasing one that was not.
+
 **Read back from IndexedDB** to check what was actually stored, rather than
 trusting the rendered view.
 
@@ -120,7 +160,15 @@ pre-scan structure map · PDF ingestion with column/heading/furniture recovery �
 citation and superscript stripping · acronym badges (~60 CDM terms, five
 categories) · kinetic visual anchors (block caret, syllabic pulse, clause
 spotlight) · brown-noise masking · document renaming · optional AI summary
-grading · grid detection and the matrix flattener.
+grading · grid detection and the matrix flattener · **grid interrogation on exit
+from a matrix** · **cloze spot checks every 250 words** · **a jittered presence
+check that stops the audio when nobody answers** · **a spaced-retrieval queue
+that outlives the session**.
+
+The last four are one idea: the app used to *assume* a reader was present and
+enforce engagement only at section boundaries, and everything it produced died
+with the session. See "The enforcement ladder" and "Spaced retrieval" in the
+README for why each threshold is where it is.
 
 **AI grading** is optional and provider-agnostic: `GEMINI_API_KEY` or
 `ANTHROPIC_API_KEY` in `.env.local` (Gemini wins if both). The Gemini path is

@@ -2,12 +2,15 @@
 
 import * as React from "react";
 
+import { ClozeDialog } from "@/components/cloze-dialog";
 import { DocumentLoader } from "@/components/document-loader";
+import { GridCheckDialog } from "@/components/grid-check-dialog";
 import { InterceptDialog } from "@/components/intercept-dialog";
 import { ReaderPane } from "@/components/reader/reader-pane";
 import { Scratchpad } from "@/components/scratchpad/scratchpad";
 import { StructureSidebar } from "@/components/structure-sidebar";
 import { TopBar } from "@/components/top-bar";
+import { VigilancePill } from "@/components/vigilance-pill";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -16,6 +19,7 @@ import {
 import { useBrownNoise } from "@/hooks/useBrownNoise";
 import { useKeyboardControls } from "@/hooks/useKeyboardControls";
 import { useSpeechEngine } from "@/hooks/useSpeechEngine";
+import { useVigilance } from "@/hooks/useVigilance";
 import { db } from "@/lib/db";
 import { useFocusStore } from "@/store/useFocusStore";
 
@@ -26,6 +30,7 @@ const KEY_HINTS: [string, string][] = [
   ["← →", "sentence"],
   ["⇧ ← →", "section"],
   ["↑ ↓", "speed"],
+  ["V", "presence check"],
 ];
 
 export function Workspace() {
@@ -37,6 +42,7 @@ export function Workspace() {
   const { supported, voices, estimating } = useSpeechEngine();
   const noise = useBrownNoise();
   useKeyboardControls();
+  useVigilance();
 
   // Persist reading position and captures, debounced so word-level advances do
   // not hammer IndexedDB.
@@ -106,6 +112,9 @@ export function Workspace() {
       </div>
 
       <InterceptDialog />
+      <GridCheckDialog />
+      <ClozeDialog />
+      <VigilancePill />
     </main>
   );
 }
