@@ -73,10 +73,19 @@ export default function VoiceCheckPage() {
   const [copied, setCopied] = React.useState(false);
   const stopRef = React.useRef(false);
 
-  const supported = typeof window !== "undefined" && "speechSynthesis" in window;
+  /**
+   * Null until mounted. Reading `window` during render makes the server emit
+   * the unsupported branch and the client emit the controls, which is a
+   * hydration mismatch — so support is discovered in an effect and both sides
+   * render the same placeholder first.
+   */
+  const [supported, setSupported] = React.useState<boolean | null>(null);
 
   React.useEffect(() => {
-    if (!supported) return;
+    const ok = "speechSynthesis" in window;
+    setSupported(ok);
+    if (!ok) return;
+
     const load = () => {
       const list = window.speechSynthesis.getVoices();
       if (list.length) setVoices(list);
@@ -84,7 +93,7 @@ export default function VoiceCheckPage() {
     load();
     window.speechSynthesis.addEventListener("voiceschanged", load);
     return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
-  }, [supported]);
+  }, []);
 
   const selected = React.useMemo(
     () => (englishOnly ? voices.filter((v) => v.lang.startsWith("en")) : voices),
@@ -163,7 +172,9 @@ export default function VoiceCheckPage() {
           roughly fifteen seconds per voice.
         </p>
 
-        {!supported ? (
+        {supported === null ? (
+          <p className="mt-6 text-sm text-muted-foreground">Checking for speech support&hellip;</p>
+        ) : !supported ? (
           <p className="mt-6 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             This browser exposes no speech synthesis, so there is nothing to measure.
           </p>
