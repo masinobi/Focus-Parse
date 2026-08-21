@@ -85,6 +85,13 @@ const MIN_COVERAGE = 0.8;
 /** Below this, offsets are not addressing the string the engine thinks it is. */
 const MIN_PRECISION = 0.9;
 
+/**
+ * Above this, a slow first boundary is a usability problem rather than a
+ * footnote. Network voices synthesize per utterance, and the engine utters one
+ * sentence at a time, so the latency lands on every sentence in the document.
+ */
+const SLOW_START_MS = 1_000;
+
 /** Per-utterance ceiling. A voice that has not finished by now has hung. */
 const UTTERANCE_TIMEOUT_MS = 25_000;
 
@@ -358,17 +365,29 @@ function classify(
   }
 
   /*
-   * A slow first boundary is a caveat, not a failure. The estimator covers the
-   * gap and hands back the moment real events arrive, so the caret is right for
-   * all but the opening moment of each sentence — worth stating, not worth
-   * disqualifying a voice over.
+   * A slow first boundary is a caveat, not a failure — the estimator covers the
+   * gap and hands back the moment real events arrive. But the engine speaks one
+   * sentence per utterance, so this latency is paid at *every* sentence, not
+   * once. Past about a second that stops being a blip and becomes a lead-in the
+   * reader can hear, with the caret interpolated through all of it, which is
+   * what separates two otherwise identical voices.
    */
+  if (firstBoundaryMs !== null && firstBoundaryMs > SLOW_START_MS) {
+    return {
+      verdict: "word-exact",
+      note:
+        `Word-exact, but the first boundary takes ${firstBoundaryMs}ms. The engine speaks ` +
+        `one sentence per utterance, so that is a lead-in on every sentence with the caret ` +
+        `interpolated throughout. Prefer a faster-starting voice.`,
+    };
+  }
+
   if (firstBoundaryMs !== null && firstBoundaryMs > graceMs) {
     return {
       verdict: "word-exact",
       note:
         `Word-exact, but the first boundary arrives at ${firstBoundaryMs}ms — past the ` +
-        `${graceMs}ms grace, so the estimator briefly covers the opening of each sentence.`,
+        `${graceMs}ms grace, so the estimator covers the opening of each sentence.`,
     };
   }
 

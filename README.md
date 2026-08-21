@@ -561,9 +561,20 @@ passes here. It reports:
 | Rate 1x/2x | whether the voice honours `rate` at all |
 | Long text | whether a string past the 180-character cap is truncated |
 
-Verdicts are `word-exact`, `partial`, `estimator-only` or `failed`. Install
-better-sounding voices first — on Windows, Settings → Accessibility → Narrator →
-*Add natural voices* — then run the probe and keep the ones that survive it.
+Verdicts are `word-exact`, `partial`, `estimator-only` or `failed`.
+
+**Use Edge.** Measured across 49 English voices, every one is word-exact at 100%
+coverage and precision, including all the "Online (Natural)" cloud voices — so
+the good-sounding voices cost nothing in sync. Chrome sees only the three
+built-in Windows voices, and cannot be made to see more: the natural voices
+Windows installs through Narrator are not registered as system TTS voices, so
+they never reach the browser at all. The natural voices in Edge are Edge's own.
+
+What actually separates them is latency to the first boundary event, which the
+engine pays on **every sentence** because it utters one sentence at a time.
+Local voices start in 414–711ms and network voices in 575–2376ms; the
+`Multilingual` variants are the slowest by a wide margin. Aria (576ms), Guy and
+Jenny are the quickest of the natural voices and the ones worth defaulting to.
 
 ## Browser support
 

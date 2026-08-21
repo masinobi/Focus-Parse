@@ -144,14 +144,30 @@ property of the *voice*, not the app, and no amount of listening reveals which
 ones have it — a voice firing no boundary events sounds identical to one that
 does. Run it after installing any new voice.
 
-Baseline on this machine (Chrome, 2026-08-21) — David, Mark and Zira are all
-**word-exact**, 100% coverage and precision. Two findings worth keeping:
+Baseline on this machine (2026-08-21). **Chrome sees three voices; Edge sees
+49.** All 49 are word-exact at 100% coverage and precision — including every
+"Online (Natural)" cloud voice, which was the open question. Boundary events are
+not the reason to avoid network voices.
 
-- **First boundary lands at 310–532ms.** David is the worst at 532ms, past the
-  320ms estimator grace, so the estimator visibly covers the opening of every
-  sentence before real events arrive. Zira is the best at 310ms.
-- **`rate` is not linear.** 2.0x produces only ~1.4x the speed of 1.0x on all
-  three. The transport advertises up to 3.0x; the reader is not getting it.
+**Read in Edge.** Windows "natural voices" installed through Narrator do *not*
+register as system TTS voices — after installing Aria, AvaHD and AndrewHD the
+speech registries were byte-identical, and Chrome still enumerated only David,
+Mark and Zira. The good voices in Edge are Edge's own online set, which Chrome
+will never see. Nothing in the app can change this.
+
+The differentiator is **latency to the first boundary**, because the engine
+utters one sentence at a time and pays it on every sentence:
+
+- Local voices: 414–711ms. Network voices: 575–2376ms.
+- The `Multilingual` variants are the worst of the set — Brian 2376ms, William
+  2252ms, Andrew 2212ms. Over two seconds of lead-in per sentence.
+- Best natural picks: **Aria 576ms**, Guy 637ms, Jenny 729ms, Christopher 760ms.
+- `rate` is honoured better by the network voices (~1.9x at 2.0x) than the local
+  ones (~1.7x), though 2.0x has never delivered 2.0x on any voice measured.
+
+Two rate figures in that run are noise rather than signal — Rosa reported 4.35x
+and Brian Multilingual reported nothing. The rate test is two timed utterances,
+so network jitter contaminates it; treat rate on network voices as approximate.
 
 Three separate false alarms came out of writing that probe, all from the same
 root: an expanded acronym is one token spoken as several words. Boundaries land
