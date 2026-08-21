@@ -17,6 +17,65 @@ import {
 export const ESTIMATOR_GRACE_MS = 320;
 const ESTIMATOR_TICK_MS = 55;
 
+/**
+ * Grace used for a voice we have not heard from yet and that synthesizes over
+ * the network. Measured, not guessed: across 49 voices in Edge the first
+ * boundary arrived between 575ms and 2376ms, so the 320ms baseline — which was
+ * tuned against local voices — guarantees the estimator moves the caret on a
+ * guess at the start of every sentence.
+ */
+const NETWORK_PROBE_GRACE_MS = 1200;
+
+/**
+ * Ceiling on the learned grace. Past this the fallback has stopped being a
+ * fallback; a voice this slow to report is better paced by interpolation than
+ * by waiting for it.
+ */
+const MAX_ESTIMATOR_GRACE_MS = 2800;
+
+/**
+ * How much longer than a voice's observed latency to wait before interpolating.
+ * Latency varies per utterance, especially over a network, so matching it
+ * exactly would trip the estimator on every slower-than-average sentence.
+ */
+const LATENCY_HEADROOM = 1.5;
+
+/** Utterances to give a voice before concluding it fires no boundaries at all. */
+const SILENT_VOICE_ATTEMPTS = 2;
+
+/** What the engine has learned about the currently selected voice. */
+interface VoiceLatency {
+  voiceURI: string | null;
+  /** Smoothed time to the first boundary, or null if none has ever arrived. */
+  ms: number | null;
+  utterances: number;
+  boundaries: number;
+}
+
+/**
+ * How long to let a sentence run before interpolating.
+ *
+ * The estimator exists for engines that never fire word boundaries. Starting it
+ * while boundaries are merely *late* is worse than useless: it advances the
+ * caret on a guess, and because highlight movement is monotonic within an
+ * utterance, the real events then have to catch up to the guess before the caret
+ * moves again — so a late voice reads as a caret that lurches and then stalls.
+ */
+function graceFor(stats: VoiceLatency, localService: boolean): number {
+  if (stats.ms !== null) {
+    return Math.min(
+      MAX_ESTIMATOR_GRACE_MS,
+      Math.round(stats.ms * LATENCY_HEADROOM) + 80
+    );
+  }
+  // Tried and heard nothing back: it is not going to start now, so pace
+  // promptly rather than leaving the reader in silence.
+  if (stats.utterances >= SILENT_VOICE_ATTEMPTS && stats.boundaries === 0) {
+    return ESTIMATOR_GRACE_MS;
+  }
+  return localService ? ESTIMATOR_GRACE_MS : NETWORK_PROBE_GRACE_MS;
+}
+
 /** No boundary, no end, nothing speaking: the engine dropped the utterance. */
 const STALL_TIMEOUT_MS = 1600;
 
@@ -62,6 +121,17 @@ export function useSpeechEngine(): SpeechEngineStatus {
   const estimatorTimer = useRef<number | null>(null);
   const stallTimer = useRef<number | null>(null);
   const startTimer = useRef<number | null>(null);
+  /**
+   * Per-voice boundary latency, learned as the session runs. Reset whenever the
+   * selected voice changes, because latency is a property of the voice and a
+   * local voice's timings say nothing about a networked one's.
+   */
+  const latency = useRef<VoiceLatency>({
+    voiceURI: null,
+    ms: null,
+    utterances: 0,
+    boundaries: 0,
+  });
 
   const clearTimers = useCallback(() => {
     if (estimatorTimer.current !== null) {
@@ -171,6 +241,17 @@ export function useSpeechEngine(): SpeechEngineStatus {
         utterance.lang = voice.lang;
       }
 
+      if (latency.current.voiceURI !== (voiceURI ?? null)) {
+        latency.current = {
+          voiceURI: voiceURI ?? null,
+          ms: null,
+          utterances: 0,
+          boundaries: 0,
+        };
+      }
+      const graceMs = graceFor(latency.current, voice ? voice.localService : true);
+      latency.current.utterances += 1;
+
       let boundarySeen = false;
       let lastToken = tokenIndex;
       const startedAt = performance.now();
@@ -191,6 +272,14 @@ export function useSpeechEngine(): SpeechEngineStatus {
 
         if (!boundarySeen) {
           boundarySeen = true;
+          const observed = performance.now() - startedAt;
+          latency.current.boundaries += 1;
+          // Smoothed rather than replaced: one slow round-trip should nudge the
+          // grace, not redefine it.
+          latency.current.ms =
+            latency.current.ms === null
+              ? observed
+              : latency.current.ms * 0.7 + observed * 0.3;
           if (estimatorTimer.current !== null) {
             window.clearInterval(estimatorTimer.current);
             estimatorTimer.current = null;
@@ -228,7 +317,7 @@ export function useSpeechEngine(): SpeechEngineStatus {
       estimatorTimer.current = window.setInterval(() => {
         if (!alive() || boundarySeen) return;
         const elapsed = performance.now() - startedAt;
-        if (elapsed < ESTIMATOR_GRACE_MS) return;
+        if (elapsed < graceMs) return;
 
         setEstimating(true);
         const msPerWord = 60000 / (ESTIMATOR_WPM * rate);

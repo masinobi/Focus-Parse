@@ -40,8 +40,16 @@ sentence-skip feel immediate.
 Three fallbacks keep it honest on weaker platforms:
 
 - **No boundary events** (Safari, several espeak voices): an interpolating estimator
-  takes over after a 320 ms grace period, and the header shows an `estimated pacing`
-  badge rather than pretending the sync is exact.
+  takes over once the voice has had its grace period, and the header shows an
+  `estimated pacing` badge rather than pretending the sync is exact. The grace is
+  **learned per voice** rather than fixed, because every voice measured is slower
+  to its first boundary than the old 320 ms constant — local ones take 310–711 ms
+  and network ones 575–2376 ms. Starting the estimator while boundaries are merely
+  *late* is worse than not starting it: it moves the caret on a guess, and since
+  movement is monotonic within an utterance, the real events must then catch up to
+  the guess before the caret moves again. The engine waits 1.5x what the selected
+  voice has actually been doing, and falls back to the short baseline once a voice
+  has proved it fires nothing at all.
 - **Dropped utterances**: a stall watchdog advances the chunk if nothing is speaking
   and no `end` arrived.
 - **Backward boundaries**: highlight movement is monotonic within an utterance.
