@@ -138,10 +138,15 @@ export function useSpeechEngine(): SpeechEngineStatus {
       }
 
       const chunk = doc.chunks[token.chunk];
+
       // Speak from the token's position in the *spoken* string, which differs
-      // from the displayed string wherever an acronym is expanded.
-      const startOffset = token.speechOffset;
-      const text = chunk.speech.slice(startOffset);
+      // from the displayed string wherever an acronym is expanded. The fallback
+      // covers a document whose stored shape predates the speech string: it
+      // should read without acronym expansion rather than fail to play at all.
+      const hasSpeech = typeof chunk.speech === "string";
+      const source = hasSpeech ? chunk.speech : chunk.text;
+      const startOffset = hasSpeech ? (token.speechOffset ?? token.offset) : token.offset;
+      const text = source.slice(startOffset);
 
       if (!text.trim()) {
         finishChunk(chunk.i);
@@ -189,7 +194,7 @@ export function useSpeechEngine(): SpeechEngineStatus {
         }
 
         const absolute = startOffset + (event.charIndex ?? 0);
-        const next = tokenAtCharIndex(doc, chunk.i, absolute);
+        const next = tokenAtCharIndex(doc, chunk.i, absolute, hasSpeech);
         // Monotonic within an utterance: some engines re-emit an early offset
         // as they settle, and a highlight that jumps backwards reads as a bug.
         if (next > lastToken) {

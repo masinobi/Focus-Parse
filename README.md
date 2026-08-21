@@ -250,6 +250,15 @@ plus its source) and `sessions` (reading position, flow nodes, summaries), writt
 debounced at 700 ms. Every write is best-effort — a browser in private mode loses
 persistence, not the reading session.
 
+**Schema versioning.** A stored document is a snapshot of whatever the parser emitted
+that day, and the token/chunk model changes as features land. Each document carries a
+`schema` number; on read, a document whose version does not match the parser's is
+rebuilt from its stored `source` and written back. Keeping the original source is what
+makes that lossless — for PDFs the source is the extracted markdown, so migration does
+not need the original file. The engine additionally falls back to display text when a
+chunk has no speech string, so a stale shape degrades to reading without acronym
+expansion rather than failing to play.
+
 ## Browser support
 
 Word-exact sync needs `SpeechSynthesis` boundary events: Chrome and Edge are the

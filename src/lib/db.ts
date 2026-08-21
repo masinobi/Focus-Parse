@@ -1,3 +1,4 @@
+import { parseDocument, SCHEMA_VERSION } from "./parse";
 import type { ParsedDoc, SessionState } from "./types";
 
 /**
@@ -75,10 +76,26 @@ export const db = {
   },
 
   async getDoc(id: string): Promise<ParsedDoc | null> {
-    return safe(
+    const stored = await safe(
       tx<ParsedDoc | undefined>(DOCS, "readonly", (s) => s.get(id)).then((d) => d ?? null),
       null
     );
+    if (!stored) return null;
+    if (stored.schema === SCHEMA_VERSION) return stored;
+
+    // Older shape. The original source is kept precisely so a document can be
+    // rebuilt by the current parser instead of being thrown away — or worse,
+    // handed to the engine with fields it expects missing.
+    if (!stored.source) return null;
+
+    const rebuilt: ParsedDoc = {
+      ...parseDocument(stored.source, undefined),
+      id: stored.id,
+      title: stored.title,
+      createdAt: stored.createdAt,
+    };
+    await db.saveDoc(rebuilt);
+    return rebuilt;
   },
 
   /** Rename a stored document without touching its parsed content. */

@@ -78,6 +78,12 @@ export interface Section {
 
 export interface ParsedDoc {
   id: string;
+  /**
+   * Shape version. Stored documents are re-parsed from `source` when this does
+   * not match the parser's current version — the token/chunk model has changed
+   * before and will again, and a stale shape must never reach the engine.
+   */
+  schema: number;
   title: string;
   source: string;
   blocks: Block[];

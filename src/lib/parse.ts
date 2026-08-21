@@ -9,6 +9,12 @@ import type { Block, BlockKind, Chunk, ParsedDoc, Section, Token } from "./types
 const MAX_CHUNK_CHARS = 180;
 
 /**
+ * Bump whenever the emitted Token/Chunk shape changes. Version 2 added the
+ * separate speech string, per-token speech offsets and clause indices.
+ */
+export const SCHEMA_VERSION = 2;
+
+/**
  * Sections shorter than this do not arm a cognitive intercept. Stopping a
  * reader to summarize two sentences is friction without a payoff.
  */
@@ -428,6 +434,7 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
 
   return {
     id: slugId(),
+    schema: SCHEMA_VERSION,
     title,
     source: normalized,
     blocks,
@@ -449,7 +456,9 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
 export function tokenAtCharIndex(
   doc: ParsedDoc,
   chunkIndex: number,
-  charIndex: number
+  charIndex: number,
+  /** False for a legacy document being read from its display text. */
+  useSpeechOffsets = true
 ): number {
   const chunk = doc.chunks[chunkIndex];
   if (!chunk) return -1;
@@ -460,7 +469,9 @@ export function tokenAtCharIndex(
 
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    if (doc.tokens[mid].speechOffset <= charIndex) {
+    const token = doc.tokens[mid];
+    const at = useSpeechOffsets ? (token.speechOffset ?? token.offset) : token.offset;
+    if (at <= charIndex) {
       found = mid;
       lo = mid + 1;
     } else {
