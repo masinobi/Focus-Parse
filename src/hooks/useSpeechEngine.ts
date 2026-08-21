@@ -3,20 +3,84 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { tokenAtCharIndex } from "@/lib/parse";
-import { useFocusStore } from "@/store/useFocusStore";
+import { buildCloze, buildGridQuestion } from "@/lib/quiz";
+import {
+  CLOZE_INTERVAL_TOKENS,
+  MAX_GRID_ATTEMPTS,
+  useFocusStore,
+} from "@/store/useFocusStore";
 
 /**
  * Grace period before the interpolating fallback is allowed to move the
  * highlight. Real `boundary` events almost always arrive inside this window.
  */
-const ESTIMATOR_GRACE_MS = 320;
+export const ESTIMATOR_GRACE_MS = 320;
 const ESTIMATOR_TICK_MS = 55;
+
+/**
+ * Grace used for a voice we have not heard from yet and that synthesizes over
+ * the network. Measured, not guessed: across 49 voices in Edge the first
+ * boundary arrived between 575ms and 2376ms, so the 320ms baseline — which was
+ * tuned against local voices — guarantees the estimator moves the caret on a
+ * guess at the start of every sentence.
+ */
+const NETWORK_PROBE_GRACE_MS = 1200;
+
+/**
+ * Ceiling on the learned grace. Past this the fallback has stopped being a
+ * fallback; a voice this slow to report is better paced by interpolation than
+ * by waiting for it.
+ */
+const MAX_ESTIMATOR_GRACE_MS = 2800;
+
+/**
+ * How much longer than a voice's observed latency to wait before interpolating.
+ * Latency varies per utterance, especially over a network, so matching it
+ * exactly would trip the estimator on every slower-than-average sentence.
+ */
+const LATENCY_HEADROOM = 1.5;
+
+/** Utterances to give a voice before concluding it fires no boundaries at all. */
+const SILENT_VOICE_ATTEMPTS = 2;
+
+/** What the engine has learned about the currently selected voice. */
+interface VoiceLatency {
+  voiceURI: string | null;
+  /** Smoothed time to the first boundary, or null if none has ever arrived. */
+  ms: number | null;
+  utterances: number;
+  boundaries: number;
+}
+
+/**
+ * How long to let a sentence run before interpolating.
+ *
+ * The estimator exists for engines that never fire word boundaries. Starting it
+ * while boundaries are merely *late* is worse than useless: it advances the
+ * caret on a guess, and because highlight movement is monotonic within an
+ * utterance, the real events then have to catch up to the guess before the caret
+ * moves again — so a late voice reads as a caret that lurches and then stalls.
+ */
+function graceFor(stats: VoiceLatency, localService: boolean): number {
+  if (stats.ms !== null) {
+    return Math.min(
+      MAX_ESTIMATOR_GRACE_MS,
+      Math.round(stats.ms * LATENCY_HEADROOM) + 80
+    );
+  }
+  // Tried and heard nothing back: it is not going to start now, so pace
+  // promptly rather than leaving the reader in silence.
+  if (stats.utterances >= SILENT_VOICE_ATTEMPTS && stats.boundaries === 0) {
+    return ESTIMATOR_GRACE_MS;
+  }
+  return localService ? ESTIMATOR_GRACE_MS : NETWORK_PROBE_GRACE_MS;
+}
 
 /** No boundary, no end, nothing speaking: the engine dropped the utterance. */
 const STALL_TIMEOUT_MS = 1600;
 
 /** Chrome drops a `speak()` issued in the same tick as a `cancel()`. */
-const CANCEL_SETTLE_MS = 60;
+export const CANCEL_SETTLE_MS = 60;
 
 /** Baseline used only by the fallback estimator. */
 const ESTIMATOR_WPM = 185;
@@ -57,6 +121,17 @@ export function useSpeechEngine(): SpeechEngineStatus {
   const estimatorTimer = useRef<number | null>(null);
   const stallTimer = useRef<number | null>(null);
   const startTimer = useRef<number | null>(null);
+  /**
+   * Per-voice boundary latency, learned as the session runs. Reset whenever the
+   * selected voice changes, because latency is a property of the voice and a
+   * local voice's timings say nothing about a networked one's.
+   */
+  const latency = useRef<VoiceLatency>({
+    voiceURI: null,
+    ms: null,
+    utterances: 0,
+    boundaries: 0,
+  });
 
   const clearTimers = useCallback(() => {
     if (estimatorTimer.current !== null) {
@@ -166,6 +241,17 @@ export function useSpeechEngine(): SpeechEngineStatus {
         utterance.lang = voice.lang;
       }
 
+      if (latency.current.voiceURI !== (voiceURI ?? null)) {
+        latency.current = {
+          voiceURI: voiceURI ?? null,
+          ms: null,
+          utterances: 0,
+          boundaries: 0,
+        };
+      }
+      const graceMs = graceFor(latency.current, voice ? voice.localService : true);
+      latency.current.utterances += 1;
+
       let boundarySeen = false;
       let lastToken = tokenIndex;
       const startedAt = performance.now();
@@ -186,6 +272,14 @@ export function useSpeechEngine(): SpeechEngineStatus {
 
         if (!boundarySeen) {
           boundarySeen = true;
+          const observed = performance.now() - startedAt;
+          latency.current.boundaries += 1;
+          // Smoothed rather than replaced: one slow round-trip should nudge the
+          // grace, not redefine it.
+          latency.current.ms =
+            latency.current.ms === null
+              ? observed
+              : latency.current.ms * 0.7 + observed * 0.3;
           if (estimatorTimer.current !== null) {
             window.clearInterval(estimatorTimer.current);
             estimatorTimer.current = null;
@@ -223,7 +317,7 @@ export function useSpeechEngine(): SpeechEngineStatus {
       estimatorTimer.current = window.setInterval(() => {
         if (!alive() || boundarySeen) return;
         const elapsed = performance.now() - startedAt;
-        if (elapsed < ESTIMATOR_GRACE_MS) return;
+        if (elapsed < graceMs) return;
 
         setEstimating(true);
         const msPerWord = 60000 / (ESTIMATOR_WPM * rate);
@@ -258,8 +352,16 @@ export function useSpeechEngine(): SpeechEngineStatus {
       const leaving = doc.chunks[chunkIndex].section;
       const entering = doc.chunks[next].section;
 
-      // A structural boundary into a major header arms the cognitive intercept:
-      // the summary is owed for the section just finished.
+      /*
+       * Three rungs of a single ladder, in descending cost. At most one fires
+       * per boundary: a boundary that owes a summary does not also owe a grid
+       * question, and stacking two stops back to back turns enforcement into
+       * obstruction. The cheaper rungs come round again within a few hundred
+       * words, so nothing is lost by yielding to the expensive one.
+       */
+
+      // 1. A structural boundary into a major header arms the cognitive
+      //    intercept: the summary is owed for the section just finished.
       if (
         entering !== leaving &&
         doc.sections[entering]?.intercept &&
@@ -268,6 +370,46 @@ export function useSpeechEngine(): SpeechEngineStatus {
         state.advanceToken(doc.chunks[chunkIndex].tokenEnd - 1);
         state.armIntercept(leaving, next);
         return;
+      }
+
+      // 2. Leaving a grid. The matrix was just read out card by card and every
+      //    cell is structured data, so the question and its marking need no
+      //    model — the answer is already in the document. Only armed when a
+      //    question can actually be built: an unanswerable grid must not stop
+      //    the reader.
+      const leavingBlock = doc.chunks[chunkIndex].block;
+      if (doc.chunks[next].block !== leavingBlock) {
+        const block = doc.blocks[leavingBlock];
+        const attempts = state.gridAttempts[leavingBlock] ?? 0;
+
+        if (
+          block?.kind === "table" &&
+          block.steps?.length &&
+          !state.gridsPassed[leavingBlock] &&
+          attempts < MAX_GRID_ATTEMPTS &&
+          buildGridQuestion(block, attempts)
+        ) {
+          state.advanceToken(doc.chunks[chunkIndex].tokenEnd - 1);
+          state.armGridCheck(leavingBlock, next);
+          return;
+        }
+      }
+
+      // 3. Reading cadence. The cheap rung: a few blanks drawn from the stretch
+      //    just heard, marked locally, several times between intercepts.
+      const readTo = doc.chunks[chunkIndex].tokenEnd;
+      if (readTo - state.lastCheckToken >= CLOZE_INTERVAL_TOKENS) {
+        const cloze = buildCloze(doc, state.lastCheckToken, readTo);
+        if (cloze) {
+          state.advanceToken(readTo - 1);
+          state.armCloze(cloze, next);
+          return;
+        }
+        // Nothing in that stretch was worth asking about — narrative passages
+        // and reference lists both do this. Slide the window forward so the
+        // next attempt measures from here instead of compounding into a check
+        // that spans half the document.
+        state.noteCheckPoint(readTo);
       }
 
       speakFromToken(doc.chunks[next].tokenStart);

@@ -82,7 +82,34 @@ the line assembly *and* spliced back as an `fp-grid` fence. If both happen, the
 same content is flattened into cards and linearized into the unreadable run the
 flattener exists to replace.
 
-**5. `source` is a complete record.** Everything rides through the markdown
+**5. `intercept` and `check` are separate state, deliberately.** The cognitive
+intercept's resume path is load-bearing and well-tested; the two cheap checks
+(grid, cloze) live in a parallel `check` slice rather than being folded into it.
+Anything that gates playback must consult *both* — `setPlaying`, `togglePlaying`
+and the keyboard handler all do. Miss one and audio plays underneath an open
+check.
+
+**6. Only one check fires per sentence boundary.** `finishChunk` evaluates
+intercept, then grid, then cloze, and returns on the first hit. The order is
+descending cost and it is not arbitrary: stacking two stops back to back turns
+enforcement into obstruction. A consequence worth knowing is that a grid ending
+exactly on a section boundary loses its question to the intercept.
+
+**7. A check must never be armed unless it can be answered.** The engine calls
+`buildGridQuestion` before arming a grid check and discards the result — it is
+asking whether a question exists. An armed check with nothing to render is a
+dialog the reader cannot dismiss and cannot answer, which ends the session.
+
+**8. `lastCheckToken` resets on every deliberate seek.** Otherwise skipping
+forward banks credit toward a cloze check drawn over text that was skipped
+rather than heard.
+
+**9. Vigilance clears on any proven interaction.** `presence()` is folded into
+`togglePlaying`, `submitSummary`, `passCheck` and `replayGrid`. Without it a
+check raised moments before a pause is still open on resume with its grace
+window already spent, and the reader is marked absent for coming back.
+
+**10. `source` is a complete record.** Everything rides through the markdown
 intermediate rather than a side channel, so `db.getDoc` can rebuild a document
 with the current parser when `schema` is stale. Schema is currently **3**; bump
 `SCHEMA_VERSION` in `src/lib/parse.ts` whenever the Token/Chunk shape changes, or
@@ -103,6 +130,75 @@ compiles `src/lib/tables.ts` and runs that same module over every PDF, so the
 report and the app cannot drift. Every threshold in `pdf.ts` and `tables.ts` came
 from measuring this corpus.
 
+`node scripts/scan-checks.mjs "<folder>" --verbose` does the same for `quiz.ts`,
+and asserts the invariants that fail silently: an answer duplicated among its own
+distractors, a grid replay re-asking one cell, a blank readable off its own
+carrier. Note it compiles to **CommonJS**, unlike scan-tables — `quiz.ts` and
+`parse.ts` import each other without file extensions, which Node's ESM resolver
+rejects. Current state: 16/16 grids questionable, 0 on every must-be-zero line.
+
+**Measure a voice before trusting it.** `/voice-check` (dev route) speaks real
+parser output through every installed voice and resolves each boundary event
+with the same `tokenAtCharIndex` the engine uses. Word-exact pacing is a
+property of the *voice*, not the app, and no amount of listening reveals which
+ones have it — a voice firing no boundary events sounds identical to one that
+does. Run it after installing any new voice.
+
+Baseline on this machine (2026-08-21). **Chrome sees three voices; Edge sees
+49.** All 49 are word-exact at 100% coverage and precision — including every
+"Online (Natural)" cloud voice, which was the open question. Boundary events are
+not the reason to avoid network voices.
+
+**Read in Edge.** Windows "natural voices" installed through Narrator do *not*
+register as system TTS voices — after installing Aria, AvaHD and AndrewHD the
+speech registries were byte-identical, and Chrome still enumerated only David,
+Mark and Zira. The good voices in Edge are Edge's own online set, which Chrome
+will never see. Nothing in the app can change this.
+
+The differentiator is **latency to the first boundary**, because the engine
+utters one sentence at a time and pays it on every sentence:
+
+- Local voices: 414–711ms. Network voices: 575–2376ms.
+- The `Multilingual` variants are the worst of the set — Brian 2376ms, William
+  2252ms, Andrew 2212ms. Over two seconds of lead-in per sentence.
+- Best natural picks: **Aria 576ms**, Guy 637ms, Jenny 729ms, Christopher 760ms.
+- `rate` is honoured better by the network voices (~1.9x at 2.0x) than the local
+  ones (~1.7x), though 2.0x has never delivered 2.0x on any voice measured.
+
+Two rate figures in that run are noise rather than signal — Rosa reported 4.35x
+and Brian Multilingual reported nothing. The rate test is two timed utterances,
+so network jitter contaminates it; treat rate on network voices as approximate.
+
+**The estimator grace is learned, not fixed.** That measurement is why. Every
+voice measured is slower to its first boundary than the old 320ms constant, so
+the estimator was moving the caret on a guess at the start of most sentences —
+and because highlight movement is monotonic within an utterance, the real events
+then had to catch up to the guess before the caret moved again. A late voice
+therefore read as a caret that lurched and then stalled.
+
+`graceFor` now waits on what the selected voice has actually done: 1.5x its
+smoothed first-boundary latency, seeded at 1200ms for an unheard network voice
+and 320ms for a local one, capped at 2800ms, and dropped back to the baseline
+once a voice has gone two utterances without firing anything — otherwise a
+genuinely boundary-free voice would sit in silence before pacing began. A/B on
+the sample document, 16 seconds each and identical reading progress: the
+estimator engaged **4 times on the old constant, once on the learned grace**,
+and that once is the first utterance, before there is anything to learn from.
+
+Three separate false alarms came out of writing that probe, all from the same
+root: an expanded acronym is one token spoken as several words. Boundaries land
+mid-token by design, so precision must be measured against **word starts in the
+spoken string** rather than token starts, and monotonicity must count only a
+*strict* decrease — repeated boundaries on one token are the caret holding,
+which is what the design intends. If a metric reports the same suspicious number
+for every voice, suspect the metric.
+
+**Beware HMR when driving the app.** Hot-reloading the store module leaves the
+keyboard hook's listener detached, and *every* key silently stops working —
+including `Space`, which predates any of this. It looks exactly like a keybinding
+regression. Reload the page fully before concluding a key is broken; an hour went
+into chasing one that was not.
+
 **Read back from IndexedDB** to check what was actually stored, rather than
 trusting the rendered view.
 
@@ -120,7 +216,15 @@ pre-scan structure map · PDF ingestion with column/heading/furniture recovery �
 citation and superscript stripping · acronym badges (~60 CDM terms, five
 categories) · kinetic visual anchors (block caret, syllabic pulse, clause
 spotlight) · brown-noise masking · document renaming · optional AI summary
-grading · grid detection and the matrix flattener.
+grading · grid detection and the matrix flattener · **grid interrogation on exit
+from a matrix** · **cloze spot checks every 250 words** · **a jittered presence
+check that stops the audio when nobody answers** · **a spaced-retrieval queue
+that outlives the session**.
+
+The last four are one idea: the app used to *assume* a reader was present and
+enforce engagement only at section boundaries, and everything it produced died
+with the session. See "The enforcement ladder" and "Spaced retrieval" in the
+README for why each threshold is where it is.
 
 **AI grading** is optional and provider-agnostic: `GEMINI_API_KEY` or
 `ANTHROPIC_API_KEY` in `.env.local` (Gemini wins if both). The Gemini path is

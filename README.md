@@ -40,8 +40,16 @@ sentence-skip feel immediate.
 Three fallbacks keep it honest on weaker platforms:
 
 - **No boundary events** (Safari, several espeak voices): an interpolating estimator
-  takes over after a 320 ms grace period, and the header shows an `estimated pacing`
-  badge rather than pretending the sync is exact.
+  takes over once the voice has had its grace period, and the header shows an
+  `estimated pacing` badge rather than pretending the sync is exact. The grace is
+  **learned per voice** rather than fixed, because every voice measured is slower
+  to its first boundary than the old 320 ms constant — local ones take 310–711 ms
+  and network ones 575–2376 ms. Starting the estimator while boundaries are merely
+  *late* is worse than not starting it: it moves the caret on a guess, and since
+  movement is monotonic within an utterance, the real events must then catch up to
+  the guess before the caret moves again. The engine waits 1.5x what the selected
+  voice has actually been doing, and falls back to the short baseline once a voice
+  has proved it fires nothing at all.
 - **Dropped utterances**: a stall watchdog advances the chunk if nothing is speaking
   and no `end` arrived.
 - **Backward boundaries**: highlight movement is monotonic within an utterance.
@@ -195,6 +203,164 @@ Conversely, sections under 60 words never arm an intercept: stopping a reader to
 summarize two sentences is friction without a payoff, and it absorbs stacked headers
 and the occasional false heading recovered from PDF typography.
 
+## The enforcement ladder
+
+An intercept costs the better part of a minute, which is why it can only fire at a
+section boundary. Between two boundaries there is nothing stopping a reader from
+drifting for six hundred words — and the session record afterwards looks the same
+either way. Three cheaper rungs fill that gap, and the rule is that **at most one fires
+per sentence boundary**, in descending cost: a boundary that owes a summary does not
+also owe a grid question. The cheaper rungs come round again within a few hundred
+words, so nothing is lost by yielding to the expensive one.
+
+What separates the cheap rungs from the intercept is that the app can mark them
+itself. The AI summary check is optional and networked, so it can never be the thing
+that holds a reader accountable moment to moment. A recovered grid cell and a blanked
+term both have exactly one right answer already sitting in the parsed document, and an
+answer the app can mark is an answer it can demand.
+
+### Grid interrogation
+
+Leaving a `table` block arms a multiple-choice question about a cell that was just read
+out — *"For Project Management, what was the Unit?"* — built by
+[src/lib/quiz.ts](src/lib/quiz.ts) from the same `GridStep` data the flattener speaks.
+No key, no network, no model.
+
+Distractors are drawn from the same column first, so every wrong answer is a value the
+grid actually contains somewhere it could have gone. Where a column holds fewer than
+two other distinct values the pool widens to the whole grid, and where it still cannot
+reach two the grid is not questioned at all.
+
+The rule that matters is inherited from the flattener: a step with no recovered column
+name is used only when its row has exactly one value. Otherwise "for this row, what was
+the value?" is ambiguous, and an ambiguous question graded as wrong is worse than no
+question. Option order is seeded from the block and cell rather than shuffled randomly,
+so the answer never sits in a predictable slot but the same question always presents
+identically.
+
+A wrong answer **replays the grid** from its first card, and the next question draws a
+different cell — getting past a matrix requires having taken the whole thing in, not
+having memorized one card. Two attempts is the cap: a grid that has beaten someone
+twice will not yield on the third pass, and a check with no exit is a check that ends
+the session. An exhausted grid is let through and stays in the review queue.
+
+Measured over the corpus: **all 16 grids that clear the flattener's thresholds yield an
+unambiguous question** (26 with four options, 6 with three), the answer is never
+duplicated among its own distractors, and a replay never re-asks the same cell.
+
+### Cloze spot checks
+
+Every 250 words of reading, two or three terms from the stretch just heard are put back
+into the sentences they came from with the term removed. About eight seconds, marked
+locally, several times between intercepts.
+
+Candidates are ranked by salience: a recognised acronym outranks everything, because it
+is the vocabulary the material is written in; then numbers, because thresholds and
+timeframes are the facts a reader most reliably believes they retained and most
+reliably did not; then capitalized mid-sentence words, which are a weak signal and score
+accordingly. Repetition inside the window adds to the score — a term used three times
+in three hundred words is load-bearing.
+
+Three exclusions carry the quality:
+
+- **Grids and code never supply a blank.** A grid has its own check, and code is never
+  spoken, so blanking either tests eyesight rather than recall.
+- **Headings never supply a blank.** A heading is a label the reader heard announced,
+  not a claim they reasoned through. This was measured rather than assumed: on the
+  vendor-management PDF a recovered citation line was being offered as a blank —
+  "Amatya S, Edgerton D. Vendor Selection and ___." — until the rule existed.
+- **A term that survives elsewhere in its own carrier is dropped**, because the blank
+  could then be read straight off the page.
+
+Grading is exact-match after normalization, and **an acronym's full expansion is
+accepted for the acronym**. A reader who writes "contract research organization" where
+the page said "CRO" has demonstrated more than one who typed three letters — and the
+app *speaks* the expansion, so marking it wrong would punish having listened.
+
+Every blank must be filled before the check can be marked; guessing is required,
+skipping is not offered. A miss does not rewind — that is reserved for grids — it goes
+into the review queue instead.
+
+Measured over the vendor-management PDF: 33 windows, **32 produced a check**, 95 blanks,
+none drawn from a heading, none readable off its own carrier.
+
+### The presence check
+
+Every other mechanism assumes a reader is there. None of them can tell the difference
+between someone following the caret and an empty chair: the synthesizer reads to both
+at the same rate, the highlight tracks for both, and the session record is identical.
+[src/hooks/useVigilance.ts](src/hooks/useVigilance.ts) periodically stops assuming.
+
+After 90–135 seconds of continuous playback a small pill appears in the corner asking
+for one press of `V`. Miss it by 3.5 seconds and the audio stops. This is the driver's
+safety device from a train, including the part that makes it work: the cue is
+peripheral and the consequence is not. Losing your place in a dense guideline is a real
+cost, which is exactly why it is the right one to attach to being absent.
+
+Three details keep it from becoming noise:
+
+- **The interval is jittered.** A fixed period is a rhythm, and a rhythm can be
+  anticipated and answered from inside the daydream the check exists to catch.
+- **The cue is peripheral by design.** The reader's eyes are on the caret, and a cue
+  placed there would compete with the word being spoken — the one thing this app is
+  built not to do.
+- **Typing in the scratchpad answers it.** Someone mid-sentence in the pad is doing the
+  more demanding thing and has already proved what the check establishes. The deadline
+  is anchored to the last proof of presence rather than to a fixed schedule, so they are
+  never interrupted to prove it again.
+
+Pressing `V` with nothing pending does nothing at all: a check that could be answered in
+advance could be held down, and would prove nothing.
+
+## Spaced retrieval
+
+Sessions used to end and take everything with them. A summary written at an intercept
+and a term missed at a spot check were both written to IndexedDB and never surfaced
+again, which meant a reader could work through a guideline exactly as intended and have
+nothing left of it a fortnight later.
+
+Those same artefacts now become review items on a widening interval
+([src/lib/review.ts](src/lib/review.ts)). When anything is due, the loader offers a
+warm-up **before** any document opens: retrieval debt comes before new material, because
+reading a tenth guideline while the first nine evaporate is motion rather than progress.
+
+The scheduler is plain SM-2 with a four-point grade. It needs no tuning and produces
+intervals a reader can predict, which matters — a retention system that behaves
+unpredictably is one that gets abandoned. A failed item returns in ten minutes rather
+than tomorrow, because the point of failing is to see it again while the miss is still
+felt. Ease is floored at 1.3 so a repeatedly-failed item cannot become a daily leech,
+and intervals cap at six months.
+
+| Kind | Prompt | Marked by |
+| --- | --- | --- |
+| `cloze` | The carrier sentence, blanked | Exact match, expansions accepted |
+| `grid` | The cell question and its options | The grid |
+| `summary` | The section title alone | You |
+
+A summary is the one thing the app cannot mark, because the answer key is the reader's
+own sentence. It is asked from memory first, then that sentence is shown back and
+self-rated — the honest version of the same loop.
+
+Item ids are derived from content rather than generated, so missing the same term in two
+different sittings advances one item's schedule instead of stacking two copies of the
+same question in the queue. Forgetting a document deletes its questions with it: a
+question whose source text is gone can never be checked again.
+
+## Measuring the checks
+
+Both check builders run over the real corpus offline, through the same modules the app
+imports, so the report and the app cannot drift:
+
+```bash
+node scripts/scan-checks.mjs "path/to/pdfs" --verbose
+```
+
+Grids are read straight from PDF glyphs through `tables.ts`; prose is read from any
+markdown in the folder through `parse.ts` and walked in the same fixed windows the
+reading engine uses. The report asserts the invariants that would otherwise fail
+silently — an answer duplicated among its own distractors, a replay re-asking one cell,
+a blank readable off its own carrier.
+
 ## Summary checking (optional)
 
 The intercept is worth more if something pushes back on the summary. Set one key in
@@ -338,6 +504,12 @@ Three things the browser forces:
   a line that looks typographically exactly like a heading will be read as one.
 - Scanned PDFs with no text layer are rejected with a message rather than OCR'd.
 - Tables and figures are linearized into prose; they read poorly aloud.
+- A cloze carrier is only as good as the sentence it came from. Where column recovery
+  fused two lines in a PDF's front matter, the blank is presented inside that fused
+  sentence — the builder reproduces the chunk exactly and does not attempt to detect or
+  repair damaged extraction.
+- At most one check fires per sentence boundary. A grid that ends exactly where a
+  section does yields its question to the intercept, and is not asked about.
 
 ## Keyboard
 
@@ -349,15 +521,22 @@ Three things the browser forces:
 | `↑` `↓` | Speed ±0.1x |
 | `Home` | Back to the start |
 | `Esc` | Stop |
+| `V` | Answer the presence check |
+| `1`–`4` | Answer a grid check |
 
-Transport keys go inert while you are typing and while an intercept is open.
+Transport keys go inert while you are typing and while an intercept or a check is open.
 
 ## Persistence
 
-IndexedDB ([src/lib/db.ts](src/lib/db.ts)), two stores: `documents` (parsed document
-plus its source) and `sessions` (reading position, flow nodes, summaries), written
-debounced at 700 ms. Every write is best-effort — a browser in private mode loses
-persistence, not the reading session.
+IndexedDB ([src/lib/db.ts](src/lib/db.ts)), three stores: `documents` (parsed document
+plus its source), `sessions` (reading position, flow nodes, summaries) written debounced
+at 700 ms, and `reviews` (the spaced-retrieval queue). Every write is best-effort — a
+browser in private mode loses persistence, not the reading session.
+
+`reviews` spans every document rather than belonging to one, and is indexed by `dueAt`
+so the loader can ask what is owed without reading the whole queue, and by `docId` so
+forgetting a document does not leave its questions behind. It arrived in database
+version 2; the upgrade adds the store and leaves `documents` and `sessions` untouched.
 
 **Schema versioning.** A stored document is a snapshot of whatever the parser emitted
 that day, and the token/chunk model changes as features land. Each document carries a
@@ -367,6 +546,43 @@ makes that lossless — for PDFs the source is the extracted markdown, so migrat
 not need the original file. The engine additionally falls back to display text when a
 chunk has no speech string, so a stale shape degrades to reading without acronym
 expansion rather than failing to play.
+
+## Choosing a voice
+
+Word-exact pacing is a property of the **voice**, not of this app. The engine
+resolves each `boundary` event's `charIndex` back to a token; a voice that fires
+none falls back to the estimator, and one that fires them at offsets addressing
+a different string moves the caret confidently to the wrong word. Neither
+failure is audible.
+
+`/voice-check` measures it. It speaks real parser output — deliberately
+including acronyms, because expansion is what makes the displayed and spoken
+strings diverge — through every installed voice, and resolves every boundary
+with the same `tokenAtCharIndex` the reader uses, so a voice that passes there
+passes here. It reports:
+
+| | |
+| --- | --- |
+| Coverage | share of words the caret would actually visit |
+| Precision | share of boundaries landing on a word start in the spoken text |
+| First event | latency to the first boundary, against the 320ms estimator grace |
+| Rate 1x/2x | whether the voice honours `rate` at all |
+| Long text | whether a string past the 180-character cap is truncated |
+
+Verdicts are `word-exact`, `partial`, `estimator-only` or `failed`.
+
+**Use Edge.** Measured across 49 English voices, every one is word-exact at 100%
+coverage and precision, including all the "Online (Natural)" cloud voices — so
+the good-sounding voices cost nothing in sync. Chrome sees only the three
+built-in Windows voices, and cannot be made to see more: the natural voices
+Windows installs through Narrator are not registered as system TTS voices, so
+they never reach the browser at all. The natural voices in Edge are Edge's own.
+
+What actually separates them is latency to the first boundary event, which the
+engine pays on **every sentence** because it utters one sentence at a time.
+Local voices start in 414–711ms and network voices in 575–2376ms; the
+`Multilingual` variants are the slowest by a wide margin. Aria (576ms), Guy and
+Jenny are the quickest of the natural voices and the ones worth defaulting to.
 
 ## Browser support
 

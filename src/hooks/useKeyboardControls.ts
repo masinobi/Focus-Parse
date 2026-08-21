@@ -17,19 +17,34 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 /**
  * Global transport keys. Deliberately inert while the user is typing (the
- * scratchpad needs its spacebar) and while an intercept is open (the modal owns
- * the keyboard until a summary is committed).
+ * scratchpad needs its spacebar) and while an intercept or a check is open (the
+ * modal owns the keyboard until it has been answered).
  */
 export function useKeyboardControls(): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const state = useFocusStore.getState();
       if (!state.doc) return;
-      if (state.intercept.open) return;
+      if (state.intercept.open || state.check.kind !== null) return;
       if (isTypingTarget(event.target)) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
       switch (event.code) {
+        /*
+         * The presence check. Answering it is the whole interaction: one key,
+         * no target to hit, nothing to read. Pressed while nothing is pending
+         * it does nothing at all — the check cannot be answered in advance, or
+         * it could be held down and would prove nothing.
+         */
+        case "KeyV":
+          event.preventDefault();
+          if (state.vigilance.phase === "waiting") state.notePresence();
+          else if (state.vigilance.phase === "lapsed") {
+            state.clearLapse();
+            state.setPlaying(true);
+          }
+          break;
+
         case "Space":
           event.preventDefault();
           state.togglePlaying();

@@ -36,6 +36,7 @@ export function Scratchpad() {
   const removeNode = useFocusStore((s) => s.removeNode);
   const retagNode = useFocusStore((s) => s.retagNode);
   const seekToken = useFocusStore((s) => s.seekToken);
+  const notePresence = useFocusStore((s) => s.notePresence);
 
   const commit = React.useCallback(
     (text: string, tag: LogicTag | null) => {
@@ -47,6 +48,12 @@ export function Scratchpad() {
   );
 
   const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    // Typing here is the most demanding thing the app asks for, and it is proof
+    // of presence in its own right. Answering the vigilance check from the pad
+    // means the reader doing the harder work is never interrupted to prove they
+    // are doing the easier one.
+    notePresence();
+
     const value = event.target.value;
     const match = TAG_TRIGGER.exec(value);
 

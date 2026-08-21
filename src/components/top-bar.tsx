@@ -17,6 +17,7 @@ import {
   Activity,
   Focus,
   Tags,
+  Hand,
 } from "lucide-react";
 
 import { EditableTitle } from "@/components/editable-title";
@@ -72,6 +73,8 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
   const toggleAnchor = useFocusStore((s) => s.toggleAnchor);
   const clearDoc = useFocusStore((s) => s.clearDoc);
   const renameDoc = useFocusStore((s) => s.renameDoc);
+  const vigilance = useFocusStore((s) => s.vigilance);
+  const toggleVigilance = useFocusStore((s) => s.toggleVigilance);
 
   if (!doc) return null;
 
@@ -189,6 +192,38 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
             </button>
           ))}
         </div>
+
+        {/* Presence check. The count is the point of showing it at all: a
+            session with misses in it covered ground nobody was there for. */}
+        <Button
+          variant={vigilance.enabled ? "secondary" : "ghost"}
+          size="sm"
+          className="h-8 gap-1.5 px-2"
+          onClick={toggleVigilance}
+          aria-pressed={vigilance.enabled}
+          title={
+            vigilance.enabled
+              ? "Presence checks on — press V when prompted"
+              : "Presence checks off"
+          }
+        >
+          <Hand
+            className={cn(
+              "h-3.5 w-3.5",
+              !vigilance.enabled && "text-muted-foreground",
+              vigilance.phase === "waiting" && "text-[hsl(var(--pace-active))]",
+              vigilance.phase === "lapsed" && "text-destructive"
+            )}
+          />
+          {vigilance.enabled && (vigilance.answered > 0 || vigilance.missed > 0) && (
+            <span className="text-[11px] tabular-nums">
+              {vigilance.answered}
+              {vigilance.missed > 0 && (
+                <span className="text-destructive"> / {vigilance.missed}</span>
+              )}
+            </span>
+          )}
+        </Button>
 
         {noise.supported && (
           <div className="flex items-center gap-2">
