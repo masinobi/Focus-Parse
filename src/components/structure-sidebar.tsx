@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Check, CircleDot, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
+import { EditableTitle } from "@/components/editable-title";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { formatDuration } from "@/lib/parse";
@@ -106,6 +107,7 @@ export function StructureSidebar() {
   const tokenIndex = useFocusStore((s) => s.tokenIndex);
   const summaries = useFocusStore((s) => s.summaries);
   const seekSection = useFocusStore((s) => s.seekSection);
+  const renameDoc = useFocusStore((s) => s.renameDoc);
   const wpm = useFocusStore((s) => s.effectiveWpm());
 
   if (!doc) return null;
@@ -147,9 +149,13 @@ export function StructureSidebar() {
       </div>
 
       <div className="border-b px-3 py-3">
-        <p className="truncate text-sm font-medium" title={doc.title}>
-          {doc.title}
-        </p>
+        <EditableTitle
+          value={doc.title}
+          onCommit={renameDoc}
+          label="Rename document"
+          className="text-sm font-medium"
+          inputClassName="w-full"
+        />
         <p className="mt-1 text-xs text-muted-foreground">
           {doc.wordCount.toLocaleString()} words ·{" "}
           {formatDuration((remaining / wpm) * 60)} left

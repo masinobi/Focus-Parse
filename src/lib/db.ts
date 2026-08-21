@@ -81,6 +81,13 @@ export const db = {
     );
   },
 
+  /** Rename a stored document without touching its parsed content. */
+  async renameDoc(id: string, title: string): Promise<void> {
+    const doc = await db.getDoc(id);
+    if (!doc) return;
+    await db.saveDoc({ ...doc, title });
+  },
+
   async listDocs(): Promise<DocSummary[]> {
     const all = await safe(
       tx<ParsedDoc[]>(DOCS, "readonly", (s) => s.getAll() as IDBRequest<ParsedDoc[]>),

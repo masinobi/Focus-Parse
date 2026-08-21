@@ -15,6 +15,7 @@ import {
   Waves,
 } from "lucide-react";
 
+import { EditableTitle } from "@/components/editable-title";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -52,6 +53,7 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
   const setView = useFocusStore((s) => s.setView);
   const setVoice = useFocusStore((s) => s.setVoice);
   const clearDoc = useFocusStore((s) => s.clearDoc);
+  const renameDoc = useFocusStore((s) => s.renameDoc);
 
   if (!doc) return null;
 
@@ -66,9 +68,13 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
             FocusParse
           </span>
           <Separator orientation="vertical" className="h-4" />
-          <span className="truncate text-sm text-muted-foreground" title={doc.title}>
-            {doc.title}
-          </span>
+          <EditableTitle
+            value={doc.title}
+            onCommit={renameDoc}
+            label="Rename document"
+            className="text-sm text-muted-foreground"
+            inputClassName="w-56"
+          />
         </div>
 
         <div className="flex items-center gap-1">

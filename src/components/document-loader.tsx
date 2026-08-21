@@ -1,9 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { AudioLines, FileText, Loader2, Sparkles, Upload, X } from "lucide-react";
+import {
+  AudioLines,
+  FileText,
+  Loader2,
+  Pencil,
+  Sparkles,
+  Upload,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { db, type DocSummary } from "@/lib/db";
 import { parseDocument } from "@/lib/parse";
@@ -13,9 +22,13 @@ import { useFocusStore } from "@/store/useFocusStore";
 
 export function DocumentLoader() {
   const [pasted, setPasted] = React.useState("");
+  const [pastedName, setPastedName] = React.useState("");
   const [dragging, setDragging] = React.useState(false);
   const [recent, setRecent] = React.useState<DocSummary[]>([]);
   const [busy, setBusy] = React.useState<string | null>(null);
+  /** Id of the recent document currently being renamed, if any. */
+  const [renamingId, setRenamingId] = React.useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
@@ -79,6 +92,15 @@ export function DocumentLoader() {
   /** Drop a stored document and its reading session. */
   const forget = async (id: string) => {
     await db.deleteDoc(id);
+    setRecent(await db.listDocs());
+  };
+
+  const commitRename = async (id: string) => {
+    const next = renameDraft.trim();
+    setRenamingId(null);
+    const current = recent.find((r) => r.id === id);
+    if (!next || !current || next === current.title) return;
+    await db.renameDoc(id, next);
     setRecent(await db.listDocs());
   };
 
@@ -179,7 +201,21 @@ export function DocumentLoader() {
         />
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button onClick={() => ingest(pasted)} disabled={!pasted.trim()}>
+          <Input
+            value={pastedName}
+            onChange={(e) => setPastedName(e.target.value)}
+            placeholder="Name (optional)"
+            aria-label="Document name"
+            spellCheck={false}
+            className="h-10 w-56"
+          />
+          <Button
+            onClick={() => {
+              ingest(pasted, pastedName.trim() || undefined);
+              setPastedName("");
+            }}
+            disabled={!pasted.trim()}
+          >
             Parse document
           </Button>
           <Button
@@ -203,17 +239,56 @@ export function DocumentLoader() {
                   key={item.id}
                   className="group flex items-center transition-colors hover:bg-accent/60"
                 >
-                  <button
-                    type="button"
-                    onClick={() => void openRecent(item.id)}
-                    className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
-                  >
-                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate text-sm">{item.title}</span>
-                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                      {item.wordCount.toLocaleString()} words
-                    </span>
-                  </button>
+                  {renamingId === item.id ? (
+                    <div className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5">
+                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <input
+                        autoFocus
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onBlur={() => void commitRename(item.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void commitRename(item.id);
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            setRenamingId(null);
+                          }
+                        }}
+                        aria-label={`Rename ${item.title}`}
+                        spellCheck={false}
+                        className="min-w-0 flex-1 rounded border border-input bg-background px-1.5 py-0.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void openRecent(item.id)}
+                      className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
+                    >
+                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate text-sm">{item.title}</span>
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                        {item.wordCount.toLocaleString()} words
+                      </span>
+                    </button>
+                  )}
+
+                  {renamingId !== item.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRenameDraft(item.title);
+                        setRenamingId(item.id);
+                      }}
+                      className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+                      aria-label={`Rename ${item.title}`}
+                      title="Rename"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => void forget(item.id)}

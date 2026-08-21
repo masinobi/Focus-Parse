@@ -48,6 +48,7 @@ interface FocusState {
 
   loadDoc: (doc: ParsedDoc) => void;
   clearDoc: () => void;
+  renameDoc: (title: string) => void;
   hydrateSession: (docId: string) => Promise<void>;
 
   setPlaying: (playing: boolean) => void;
@@ -130,6 +131,16 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       summaries: {},
       nodes: [],
     }),
+
+  renameDoc: (title) => {
+    const trimmed = title.trim();
+    const doc = get().doc;
+    if (!doc || !trimmed || trimmed === doc.title) return;
+
+    const renamed = { ...doc, title: trimmed };
+    set({ doc: renamed });
+    void db.saveDoc(renamed);
+  },
 
   hydrateSession: async (docId) => {
     const session = await db.getSession(docId);

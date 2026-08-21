@@ -156,6 +156,12 @@ per-section time estimates, progress, and intercept status.
 **Sensory masking** — brown noise under the audio, from a toggle and volume slider in
 the top bar. See below.
 
+**Renaming** — a document's name comes from its filename, or its first heading, or
+"Untitled document" for pasted text with neither. Click the title in the top bar or
+the structure map to rename it; Enter commits, Escape reverts, and the new name is
+written straight to IndexedDB. Recent documents can be renamed in place from the
+loader without opening them, and pasted text can be named up front.
+
 ## Brown-noise masking
 
 [src/hooks/useBrownNoise.ts](src/hooks/useBrownNoise.ts) synthesizes brown (red) noise
