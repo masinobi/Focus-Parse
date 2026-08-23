@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 
+import { BackupControls } from "@/components/backup-controls";
 import { CorpusIndex } from "@/components/corpus-index";
 import { ReviewSession } from "@/components/review-session";
 import { Button } from "@/components/ui/button";
@@ -379,6 +380,14 @@ export function DocumentLoader() {
             </div>
           </div>
         )}
+
+        <BackupControls
+          onRestored={() => {
+            void db.listDocs().then(setRecent);
+            void db.countDue().then(setDue);
+            void refreshWeakTerms();
+          }}
+        />
       </div>
     </div>
   );

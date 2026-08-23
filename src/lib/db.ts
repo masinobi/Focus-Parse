@@ -1,3 +1,12 @@
+import {
+  BACKUP_FORMAT,
+  emptyCount,
+  isBackupDoc,
+  isReviewRecord,
+  isSessionRecord,
+  type Backup,
+  type ImportSummary,
+} from "./backup";
 import { buildEntityIndex, ENTITY_SCHEMA, type DocEntityIndex } from "./entities";
 import { parseDocument, SCHEMA_VERSION } from "./parse";
 import {
@@ -322,6 +331,145 @@ export const db = {
         undefined
       );
     }
+  },
+
+  /* ---- Backup and restore ---------------------------------------------- */
+
+  /**
+   * Everything worth keeping, as one plain object.
+   *
+   * Documents are reduced to their `source`: the parser rebuilds the rest
+   * exactly, and a parsed corpus would be tens of megabytes of token arrays.
+   * The entity index is left out for the same reason — it is derived, and
+   * `listEntityIndexes` rebuilds any that are missing.
+   */
+  async exportAll(): Promise<Backup> {
+    const docs = await safe(
+      tx<ParsedDoc[]>(DOCS, "readonly", (s) => s.getAll() as IDBRequest<ParsedDoc[]>),
+      []
+    );
+    const sessions = await safe(
+      tx<SessionState[]>(
+        SESSIONS,
+        "readonly",
+        (s) => s.getAll() as IDBRequest<SessionState[]>
+      ),
+      []
+    );
+    const reviews = await safe(
+      tx<ReviewItem[]>(REVIEWS, "readonly", (s) => s.getAll() as IDBRequest<ReviewItem[]>),
+      []
+    );
+
+    return {
+      app: "focusparse",
+      format: BACKUP_FORMAT,
+      exportedAt: Date.now(),
+      documents: docs
+        .filter((d) => typeof d.source === "string" && d.source.trim())
+        .map(({ id, title, source, wordCount, createdAt }) => ({
+          id,
+          title,
+          source,
+          wordCount,
+          createdAt,
+        })),
+      sessions,
+      reviews,
+    };
+  },
+
+  /**
+   * Merge a backup into whatever is already here.
+   *
+   * Nothing is deleted and nothing newer is overwritten: where both sides hold
+   * a record, the one with the later timestamp wins. Restoring a three-week-old
+   * backup onto a machine that has been read on since must not rewind that
+   * reading — for reviews in particular, an older copy carries an older
+   * interval, and applying it would quietly undo weeks of scheduling.
+   *
+   * Documents are re-parsed rather than restored verbatim, so a backup taken
+   * under an older parser comes back with the current one.
+   */
+  async importAll(
+    backup: Backup,
+    onProgress?: (done: number, total: number, title: string) => void
+  ): Promise<ImportSummary> {
+    const summary: ImportSummary = {
+      documents: emptyCount(),
+      sessions: emptyCount(),
+      reviews: emptyCount(),
+      skipped: 0,
+    };
+
+    for (let i = 0; i < backup.documents.length; i++) {
+      const entry = backup.documents[i];
+      if (!isBackupDoc(entry)) {
+        summary.skipped += 1;
+        continue;
+      }
+      onProgress?.(i, backup.documents.length, entry.title);
+
+      const existing = await safe(
+        tx<ParsedDoc | undefined>(DOCS, "readonly", (s) => s.get(entry.id)).then(
+          (d) => d ?? null
+        ),
+        null
+      );
+
+      const rebuilt: ParsedDoc = {
+        ...parseDocument(entry.source, undefined),
+        id: entry.id,
+        title: entry.title,
+        createdAt: entry.createdAt ?? Date.now(),
+      };
+      await db.saveDoc(rebuilt);
+      if (existing) summary.documents.updated += 1;
+      else summary.documents.added += 1;
+    }
+
+    for (const session of backup.sessions) {
+      if (!isSessionRecord(session)) {
+        summary.skipped += 1;
+        continue;
+      }
+      const existing = await db.getSession(session.docId);
+      if (existing && (existing.updatedAt ?? 0) >= (session.updatedAt ?? 0)) {
+        summary.sessions.kept += 1;
+        continue;
+      }
+      await db.saveSession(session);
+      if (existing) summary.sessions.updated += 1;
+      else summary.sessions.added += 1;
+    }
+
+    for (const item of backup.reviews) {
+      if (!isReviewRecord(item)) {
+        summary.skipped += 1;
+        continue;
+      }
+      const existing = await safe(
+        tx<ReviewItem | undefined>(REVIEWS, "readonly", (s) => s.get(item.id)).then(
+          (v) => v ?? null
+        ),
+        null
+      );
+      if (existing && (existing.updatedAt ?? 0) >= (item.updatedAt ?? 0)) {
+        summary.reviews.kept += 1;
+        continue;
+      }
+      await safe(
+        tx<IDBValidKey>(REVIEWS, "readwrite", (s) => s.put(item)).then(
+          () => undefined as void
+        ),
+        undefined as void
+      );
+      if (existing) summary.reviews.updated += 1;
+      else summary.reviews.added += 1;
+    }
+
+    onProgress?.(backup.documents.length, backup.documents.length, "");
+    return summary;
   },
 
   /* ---- Entity index ---------------------------------------------------- */
