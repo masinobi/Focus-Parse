@@ -91,6 +91,14 @@ clone. If files go missing, clone from the remote rather than repairing.
 **First request after a dev restart takes 30–60s** while Next compiles the
 route. Not a hang.
 
+**A bad compile can wedge the dev server outright.** Related to the 404 trap
+below but a different symptom: after one save with a half-finished JSX edit, the
+server logged the syntax error and then stopped responding — no recompile on the
+next save, and requests hanging until curl timed out rather than erroring. Same
+cure: stop it, `rm -rf .next`, restart. Nothing was wrong with the code by then;
+`tsc --noEmit` and `next lint` both passed against the file the server refused to
+rebuild.
+
 **A route that was working can start 404ing mid-session.** After Fast Refresh
 logs "had to perform a full reload", the dev server's `.next` cache can corrupt
 — the symptom is `⨯ SyntaxError: Unexpected end of JSON input` in the server
@@ -172,7 +180,35 @@ window already spent, and the reader is marked absent for coming back.
 lean on. It is one of the reasons the retrieval queue became its own store — the
 other being that reviews span every document and need their own indexes.
 
-**11. `source` is a complete record.** Everything rides through the markdown
+**11. `weakTerms` does not reset with the document.** Difficulty is a property
+of the reader and the term, not of whatever is open — that is the entire point of
+keying it by `termKey` rather than by review id. `loadDoc` and `clearDoc`
+deliberately leave it alone, and the paths that change it (`ClozeDialog` after
+marking, the loader after a warm-up, `Workspace` on open) refresh it themselves.
+The engine reads it synchronously when it arms a check, so it cannot be a promise
+at that point.
+
+**12. `FlowNode.links` may be `undefined` on anything already on disk.** Same
+root as invariant 10: sessions carry no schema version, so every node captured
+before linking existed reads back with no `links` at all. Every consumer says
+`links ?? []`. Deleting a node also strips its id from every other node's links —
+a dangling id renders as a line to nowhere and survives every save.
+
+**13. The node graph is acyclic, and the view never offers a cycle.** `linkNodes`
+walks forward from the target and refuses if it reaches the source; the graph
+additionally computes the head's ancestors and withholds the offer, because a
+button that silently declines is worse than no button. The lane layout depends on
+it. Proved load-bearing by disabling the guard and watching the same click create
+the cycle.
+
+**14. The entity index is derived, and stale-checked by word count.** `saveDoc`
+syncs it, `deleteDoc` takes it with the document, and `listEntityIndexes` rebuilds
+anything whose `wordCount` or `ENTITY_SCHEMA` no longer matches — which is also
+how a parser change propagates into it. A rename updates the stored title without
+re-walking tokens; re-indexing the 524-page GCDMP on every rename would be minutes
+of work for a new name.
+
+**15. `source` is a complete record.** Everything rides through the markdown
 intermediate rather than a side channel, so `db.getDoc` can rebuild a document
 with the current parser when `schema` is stale. Schema is currently **3**; bump
 `SCHEMA_VERSION` in `src/lib/parse.ts` whenever the Token/Chunk shape changes, or
@@ -193,12 +229,25 @@ compiles `src/lib/tables.ts` and runs that same module over every PDF, so the
 report and the app cannot drift. Every threshold in `pdf.ts` and `tables.ts` came
 from measuring this corpus.
 
+`node scripts/scan-entities.mjs "<folder>" --verbose` does the same for
+`entities.ts`, across PDFs *and* markdown: it drives the same `assemble` the app
+uses (exported from `pdf.ts` for exactly this — `extractPdf` itself is
+browser-only, it loads the pdf.js worker from a URL). Current state on the real
+nine: 613 entities, 142 in two or more documents, 67 in three or more, 0 on every
+must-be-zero line. Both extraction rules that are not obvious — connectors
+absorbed into a name, single words needing to out-number their own lowercase form
+— exist because the first run over the corpus led with "Department", "Health",
+"Human Services", "Data" and "Management".
+
 `node scripts/scan-checks.mjs "<folder>" --verbose` does the same for `quiz.ts`,
 and asserts the invariants that fail silently: an answer duplicated among its own
 distractors, a grid replay re-asking one cell, a blank readable off its own
 carrier. Note it compiles to **CommonJS**, unlike scan-tables — `quiz.ts` and
 `parse.ts` import each other without file extensions, which Node's ESM resolver
-rejects. Current state: 16/16 grids questionable, 0 on every must-be-zero line.
+rejects. Current state: 16/16 grids questionable, 0 on every must-be-zero line, and 3 of 5
+cloze windows promote a weak term into the check when one is marked as repeatedly
+failed (must be > 0 — a boost that never displaces anything is a control wired to
+nothing; confirmed it goes to 0 with `WEAK_BOOST` at 0).
 
 **Measure a voice before trusting it.** `/voice-check` (dev route) speaks real
 parser output through every installed voice and resolves each boundary event
@@ -299,7 +348,9 @@ spotlight) · brown-noise masking · document renaming · optional AI summary
 grading · grid detection and the matrix flattener · **grid interrogation on exit
 from a matrix** · **cloze spot checks every 250 words** · **a jittered presence
 check that stops the audio when nobody answers** · **a spaced-retrieval queue
-that outlives the session**.
+that outlives the session** · **a cross-document entity index** · **linked flow
+nodes with a lane graph** · **cloze weighting by what the queue says is not
+sticking**.
 
 The last four are one idea: the app used to *assume* a reader was present and
 enforce engagement only at section boundaries, and everything it produced died
@@ -333,6 +384,22 @@ leaves the machine" property. Revisit only if a voice is needed that Edge does
 not carry.
 
 **Known rough edges**
+
+- The corpus index keeps at most 600 entries per document and renders 200 rows at
+  a time. Neither cap binds on the current corpus — the GCDMP's 413 entries is the
+  largest — and both are reported in the UI rather than silently applied, but a
+  bigger document would start dropping its rarest terms.
+- "Title" still reaches the shared head of the index, from "Title 21 CFR Part 11":
+  the digits break the phrase run. Left alone on purpose — the index reports what
+  the documents say, and "Title 21" is a real referenced thing.
+- The entity index does not resolve synonyms. "Data Management Plan" and "DMP" are
+  two entities, and deciding they are one would mean asserting a relationship the
+  documents did not state.
+- The flow graph was verified by geometry and DOM rather than by eye: the in-app
+  Browser pane was not displayed during this session, so the page never composited
+  a frame and no screenshot could be taken. Edge paths, lane placement, offer
+  counts and the IndexedDB round trip were all checked numerically; nobody has
+  actually *looked* at it.
 
 - Acronym expansion inside grid steps reads clumsily: "CRF Creation" becomes
   "case report form Creation". Could suppress expansion inside steps.

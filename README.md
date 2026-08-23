@@ -284,6 +284,21 @@ into the review queue instead.
 Measured over the vendor-management PDF: 33 windows, **32 produced a check**, 95 blanks,
 none drawn from a heading, none readable off its own carrier.
 
+**Which terms get blanked adapts to what you keep losing.** The review queue already
+knew — it is the whole content of `lapses` and `ease` — and spent that knowledge only on
+*when* to ask again, so a term failed three times in review was no likelier to be
+blanked on the next pass through a document than one that had never given any trouble.
+Difficulty is now keyed by *term* rather than by document, so a word lost in the GCDMP
+is preferred as a blank in ICH E6, and nine documents stop each learning the same lesson
+separately.
+
+The weight is sized against the salience scale rather than layered on top of it: a fully
+stuck capitalized noun (3 + 6) just outranks a fresh acronym (10), and a stuck acronym
+(16) outranks everything. Any larger and the checks would stop following the text and
+start being a personalized drill, which is what the review queue already is. After
+marking, a blank chosen this way says so — being told a term is one you keep losing is
+the point of having preferred it.
+
 ### The presence check
 
 Every other mechanism assumes a reader is there. None of them can tell the difference
@@ -345,6 +360,46 @@ Item ids are derived from content rather than generated, so missing the same ter
 different sittings advances one item's schedule instead of stacking two copies of the
 same question in the queue. Forgetting a document deletes its questions with it: a
 question whose source text is gone can never be checked again.
+
+## The corpus index
+
+Nine guidelines on one subject were nine separate reading sessions with no thread
+between them. The corpus is not nine subjects — it is one subject written down nine
+times, and the thing worth knowing about a term is that ICH E6 defines it, a GCDMP
+chapter operationalizes it and the exam guide lists it. That relationship was in the
+material and the app was throwing it away.
+
+The loader opens onto every named thing the parser found, with the documents that use
+it and a way into each one at the place it first appears
+([src/lib/entities.ts](src/lib/entities.ts)). Terms the retrieval queue says are not
+sticking are marked, because "this is in four documents and you keep losing it" is a
+different instruction from "this is in four documents".
+
+Two kinds of entity, for two different reasons. **Acronyms** come from the dictionary
+already badged in the reader and are kept however rarely they appear, since they are the
+vocabulary a certification examines. **Capitalized noun phrases** — "Data Management
+Plan", "Quality Tolerance Limit" — are kept because a capital letter inside a sentence
+is the strongest signal a PDF gives that a phrase is a named thing rather than prose.
+Nothing here decides that two differently worded phrases mean the same thing; the index
+reports what the documents say.
+
+Two rules came out of running it over the real nine rather than out of a hunch. The
+first pass led with "Department", "Health" and "Human Services" — one agency cut into
+three by the lowercase words holding its name together — so a connector is absorbed into
+a name when a capitalized word follows it. It also led with "Data", "Management" and
+"Standards", common nouns that had picked up a capital from a heading, so a single-word
+name must be capitalized at least as often as the document writes it plainly. Together
+those took 897 entities down to 613, and the shared head became CRF, ICH, EDC, SOP,
+GCDMP, "Electronic Data Capture" and "Department of Health and Human Services".
+
+```bash
+node scripts/scan-entities.mjs "path/to/pdfs" --verbose
+```
+
+Over the nine-document corpus: **613 distinct entities, 142 in two or more documents, 67
+in three or more.** The report drives the same `assemble` the app uses, and asserts what
+would otherwise fail silently — an entry pointing outside its own document is a dead
+link, and in an index this size a dead link is invisible.
 
 ## Measuring the checks
 
@@ -418,6 +473,17 @@ point) views. Click any word to seek there.
 instantly as an Entity / Mechanism / Output node. No Enter, no mouse; the audio never
 has to stop. `Enter` alone commits an untagged note. Nodes remember the section and
 word they were captured at, and clicking their section label seeks back there.
+
+**The captures are a graph.** Tagging said what *kind* of thing each note was and
+nothing about how they connect, so "the sponsor delegates data review to the CRO, which
+produces a delegation log" came out as three unrelated cards. Open a chain on a node and
+every capture attaches to it and then becomes the chain itself — entity to mechanism to
+output is three ordinary captures and no extra keystrokes. Anything realized later is
+drawn directly: with a chain open, every node that can legally receive an edge offers
+to. The Graph view lays the nodes out in `/e` `/m` `/o` lanes with the edges between
+them, which is what makes an entity with no mechanism, or a mechanism producing nothing,
+visible at all. Edges are kept acyclic — a cycle is not a subtler claim than a chain,
+it is an unreadable one.
 
 **Cognitive intercepts** — at every `#` / `##` boundary, playback hard-stops and a
 non-dismissible full-screen dialog demands a one-sentence summary (minimum four words)
@@ -528,10 +594,17 @@ Transport keys go inert while you are typing and while an intercept or a check i
 
 ## Persistence
 
-IndexedDB ([src/lib/db.ts](src/lib/db.ts)), three stores: `documents` (parsed document
-plus its source), `sessions` (reading position, flow nodes, summaries) written debounced
-at 700 ms, and `reviews` (the spaced-retrieval queue). Every write is best-effort — a
-browser in private mode loses persistence, not the reading session.
+IndexedDB ([src/lib/db.ts](src/lib/db.ts)), four stores: `documents` (parsed document
+plus its source), `sessions` (reading position, flow nodes and their links, summaries)
+written debounced at 700 ms, `reviews` (the spaced-retrieval queue) and `entities` (one
+compact index per document). Every write is best-effort — a browser in private mode
+loses persistence, not the reading session.
+
+`entities` is derived data, kept only so the corpus view does not have to load nine
+parsed documents — several hundred thousand tokens — to answer "where else does this
+come up?". It arrived in database version 3, is rebuilt when a document's word count or
+the extraction schema changes, and is deleted with its document, since nothing can
+rebuild it once the source is gone. A rename updates it without re-walking the tokens.
 
 `reviews` spans every document rather than belonging to one, and is indexed by `dueAt`
 so the loader can ask what is owed without reading the whole queue, and by `docId` so
