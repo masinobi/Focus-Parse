@@ -331,6 +331,21 @@ into chasing one that was not.
 **Read back from IndexedDB** to check what was actually stored, rather than
 trusting the rendered view.
 
+**Look at it in a real browser before believing a layout.** `claude --chrome`
+drives the user's own Chrome, which is the only way anything here has been seen
+rather than measured. The lane graph passed every numeric check — edge paths,
+lane placement, offer counts, an IndexedDB round trip — and still rendered as one
+visible lane and a horizontal scrollbar, because nothing in the DOM says "this
+does not fit the pane a human sees". Two screenshots found it in a minute.
+
+**A hidden tab lies in both directions.** `Page.captureScreenshot` intermittently
+times out against a tab whose `visibilityState` is `hidden`, and when it does
+succeed it can return a *stale partial paint* — the first capture of the corpus
+index showed the list shoved into the right half with the toolbar off-screen, and
+`getBoundingClientRect` then said the list was centred at x=254 with every control
+on screen. The layout was never wrong. Check `document.visibilityState` before
+trusting a screenshot, and measure anything a screenshot appears to show.
+
 Bugs found *only* by scanning real output, never by tests: the glued-citation
 rule eating three digits out of DOIs (`journal.pone.0083049` → `pone.3049`); a
 26-row grid reported as fragments of 6 and 10 with a data row as the header; an
@@ -395,11 +410,9 @@ not carry.
 - The entity index does not resolve synonyms. "Data Management Plan" and "DMP" are
   two entities, and deciding they are one would mean asserting a relationship the
   documents did not state.
-- The flow graph was verified by geometry and DOM rather than by eye: the in-app
-  Browser pane was not displayed during this session, so the page never composited
-  a frame and no screenshot could be taken. Edge paths, lane placement, offer
-  counts and the IndexedDB round trip were all checked numerically; nobody has
-  actually *looked* at it.
+- Card text in the lane graph clamps to two lines, and at a narrow pane that is
+  about five words. The full text is on the `title` attribute, and the List view
+  is one click away, but the graph is for shape rather than for reading.
 
 - Acronym expansion inside grid steps reads clumsily: "CRF Creation" becomes
   "case report form Creation". Could suppress expansion inside steps.
