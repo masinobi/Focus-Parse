@@ -26,6 +26,31 @@ decision; test against it rather than against invented samples.
 | Remote | https://github.com/masinobi/Focus-Parse (**private**) |
 | Demo | https://claude.ai/code/artifact/bb5b76a5-5b7d-4a52-abdd-324313fc7d08 (private) |
 | Stack | Next.js 14 App Router · TypeScript · Tailwind · shadcn/ui · Zustand · IndexedDB · Web Speech · Web Audio · pdf.js |
+| Corpus | `<home>\OneDrive\Desktop\CCDA Study` — nine PDFs and one markdown guide |
+| Past sessions | `the Claude Code transcript folder for this project` |
+
+**Stored shapes carry four independent version numbers.** Bump the wrong one and
+either nothing migrates or everything re-parses. They are separate because they
+change for different reasons:
+
+| Constant | Where | Now | Bump when |
+|---|---|---|---|
+| `DB_VERSION` | `db.ts` | 3 | An object store or index is added. Every store creation is guarded by `contains`, so a fresh database and an upgraded one take the identical path. |
+| `SCHEMA_VERSION` | `parse.ts` | 3 | The Token/Chunk/Block shape changes. A stored document whose `schema` differs is rebuilt from `source` on read. |
+| `ENTITY_SCHEMA` | `entities.ts` | 1 | Entity extraction rules change. A stale index rebuilds itself rather than reporting yesterday's rules. |
+| `BACKUP_FORMAT` | `backup.ts` | 1 | The backup envelope changes. Import validates per record, so a bump need not invalidate old files. |
+
+`SessionState` deliberately has **no** version — see invariant 10. Every field
+added to it since must read as `undefined` on sessions already on disk.
+
+**How a previous session's reasoning was recovered.** The feature backlog, and
+the two defects fixed most recently, were stated in a chat rather than in any
+file. The CCD `list_events` tool returned `(no messages)` for that session, but
+the transcripts are plain JSONL on disk at the path above: `grep -rl "<phrase>"`
+across them, then JSON-parse the matching line and walk its `text` blocks. That
+is how those two defects were identified rather than guessed at — worth doing
+before assuming what "the outstanding work" refers to.
+
 
 ## The public demo
 
@@ -90,6 +115,13 @@ clone. If files go missing, clone from the remote rather than repairing.
 
 **First request after a dev restart takes 30–60s** while Next compiles the
 route. Not a hang.
+
+**The dev server sometimes exits on its own.** Once this session a healthy
+background `next dev` — serving fine, logging successful compiles — exited with
+code 0 for no visible reason, and the symptom in the browser was a frozen page
+and CDP calls timing out, which reads exactly like a renderer hang. Check
+whether the server is still alive before debugging the page. `rm -rf .next` and
+restart fixed it; the cause is unknown.
 
 **A bad compile can wedge the dev server outright.** Related to the 404 trap
 below but a different symptom: after one save with a half-finished JSX edit, the
@@ -238,6 +270,27 @@ worked:
 `SpeechSynthesisUtterance` to capture what is actually spoken, and `AudioContext`
 to inspect the audio graph. Measure — don't eyeball.
 
+To get a real PDF into the page, copy it into `public/` and `fetch` it back as a
+`File`; the in-page dropzone cannot reach the filesystem. Delete the copy after.
+The same `DataTransfer` trick sets a hidden `<input type=file>`: assign
+`input.files` and dispatch a `change` event, which is how the backup importer was
+exercised through its actual UI rather than by calling `db.importAll` directly.
+
+**Two browsers, and they hold different data.** The in-app Browser pane and the
+user's real Chrome (`claude --chrome`) are separate profiles with separate
+IndexedDB stores. Chrome holds their own reading: three documents, real
+summaries, no review items — *not* the nine-PDF corpus, which is read in Edge and
+is not reachable from either tool. So end-to-end checks against "the corpus" are
+really checks against whatever that profile happens to hold; the nine-document
+claims in this file all come from the offline scanners instead.
+
+**Leave their data as it was found.** Verifying features that write to IndexedDB
+means writing into a real study record. What worked: note the exact prior state
+first, prefer a throwaway document (the sample) over a real one, and undo
+afterwards — delete the test document, empty the review queue back to zero,
+confirm sessions read back unchanged. Restoring is part of the verification, not
+tidying after it.
+
 **Scan the real corpus.** `node scripts/scan-tables.mjs "<folder>" --verbose`
 compiles `src/lib/tables.ts` and runs that same module over every PDF, so the
 report and the app cannot drift. Every threshold in `pdf.ts` and `tables.ts` came
@@ -266,7 +319,8 @@ and asserts the invariants that fail silently: an answer duplicated among its ow
 distractors, a grid replay re-asking one cell, a blank readable off its own
 carrier. Note it compiles to **CommonJS**, unlike scan-tables — `quiz.ts` and
 `parse.ts` import each other without file extensions, which Node's ESM resolver
-rejects. Current state: 16/16 grids questionable, 0 on every must-be-zero line, and 3 of 5
+rejects. Current state: 16/16 grids questionable, 0 on every must-be-zero line,
+and 3 of 5
 cloze windows promote a weak term into the check when one is marked as repeatedly
 failed (must be > 0 — a boost that never displaces anything is a control wired to
 nothing; confirmed it goes to 0 with `WEAK_BOOST` at 0).
@@ -390,10 +444,18 @@ nodes with a lane graph** · **cloze weighting by what the queue says is not
 sticking** · **JSON export and merge-import of everything** · **a timed mock
 exam across the whole corpus**.
 
-The last four are one idea: the app used to *assume* a reader was present and
-enforce engagement only at section boundaries, and everything it produced died
-with the session. See "The enforcement ladder" and "Spaced retrieval" in the
-README for why each threshold is where it is.
+Four of those are one idea, and reading them separately misses the point: grid
+interrogation, cloze spot checks, the presence check and the retrieval queue.
+The app used to *assume* a reader was present, enforce engagement only at
+section boundaries, and let everything it produced die with the session. See
+"The enforcement ladder" and "Spaced retrieval" in the README for why each
+threshold is where it is.
+
+Three more are also one idea, added later: the corpus index, the mock exam and
+the cloze weighting all treat the nine PDFs as a single body of material rather
+than nine separate reading sessions. The exam draws across all of them, the
+index reports what they share, and difficulty is keyed by term so a word lost in
+one guideline is preferred as a blank in another.
 
 **AI grading** is optional and provider-agnostic: `GEMINI_API_KEY` or
 `ANTHROPIC_API_KEY` in `.env.local` (Gemini wins if both). The Gemini path is
@@ -404,11 +466,42 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-**T-SQL logical stepper** — the last item from the user's feature list. Code
-blocks are currently never spoken by design; this would reverse that for SQL:
-split on clauses (SELECT/FROM/WHERE/JOIN/OVER), one chunk per logical step, with
-hard pauses between. Worth flagging that the CCDA corpus contains **no SQL**, so
-this is the lowest-value item for the exam they are actually studying for.
+Everything here is committed and pushed; `main` tracks `origin/main` with no
+divergence. The backlog below is what a five-item feature list from an earlier
+session still holds, in the order it is worth doing. Items 1 and 2 of that list
+(backup, mock exam), the entity index / node linking / adaptive difficulty trio,
+and two defects are all done — do not redo them.
+
+**Coverage map — the one to do next.** Progress bars report how far the caret
+got. They do not report which sections were *verified*: summary submitted at the
+intercept, grid answered, spot checks passed. Across nine PDFs that distinction
+is the entire point of the enforcement ladder, and the evidence is currently
+collected and then discarded. Most of the data now exists — `summaries` and
+`gridsPassed` persist per session as of this round — so this is mostly a matter
+of recording which cloze windows were cleared and rendering it against the
+structure map. With a dated exam it is the only outstanding item that tells the
+reader where the remaining time should go.
+
+**True-WPM rate control.** Measured: 2.0x delivers about 1.4x on local voices
+and 1.9x on network ones, and the control offers up to 3.0x, which no voice has
+ever produced. `effectiveWpm()` already computes real words per minute from
+boundary telemetry, so the control could take a *target* WPM and solve for the
+rate that achieves it on the current voice — and carry that across a voice
+switch. Either that or relabel the control honestly; what it must not keep doing
+is claim a number it does not deliver. (The sibling complaint, that every
+session started on the slowest voice installed, is fixed.)
+
+**Acronym drill — now partly subsumed, check before building.** The mock exam
+already asks acronym definitions, marks them, and files them in the retrieval
+queue under their own `acronym` item kind, so the machinery and the review path
+both exist. What does not exist is a way to drill them directly without sitting
+a mixed paper. That is a thin UI over `collectQuestions`, not a feature.
+
+**T-SQL logical stepper** — the last item from the user's original feature list.
+Code blocks are never spoken by design; this would reverse that for SQL: split on
+clauses (SELECT/FROM/WHERE/JOIN/OVER), one chunk per logical step, with hard
+pauses between. Worth flagging that the CCDA corpus contains **no SQL**, so this
+remains the lowest-value item for the exam they are actually studying for.
 
 **Settled, do not redo: cloud TTS is not needed.** The obvious upgrade for
 better voices is a neural TTS service returning audio plus word timings — Azure
@@ -423,6 +516,9 @@ not carry.
 
 **Known rough edges**
 
+Most of these are deliberate trade-offs with the reasoning attached; the four
+marked *candidate* are things that could actually be fixed.
+
 - Mock exam papers are only as good as the cloze carriers underneath them. The
   cross-reference filter catches "Section ____ states"; it does not catch a
   citation year in parentheses, or an answer that is a PDF extraction artefact
@@ -432,11 +528,11 @@ not carry.
   have none — only 4 of 9 offer any. The 20% target share for tables is
   therefore aspirational on this corpus; the shortfall redistributes to the
   other two kinds by design.
-- The reading spot check still allows "Section ____ states" blanks. The filter
-  lives in `quiz.ts` and is applied only by `exam.ts`, because a spot check
-  exists to prove the reader is present rather than to predict a result — but
-  the case for applying it in both places is real and untested.
-
+- *(candidate)* The reading spot check still allows "Section ____ states"
+  blanks. The filter lives in `quiz.ts` and is applied only by `exam.ts`,
+  because a spot check exists to prove the reader is present rather than to
+  predict a result — but the case for applying it in both places is real and
+  untested.
 - The corpus index keeps at most 600 entries per document and renders 200 rows at
   a time. Neither cap binds on the current corpus — the GCDMP's 413 entries is the
   largest — and both are reported in the UI rather than silently applied, but a
@@ -450,9 +546,9 @@ not carry.
 - Card text in the lane graph clamps to two lines, and at a narrow pane that is
   about five words. The full text is on the `title` attribute, and the List view
   is one click away, but the graph is for shape rather than for reading.
-
-- Acronym expansion inside grid steps reads clumsily: "CRF Creation" becomes
-  "case report form Creation". Could suppress expansion inside steps.
+- *(candidate)* Acronym expansion inside grid steps reads clumsily: "CRF
+  Creation" becomes "case report form Creation". Could suppress expansion
+  inside steps.
 - A cloze carrier is only as good as the sentence the parser produced. Where PDF
   column recovery fused two lines in a document's front matter, the blank is
   presented inside that fused sentence. The builder reproduces the chunk exactly
@@ -462,17 +558,14 @@ not carry.
 - The grid check yields to the intercept when a table ends exactly on a section
   boundary, so that grid is never questioned. At most one check fires per
   boundary by design; a queue would fix it and was judged not worth the coupling.
-- `rate` has never delivered what it advertises on any voice measured: 2.0x
-  produces roughly 1.4x on local voices and 1.9x on network ones. The transport
-  offers up to 3.0x. Either recalibrate the control or relabel it. (The related
-  complaint — that every session started on the slowest voice on the machine —
-  is fixed: the choice is remembered, and a fresh install prefers the measured
-  fast ones over the platform default.)
-- The matrix flattener was verified on the vendor-management PDF (2 grids, 24
-  steps). The 524-page GCDMP holds most of the 22 detected grids and has not had
-  a full in-browser pass.
-- PDF front matter (author lists, affiliations) sometimes survives as a section
-  in the structure map.
+- `rate` still claims what it does not deliver — see the backlog above, where
+  this is a feature rather than an edge. The sibling complaint, that every
+  session started on the slowest voice installed, is fixed.
+- *(candidate)* The matrix flattener was verified on the vendor-management PDF
+  (2 grids, 24 steps). The 524-page GCDMP holds most of the 22 detected grids
+  and has not had a full in-browser pass.
+- *(candidate)* PDF front matter (author lists, affiliations) sometimes
+  survives as a section in the structure map.
 - Scanned PDFs with no text layer are rejected rather than OCR'd.
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid
