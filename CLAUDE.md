@@ -24,7 +24,42 @@ decision; test against it rather than against invented samples.
 |---|---|
 | Project | `<project folder>` |
 | Remote | https://github.com/masinobi/Focus-Parse (**private**) |
+| Demo | https://claude.ai/code/artifact/bb5b76a5-5b7d-4a52-abdd-324313fc7d08 (private) |
 | Stack | Next.js 14 App Router · TypeScript · Tailwind · shadcn/ui · Zustand · IndexedDB · Web Speech · Web Audio · pdf.js |
+
+## The public demo
+
+A standalone single-file demo lives at the artifact URL above. It is **not in
+this repo** — it is a self-contained HTML reimplementation of the pacing engine,
+the scratchpad and all four checks, with a trigger rail so a visitor can fire any
+mechanism directly instead of waiting for it. Intervals are deliberately
+accelerated and the page says so.
+
+**The source file does not survive the session.** It was written to a
+session-scoped scratchpad, not to the repo, so a later session has no copy of it.
+To change the demo, fetch the published page to recover its HTML, edit that, and
+republish passing the existing **URL** — publishing a new file path without the
+URL creates a second artifact instead of updating this one. If the demo is worth
+keeping, the honest fix is to commit it here.
+
+Four things it cost to learn, all of which will bite again:
+
+- **Write it as pure ASCII.** The wrapper owns `<head>`, so the page cannot
+  declare its own charset. Curly quotes and em-dashes rendered as `â€œ` until
+  every non-ASCII character became an HTML entity in markup and a `\uXXXX` escape
+  in script.
+- **The artifact renders inside a cross-origin iframe.** It cannot be scripted
+  from the parent page and synthetic clicks do not reach it, so it cannot be
+  driven by automation the way the app can.
+- **A hidden browser tab shows it blank.** Chrome does not rasterize
+  cross-origin subframes in a background tab, and the shell's reveal transition
+  (opacity 0 → 1) stays frozen there too. This looks exactly like a broken
+  artifact. `/code/frame/<uuid>` renders the same content standalone and does
+  paint, which is how to check it.
+- **Keep the demo's logic in step with `src/lib/quiz.ts` by hand.** It is a
+  parallel implementation, so the one-blank-per-sentence fix had to be applied
+  twice. Anything fixed in the real check builders should be mirrored, or the
+  demo will start demonstrating behaviour the app no longer has.
 
 ## Environment traps
 
@@ -55,6 +90,26 @@ clone. If files go missing, clone from the remote rather than repairing.
 
 **First request after a dev restart takes 30–60s** while Next compiles the
 route. Not a hang.
+
+**A route that was working can start 404ing mid-session.** After Fast Refresh
+logs "had to perform a full reload", the dev server's `.next` cache can corrupt
+— the symptom is `⨯ SyntaxError: Unexpected end of JSON input` in the server
+output, followed by every request to a route returning 404 while the server
+still looks healthy. Nothing is wrong with the code. Stop the server, delete
+`.next`, restart. This cost a confused detour hunting a route that had been
+loading two minutes earlier.
+
+**Reading `window` during render breaks hydration.** A `"use client"` component
+is still server-rendered, so `typeof window !== "undefined"` returns false on
+the server and true on the client, and React replaces the whole document with a
+hydration error. `/voice-check` shipped with exactly this bug: the server
+rendered the "unsupported" branch and the client rendered the controls.
+Discover browser capabilities in an effect and have both sides render the same
+placeholder first.
+
+**Console errors in a reused tab are stale.** The devtools bridge accumulates
+messages across navigations, so after fixing a hydration error the old stack
+traces keep coming back and it looks unfixed. Verify in a fresh tab.
 
 ## Invariants that are easy to break
 
@@ -109,7 +164,15 @@ rather than heard.
 check raised moments before a pause is still open on resume with its grace
 window already spent, and the reader is marked absent for coming back.
 
-**10. `source` is a complete record.** Everything rides through the markdown
+**10. `SessionState` has no schema version.** `ParsedDoc` carries one and
+`db.getDoc` rebuilds a stale document from `source`; sessions have neither.
+`db.getSession` hands back whatever was written, however old, so any change to
+`FlowNode` or the session shape must read defensively — an added field will be
+`undefined` on every session already on disk, and there is no migration path to
+lean on. It is one of the reasons the retrieval queue became its own store — the
+other being that reviews span every document and need their own indexes.
+
+**11. `source` is a complete record.** Everything rides through the markdown
 intermediate rather than a side channel, so `db.getDoc` can rebuild a document
 with the current parser when `schema` is stale. Schema is currently **3**; bump
 `SCHEMA_VERSION` in `src/lib/parse.ts` whenever the Token/Chunk shape changes, or
@@ -193,6 +256,23 @@ spoken string** rather than token starts, and monotonicity must count only a
 which is what the design intends. If a metric reports the same suspicious number
 for every voice, suspect the metric.
 
+**Prove an assertion can fail before trusting it.** `scan-checks.mjs` shipped for
+several minutes printing `two blanks sharing one carrier: 0 (must be 0)` on a
+counter that was declared and printed but never incremented — the edit that was
+meant to add the increment silently matched nothing. A green that cannot go red
+is worse than no check, because it reads as verification. The habit that caught
+it: revert the fix, confirm the number goes non-zero, restore. It reported 3.
+
+Related, and the reason that happened: **a string-replace edit that finds no
+match does nothing and says nothing.** Assert on the match, or grep afterwards.
+Two separate silent no-ops happened this way in one session.
+
+**Sample fast enough to see the thing you are measuring.** The adaptive
+estimator grace looked like a rounding error at 2-versus-1 when the badge was
+polled every 400ms, because the estimator only shows for ~150ms at a time. The
+real effect was 4-versus-1, visible only by counting rising edges at 50ms. If a
+measured improvement looks like noise, suspect the sampling before the change.
+
 **Beware HMR when driving the app.** Hot-reloading the store module leaves the
 keyboard hook's listener detached, and *every* key silently stops working —
 including `Space`, which predates any of this. It looks exactly like a keybinding
@@ -241,10 +321,33 @@ split on clauses (SELECT/FROM/WHERE/JOIN/OVER), one chunk per logical step, with
 hard pauses between. Worth flagging that the CCDA corpus contains **no SQL**, so
 this is the lowest-value item for the exam they are actually studying for.
 
+**Settled, do not redo: cloud TTS is not needed.** The obvious upgrade for
+better voices is a neural TTS service returning audio plus word timings — Azure
+emits `WordBoundary` events with the shape the engine already consumes, and it
+looked like the only way to get human-sounding speech without losing word-exact
+sync. Measurement killed it. Every one of the 49 English voices in Edge,
+including all the cloud "Online (Natural)" ones, is word-exact at 100% coverage
+and precision. There is no sync argument for taking on an API key, a per-chunk
+network round trip, prefetching, an audio cache, and the loss of the "nothing
+leaves the machine" property. Revisit only if a voice is needed that Edge does
+not carry.
+
 **Known rough edges**
 
 - Acronym expansion inside grid steps reads clumsily: "CRF Creation" becomes
   "case report form Creation". Could suppress expansion inside steps.
+- A cloze carrier is only as good as the sentence the parser produced. Where PDF
+  column recovery fused two lines in a document's front matter, the blank is
+  presented inside that fused sentence. The builder reproduces the chunk exactly
+  and deliberately does not try to detect or repair damaged extraction — verified
+  that the carrier equals the raw chunk with only the answer replaced, so this is
+  upstream, not a cloze bug.
+- The grid check yields to the intercept when a table ends exactly on a section
+  boundary, so that grid is never questioned. At most one check fires per
+  boundary by design; a queue would fix it and was judged not worth the coupling.
+- `rate` has never delivered what it advertises on any voice measured: 2.0x
+  produces roughly 1.4x on local voices and 1.9x on network ones. The transport
+  offers up to 3.0x. Either recalibrate the control or relabel it.
 - The matrix flattener was verified on the vendor-management PDF (2 grids, 24
   steps). The 524-page GCDMP holds most of the 22 detected grids and has not had
   a full in-browser pass.
@@ -266,3 +369,23 @@ done and why. When a spec cannot be met as written, say so plainly rather than
 approximating silently: pulse cannot sync to audio *volume* because
 `SpeechSynthesis` exposes no audio stream, and that was worth stating outright.
 Prefer measuring the real corpus over adding heuristics on a hunch.
+
+They ask for verification and mean it. "I rather you check the real thing" came
+after a claim that the demo was fine based on the source file rather than the
+published page — and checking it properly turned up a genuinely blank render
+that took real digging to explain. Do not report a thing as working on the
+strength of the artifact you produced; look at the thing the user will actually
+open, and say plainly when a limit stops you from looking.
+
+Distrust a clean result as much as a broken one. Three separate false alarms
+this session came from measurement code rather than the code under test: a
+precision metric that punished expanded acronyms, a monotonicity check that
+counted a held caret as a regression, and an assertion that could never fail.
+Each announced itself the same way — an identical suspicious number across
+inputs that should have differed. When a measurement surprises you, check the
+measurement first.
+
+Work in small committed steps with a message that records *why*, and re-run the
+corpus scan before each one. The commit log is the only place the reasoning
+survives; several decisions here would look arbitrary a month from now without
+the paragraph explaining what was measured.
