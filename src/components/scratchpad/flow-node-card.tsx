@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Boxes, Cog, Target, Trash2 } from "lucide-react";
+import { Boxes, Cog, Link2, Target, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -39,18 +39,26 @@ interface FlowNodeCardProps {
   node: FlowNode;
   sectionTitle: string;
   isLast: boolean;
+  /** True when the next capture will attach to this node. */
+  isHead: boolean;
+  /** Outgoing edges that still point at a node that exists. */
+  outgoing: number;
   onRemove: (id: string) => void;
   onRetag: (id: string, tag: LogicTag | null) => void;
   onSeek: (tokenIndex: number) => void;
+  onSetChainHead: (id: string | null) => void;
 }
 
 export function FlowNodeCard({
   node,
   sectionTitle,
   isLast,
+  isHead,
+  outgoing,
   onRemove,
   onRetag,
   onSeek,
+  onSetChainHead,
 }: FlowNodeCardProps) {
   const meta = node.tag ? TAG_META[node.tag] : null;
   const Icon = meta?.icon;
@@ -71,7 +79,8 @@ export function FlowNodeCard({
       <Card
         className={cn(
           "group animate-node-in border-l-2 bg-card/60 px-3 py-2",
-          meta ? meta.ring : "border-l-muted-foreground/30"
+          meta ? meta.ring : "border-l-muted-foreground/30",
+          isHead && "ring-2 ring-primary"
         )}
       >
         <div className="flex items-start gap-2">
@@ -95,6 +104,15 @@ export function FlowNodeCard({
               >
                 {sectionTitle}
               </button>
+              {outgoing > 0 && (
+                <span
+                  className="flex items-center gap-0.5 text-[10px] text-muted-foreground"
+                  title={`Links out to ${outgoing} ${outgoing === 1 ? "node" : "nodes"}`}
+                >
+                  <Link2 className="h-2.5 w-2.5" />
+                  {outgoing}
+                </span>
+              )}
             </div>
 
             <p className="whitespace-pre-wrap break-words text-sm leading-snug">
@@ -121,6 +139,22 @@ export function FlowNodeCard({
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => onSetChainHead(isHead ? null : node.id)}
+              className={cn(
+                "rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground",
+                isHead && "text-primary"
+              )}
+              aria-label={isHead ? "Stop chaining from here" : "Chain from here"}
+              title={
+                isHead
+                  ? "Stop chaining from here"
+                  : "Chain the next capture from this node"
+              }
+            >
+              <Link2 className="h-3 w-3" />
+            </button>
             <button
               type="button"
               onClick={() => onRemove(node.id)}

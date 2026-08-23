@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { CornerDownLeft, PenLine } from "lucide-react";
+import { CornerDownLeft, Link2, ListTree, Network, PenLine, X } from "lucide-react";
 
+import { FlowGraph } from "@/components/scratchpad/flow-graph";
 import { FlowNodeCard, TAG_META } from "@/components/scratchpad/flow-node-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,13 +31,19 @@ export function Scratchpad() {
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
 
+  const [mode, setMode] = React.useState<"list" | "graph">("list");
+
   const doc = useFocusStore((s) => s.doc);
   const nodes = useFocusStore((s) => s.nodes);
+  const chainHead = useFocusStore((s) => s.chainHead);
   const addNode = useFocusStore((s) => s.addNode);
   const removeNode = useFocusStore((s) => s.removeNode);
   const retagNode = useFocusStore((s) => s.retagNode);
   const seekToken = useFocusStore((s) => s.seekToken);
   const notePresence = useFocusStore((s) => s.notePresence);
+  const setChainHead = useFocusStore((s) => s.setChainHead);
+  const linkNodes = useFocusStore((s) => s.linkNodes);
+  const unlinkNodes = useFocusStore((s) => s.unlinkNodes);
 
   const commit = React.useCallback(
     (text: string, tag: LogicTag | null) => {
@@ -84,6 +91,23 @@ export function Scratchpad() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [nodes.length]);
 
+  const headNode = React.useMemo(
+    () => nodes.find((n) => n.id === chainHead) ?? null,
+    [nodes, chainHead]
+  );
+
+  /** Edges that still point at a node that exists, per node. */
+  const outgoing = React.useMemo(() => {
+    const alive = new Set(nodes.map((n) => n.id));
+    const counts: Record<string, number> = {};
+    for (const node of nodes) {
+      // Sessions carry no schema version: every node written before linking
+      // reads back with no `links` at all.
+      counts[node.id] = (node.links ?? []).filter((id) => alive.has(id)).length;
+    }
+    return counts;
+  }, [nodes]);
+
   const sectionTitle = (index: number) =>
     doc?.sections[index]?.title ?? "Unsectioned";
 
@@ -103,6 +127,28 @@ export function Scratchpad() {
         </span>
 
         <div className="ml-auto flex items-center gap-1.5">
+          <div className="mr-1 flex items-center gap-0.5">
+            {(
+              [
+                ["list", "List", ListTree],
+                ["graph", "Graph", Network],
+              ] as ["list" | "graph", string, React.ElementType][]
+            ).map(([id, label, Icon]) => (
+              <Button
+                key={id}
+                variant={mode === id ? "secondary" : "ghost"}
+                size="sm"
+                className="h-6 gap-1 px-1.5 text-[11px]"
+                onClick={() => setMode(id)}
+                aria-pressed={mode === id}
+                title={`${label} view`}
+              >
+                <Icon className="h-3 w-3" />
+                {label}
+              </Button>
+            ))}
+          </div>
+
           {(Object.keys(TAG_META) as LogicTag[]).map((tag) => (
             <Badge
               key={tag}
@@ -119,6 +165,20 @@ export function Scratchpad() {
         </div>
       </div>
 
+      {mode === "graph" ? (
+        <div className="min-h-0 flex-1">
+          <FlowGraph
+            nodes={nodes}
+            chainHead={chainHead}
+            sectionTitle={sectionTitle}
+            onSeek={seekToken}
+            onSetChainHead={setChainHead}
+            onLink={linkNodes}
+            onUnlink={unlinkNodes}
+            onRemove={removeNode}
+          />
+        </div>
+      ) : (
       <div ref={listRef} className="fp-scroll flex-1 space-y-2.5 overflow-y-auto px-4 py-4">
         {nodes.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
@@ -149,15 +209,51 @@ export function Scratchpad() {
               node={node}
               sectionTitle={sectionTitle(node.section)}
               isLast={i === nodes.length - 1}
+              isHead={node.id === chainHead}
+              outgoing={outgoing[node.id] ?? 0}
               onRemove={removeNode}
               onRetag={retagNode}
               onSeek={seekToken}
+              onSetChainHead={setChainHead}
             />
           ))
         )}
       </div>
+      )}
 
       <div className="border-t bg-background/60 p-3">
+        {/* The chain: which node the next capture attaches to. Committing then
+            hands the chain to the new node, so /e /m /o in a row builds
+            entity → mechanism → output with no extra keystrokes. */}
+        {headNode ? (
+          <div className="mb-2 flex items-center gap-2 rounded border border-primary/40 bg-primary/5 px-2 py-1 text-[11px]">
+            <Link2 className="h-3 w-3 shrink-0 text-primary" />
+            <span className="shrink-0 text-muted-foreground">Chaining from</span>
+            <span className="min-w-0 flex-1 truncate">{headNode.text}</span>
+            <button
+              type="button"
+              onClick={() => setChainHead(null)}
+              className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label="Stop chaining"
+              title="Stop chaining (the next capture stands alone)"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          nodes.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setChainHead(nodes[nodes.length - 1].id)}
+              className="mb-2 flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+              title="Attach the next capture to the last one"
+            >
+              <Link2 className="h-3 w-3" />
+              Chain from the last node
+            </button>
+          )
+        )}
+
         <Textarea
           ref={inputRef}
           value={draft}

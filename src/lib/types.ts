@@ -116,6 +116,13 @@ export interface FlowNode {
   section: number;
   tokenIndex: number;
   createdAt: number;
+  /**
+   * Ids this node points *to*. Optional because sessions carry no schema
+   * version: every node already on disk predates linking and will read back
+   * `undefined`, so every consumer must treat that as "no edges" rather than
+   * assume an array. Kept acyclic — see `linkNodes`.
+   */
+  links?: string[];
 }
 
 export interface SessionState {

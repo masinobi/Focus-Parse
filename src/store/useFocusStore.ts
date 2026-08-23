@@ -116,6 +116,11 @@ interface FocusState {
   intercept: InterceptState;
   summaries: Record<number, string>;
   nodes: FlowNode[];
+  /**
+   * Node the next capture attaches to, or null for a loose note. Not part of
+   * the session: it is where the reader's hand is, not what they recorded.
+   */
+  chainHead: string | null;
 
   check: CheckState;
   vigilance: VigilanceState;
@@ -190,6 +195,15 @@ interface FocusState {
   addNode: (text: string, tag: LogicTag | null) => void;
   retagNode: (id: string, tag: LogicTag | null) => void;
   removeNode: (id: string) => void;
+  /** Draw an edge. Refused if it would close a cycle. */
+  linkNodes: (from: string, to: string) => void;
+  unlinkNodes: (from: string, to: string) => void;
+  /**
+   * The node the next capture links from, and which then becomes the head
+   * itself — so capturing entity, mechanism, output in a row builds the chain
+   * without a single extra keystroke.
+   */
+  setChainHead: (id: string | null) => void;
 
   tickWord: () => void;
   effectiveWpm: () => number;
@@ -260,6 +274,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   intercept: { open: false, section: null, resumeChunk: null },
   summaries: {},
   nodes: [],
+  chainHead: null,
 
   check: IDLE_CHECK,
   vigilance: freshVigilance(),
@@ -282,6 +297,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       intercept: { open: false, section: null, resumeChunk: null },
       summaries: {},
       nodes: [],
+      chainHead: null,
       check: IDLE_CHECK,
       vigilance: { ...freshVigilance(), enabled: get().vigilance.enabled },
       lastCheckToken: 0,
@@ -303,6 +319,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       intercept: { open: false, section: null, resumeChunk: null },
       summaries: {},
       nodes: [],
+      chainHead: null,
       check: IDLE_CHECK,
       vigilance: { ...freshVigilance(), enabled: get().vigilance.enabled },
       lastCheckToken: 0,
@@ -639,7 +656,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   addNode: (text, tag) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    const { doc, tokenIndex } = get();
+    const { doc, tokenIndex, chainHead, nodes } = get();
     const node: FlowNode = {
       id: `n_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
       tag,
@@ -648,7 +665,21 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       tokenIndex,
       createdAt: Date.now(),
     };
-    set((s) => ({ nodes: [...s.nodes, node] }));
+
+    // Capturing into an open chain attaches to it and then hands the chain on,
+    // so entity → mechanism → output is three ordinary captures and no extra
+    // keystrokes. A head that has since been deleted is simply ignored.
+    const head = chainHead && nodes.some((n) => n.id === chainHead) ? chainHead : null;
+
+    set((s) => ({
+      nodes: [
+        ...s.nodes.map((n) =>
+          n.id === head ? { ...n, links: [...(n.links ?? []), node.id] } : n
+        ),
+        node,
+      ],
+      chainHead: head ? node.id : s.chainHead,
+    }));
   },
 
   retagNode: (id, tag) =>
@@ -656,7 +687,60 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       nodes: s.nodes.map((n) => (n.id === id ? { ...n, tag } : n)),
     })),
 
-  removeNode: (id) => set((s) => ({ nodes: s.nodes.filter((n) => n.id !== id) })),
+  removeNode: (id) =>
+    set((s) => ({
+      // Edges into a deleted node go with it. A dangling id would render as a
+      // line to nowhere and survive every save.
+      nodes: s.nodes
+        .filter((n) => n.id !== id)
+        .map((n) =>
+          (n.links ?? []).includes(id)
+            ? { ...n, links: (n.links ?? []).filter((l) => l !== id) }
+            : n
+        ),
+      chainHead: s.chainHead === id ? null : s.chainHead,
+    })),
+
+  /**
+   * Add an edge, unless it would close a cycle.
+   *
+   * The graph is a claim about direction — this entity is acted on by that
+   * mechanism, which produces that output — and a cycle is not a subtler claim,
+   * it is an unreadable one. It also makes the layered view unlayerable. Cheap
+   * to prevent at the only point edges are created.
+   */
+  linkNodes: (from, to) => {
+    if (from === to) return;
+    const { nodes } = get();
+    if (!nodes.some((n) => n.id === from) || !nodes.some((n) => n.id === to)) return;
+    if ((nodes.find((n) => n.id === from)?.links ?? []).includes(to)) return;
+
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const seen = new Set<string>();
+    const stack = [to];
+    while (stack.length) {
+      const at = stack.pop() as string;
+      if (at === from) return; // `to` already reaches `from`
+      if (seen.has(at)) continue;
+      seen.add(at);
+      stack.push(...(byId.get(at)?.links ?? []));
+    }
+
+    set((s) => ({
+      nodes: s.nodes.map((n) =>
+        n.id === from ? { ...n, links: [...(n.links ?? []), to] } : n
+      ),
+    }));
+  },
+
+  unlinkNodes: (from, to) =>
+    set((s) => ({
+      nodes: s.nodes.map((n) =>
+        n.id === from ? { ...n, links: (n.links ?? []).filter((l) => l !== to) } : n
+      ),
+    })),
+
+  setChainHead: (id) => set({ chainHead: id }),
 
   tickWord: () => {
     const now = Date.now();
