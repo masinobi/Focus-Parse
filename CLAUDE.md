@@ -208,7 +208,21 @@ how a parser change propagates into it. A rename updates the stored title withou
 re-walking tokens; re-indexing the 524-page GCDMP on every rename would be minutes
 of work for a new name.
 
-**15. `source` is a complete record.** Everything rides through the markdown
+**15. Every load path must go through `hydrateSession`.** The session writer
+waits on `hydrated`, which only that function sets — including on the path
+where there is nothing to restore. Miss it on a new code path and that
+document's reading is never saved at all. The flag exists because `loadDoc`
+resets captures to empty and hydration fills them a tick later: a writer that
+did not wait could persist the empty state over a real session.
+
+**16. Backups carry `source`, never parsed documents.** Measured at 21x smaller
+on a real database (263KB against 5.6MB for 40k words), and it is the only form
+that survives a parser change — which is the same reason `getDoc` rebuilds from
+`source`. Import merges by timestamp and never deletes; an older review item
+carries an older interval, and applying it over a newer one silently undoes
+weeks of scheduling.
+
+**17. `source` is a complete record.** Everything rides through the markdown
 intermediate rather than a side channel, so `db.getDoc` can rebuild a document
 with the current parser when `schema` is stale. Schema is currently **3**; bump
 `SCHEMA_VERSION` in `src/lib/parse.ts` whenever the Token/Chunk shape changes, or
@@ -228,6 +242,14 @@ to inspect the audio graph. Measure — don't eyeball.
 compiles `src/lib/tables.ts` and runs that same module over every PDF, so the
 report and the app cannot drift. Every threshold in `pdf.ts` and `tables.ts` came
 from measuring this corpus.
+
+`node scripts/scan-exam.mjs "<folder>" --verbose` builds a real 40-question
+paper from `exam.ts` over the corpus and asserts the ways one can be quietly
+unfair: an answer missing from its own options, one fact asked twice, a blank
+asking for a cross-reference. It also scores a perfect paper and a blank one, so
+a marker that had stopped marking would show. Current state: 40/40 assembled,
+all 9 documents represented at 4-5 questions each, 18 cloze / 15 acronym / 7
+grid, 0 on every must-be-zero line.
 
 `node scripts/scan-entities.mjs "<folder>" --verbose` does the same for
 `entities.ts`, across PDFs *and* markdown: it drives the same `assemble` the app
@@ -365,7 +387,8 @@ from a matrix** · **cloze spot checks every 250 words** · **a jittered presenc
 check that stops the audio when nobody answers** · **a spaced-retrieval queue
 that outlives the session** · **a cross-document entity index** · **linked flow
 nodes with a lane graph** · **cloze weighting by what the queue says is not
-sticking**.
+sticking** · **JSON export and merge-import of everything** · **a timed mock
+exam across the whole corpus**.
 
 The last four are one idea: the app used to *assume* a reader was present and
 enforce engagement only at section boundaries, and everything it produced died
@@ -400,6 +423,20 @@ not carry.
 
 **Known rough edges**
 
+- Mock exam papers are only as good as the cloze carriers underneath them. The
+  cross-reference filter catches "Section ____ states"; it does not catch a
+  citation year in parentheses, or an answer that is a PDF extraction artefact
+  ("CSUCI" appeared in one real paper). Both were visible only by reading a
+  paper rather than a report.
+- A grid question needs a detected table, and most guidelines in this corpus
+  have none — only 4 of 9 offer any. The 20% target share for tables is
+  therefore aspirational on this corpus; the shortfall redistributes to the
+  other two kinds by design.
+- The reading spot check still allows "Section ____ states" blanks. The filter
+  lives in `quiz.ts` and is applied only by `exam.ts`, because a spot check
+  exists to prove the reader is present rather than to predict a result — but
+  the case for applying it in both places is real and untested.
+
 - The corpus index keeps at most 600 entries per document and renders 200 rows at
   a time. Neither cap binds on the current corpus — the GCDMP's 413 entries is the
   largest — and both are reported in the UI rather than silently applied, but a
@@ -427,7 +464,10 @@ not carry.
   boundary by design; a queue would fix it and was judged not worth the coupling.
 - `rate` has never delivered what it advertises on any voice measured: 2.0x
   produces roughly 1.4x on local voices and 1.9x on network ones. The transport
-  offers up to 3.0x. Either recalibrate the control or relabel it.
+  offers up to 3.0x. Either recalibrate the control or relabel it. (The related
+  complaint — that every session started on the slowest voice on the machine —
+  is fixed: the choice is remembered, and a fresh install prefers the measured
+  fast ones over the platform default.)
 - The matrix flattener was verified on the vendor-management PDF (2 grids, 24
   steps). The 524-page GCDMP holds most of the 22 detected grids and has not had
   a full in-browser pass.

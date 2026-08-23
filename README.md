@@ -361,6 +361,50 @@ different sittings advances one item's schedule instead of stacking two copies o
 same question in the queue. Forgetting a document deletes its questions with it: a
 question whose source text is gone can never be checked again.
 
+## Mock exam
+
+Every check described above is an interruption, fired while reading, whose purpose is to
+stop a reader coasting through one document. An exam is the opposite arrangement, and it
+is the one that answers the question a candidate actually has: a timed set drawn across
+the whole corpus at once, no feedback until the end, scored with a breakdown by document
+and by question type ([src/lib/exam.ts](src/lib/exam.ts)).
+
+Nothing new had to be invented to ask the questions. `buildGridQuestion` and `buildCloze`
+already produce questions with exactly one right answer and mark them locally, and the
+acronym dictionary is a definition list — which is precisely what a certification tests.
+Three kinds, for three different things: **acronym definitions** (the vocabulary the
+material is written in), **terms in context** (whether a claim was understood rather than
+recognised), and **table cells** (whether a matrix was taken in as a structure).
+
+Documents are loaded one at a time and released once their questions are collected —
+holding nine parsed guidelines at once is hundreds of thousands of tokens for data that
+is immediately discarded. Questions are drawn from a seed rather than at random, so a
+score belongs to an identifiable paper rather than to an unrepeatable draw. Answers feed
+the same retrieval queue everything else does, right or wrong: an exam is another way
+into the study loop, not a detour from it.
+
+Two things came out of measuring real papers rather than reasoning about them.
+
+The **mix** is now chosen by which kind is furthest below an explicit target share
+(45% terms, 35% acronyms, 20% tables) rather than by rotation. The first measured paper
+came out 23 acronym, 15 cloze, 2 grid — not a weighting decision but an accident, because
+a grid slot in a document with no tables fell through to the next kind in list order,
+which is always acronym. Every missing table had been quietly becoming another acronym
+question. The same corpus now yields 18/15/7 across all nine documents.
+
+**Blanks that ask for a cross-reference are dropped.** A real paper asked for section 4.5
+and section 4.2 of the same guidance — questions about where a rule lives rather than what
+it says. A number is otherwise one of the best things to blank, so the rule keys on what
+introduces it: "an average of ____ days" survives, "Section ____ states" does not.
+
+```bash
+node scripts/scan-exam.mjs "path/to/pdfs" --verbose
+```
+
+The report asserts the ways a paper can be quietly unfair — an answer missing from its own
+options cannot be answered at all, and a duplicate asks one fact twice while a document
+goes unexamined — and scores a perfect paper and a blank one to prove the marker moves.
+
 ## The corpus index
 
 Nine guidelines on one subject were nine separate reading sessions with no thread
@@ -592,11 +636,33 @@ Three things the browser forces:
 
 Transport keys go inert while you are typing and while an intercept or a check is open.
 
+## Backup
+
+Everything this app produces — every summary written at an intercept, every captured
+node, every review interval earned over weeks — lives in one browser's IndexedDB.
+Clearing site data, resetting a browser or moving machines loses all of it, silently and
+with no recovery. Export writes it to one JSON file and import merges it back
+([src/lib/backup.ts](src/lib/backup.ts)).
+
+**Documents are exported as their source, not as parsed documents.** That leans on an
+invariant the app already depends on: `source` is a complete record, which is what
+`db.getDoc` rebuilds from when the schema moves. Measured on a real database — 40,000
+words across three documents — source-only is 263KB against 5.6MB for the parsed form,
+21× smaller, and it cannot carry a stale token shape into a future parser. The entity
+index is left out for the same reason: derived, and rebuilt on demand.
+
+**Import merges and never deletes.** Where both sides hold a record, the one touched last
+wins. Restoring a three-week-old backup onto a machine that has been read on since must
+not rewind that reading — an older review item carries an older interval, and applying it
+would quietly undo weeks of scheduling. Validation is per-record rather than
+all-or-nothing, so a file that is 99% good restores the 99% and reports the rest as
+skipped instead of discarding a whole backup over one bad row.
+
 ## Persistence
 
 IndexedDB ([src/lib/db.ts](src/lib/db.ts)), four stores: `documents` (parsed document
-plus its source), `sessions` (reading position, flow nodes and their links, summaries)
-written debounced at 700 ms, `reviews` (the spaced-retrieval queue) and `entities` (one
+plus its source), `sessions` (reading position, flow nodes and their links,
+summaries, and which grids have been answered) written debounced at 700 ms, `reviews` (the spaced-retrieval queue) and `entities` (one
 compact index per document). Every write is best-effort — a browser in private mode
 loses persistence, not the reading session.
 
@@ -621,6 +687,12 @@ chunk has no speech string, so a stale shape degrades to reading without acronym
 expansion rather than failing to play.
 
 ## Choosing a voice
+
+The chosen voice is remembered between sessions, and a fresh install does **not** take
+the platform default. On Windows that default is David, which this project's own probe
+measured as the slowest of all 49 voices to its first boundary — a latency the engine
+pays once per *sentence*. The four fastest measured (Aria, Guy, Jenny, Christopher) are
+preferred instead, then anything that is not David or Zira.
 
 Word-exact pacing is a property of the **voice**, not of this app. The engine
 resolves each `boundary` event's `charIndex` back to a token; a voice that fires
