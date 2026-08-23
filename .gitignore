@@ -19,3 +19,6 @@ public/pdf.worker.min.mjs
 Thumbs.db
 .idea
 .vscode
+
+# probe artifacts
+scripts/.probe-*.png

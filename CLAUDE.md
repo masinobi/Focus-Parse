@@ -26,7 +26,7 @@ decision; test against it rather than against invented samples.
 | Remote | https://github.com/masinobi/Focus-Parse (**private**) |
 | Demo | https://claude.ai/code/artifact/bb5b76a5-5b7d-4a52-abdd-324313fc7d08 (private) |
 | Stack | Next.js 14 App Router · TypeScript · Tailwind · shadcn/ui · Zustand · IndexedDB · Web Speech · Web Audio · pdf.js |
-| Corpus | `<home>\OneDrive\Desktop\CCDA Study` — nine PDFs and one markdown guide |
+| Corpus | `<home>\OneDrive\Desktop\CCDA Study` — eight PDFs and one markdown guide. That is the nine documents every figure in this file refers to; a ninth PDF was a broken duplicate with no text layer and has been deleted. |
 | Past sessions | `the Claude Code transcript folder for this project` |
 
 **Stored shapes carry four independent version numbers.** Bump the wrong one and
@@ -90,14 +90,13 @@ Four things it cost to learn, all of which will bite again:
 
 These have each cost real time. Read before running anything.
 
-**Node is not on PATH.** It lives at `C:\Program Files\nodejs`. Prepend it:
-
-```bash
-$env:PATH = "$env:ProgramFiles\nodejs;$env:PATH"
-```
-
-GitHub CLI is the same story — `C:\Program Files\GitHub CLI`. `gh auth` is
-already configured for `masinobi` with `repo` scope, so pushes work.
+**Node, npm and `gh` are on PATH — do not prepend it.** This entry used to say
+the opposite, was believed for an entire session, and cost
+`export PATH="/c/Program Files/nodejs:$PATH"` on every single command for no
+reason. Verified in both shells: `which node` gives
+`/c/Program Files/nodejs/node` under Bash, and `Get-Command node` resolves under
+PowerShell. `gh auth` is already configured for `masinobi` with `repo` scope, so
+pushes work.
 
 **Never run `npm run build` while the dev server is running.** The production
 build overwrites `.next` underneath the dev server and every chunk starts
@@ -406,6 +405,43 @@ into chasing one that was not.
 
 **Read back from IndexedDB** to check what was actually stored, rather than
 trusting the rendered view.
+
+A project `.claude/settings.json` allowlists the read-only commands above so
+they stop prompting. It deliberately does **not** allowlist `git commit`,
+`git push`, or `npm run build` — the first two are outward-facing and the third
+is the one that breaks a running dev server.
+
+**`npm run probe "<corpus>"` drives the app in Playwright.** Needs a dev server
+on :3000, and uses a fresh browser context every run, so it never sees or
+touches the reader's own IndexedDB. It ingests a real PDF through the app's own
+file input, builds a chain in the scratchpad, checks the lane graph at two
+widths, then runs a 20-question exam to a marked paper and reads the review
+queue back out of IndexedDB. Sixteen checks, one command, and it screenshots
+both to `scripts/.probe-*.png` for eyeballing.
+
+Three things it took to make that reliable, each of which will bite again:
+
+- **Set a file input only after hydration.** The input exists in the
+  server-rendered HTML, so Playwright fills it happily and React's `onChange`
+  never runs — the app just sits there. There is no signal for "hydrated" on
+  the loader (it renders identically before and after), so the probe sets the
+  file and retries if the app did not react.
+- **Every word in the reader is `role="button"`** for click-to-seek, so
+  `getByRole("button", { name: "New" })` matched 23 elements including the word
+  "new" in the document. Scope role lookups to `header`, or to a real
+  attribute — the List/Graph toggle is reachable by `aria-pressed`.
+- **Assert the contract, not the wish.** The first version asserted the graph
+  always fits its pane; it does not, and must not — below a 124px lane floor it
+  scrolls on purpose. A probe that fails on correct code is a probe that gets
+  switched off, so it now asserts "fits, or is already at the floor".
+
+**`npm test` covers what no corpus scan can reach.** The scanners measure
+everything that depends on real documents, which is most of this project — but
+SM-2 interval arithmetic, backup validation, and the exam assembler's behaviour
+when a corpus has no tables at all have no corpus dependency and were
+completely uncovered. A wrong interval is invisible: the queue still works,
+items still come back, and nobody notices they come back at the wrong time.
+27 tests, in `src/lib/*.test.ts`, next to the code they pin.
 
 **Look at it in a real browser before believing a layout.** `claude --chrome`
 drives the user's own Chrome, which is the only way anything here has been seen
