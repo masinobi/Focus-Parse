@@ -14,7 +14,12 @@
  * abandoned.
  */
 
-export type ReviewKind = "summary" | "cloze" | "grid";
+/**
+ * `acronym` arrived with the mock exam: a definition question, asked and marked
+ * the same way a cloze is, but whose prompt is the term rather than a sentence
+ * with a hole in it.
+ */
+export type ReviewKind = "summary" | "cloze" | "grid" | "acronym";
 
 /**
  * How well the item came back.
@@ -250,4 +255,13 @@ export function gridId(docId: string, block: number, row: string, column: string
 
 export function summaryId(docId: string, section: number): string {
   return `${docId}:summary:${section}`;
+}
+
+/**
+ * Acronym items are keyed by the term alone, not by where it was met. The
+ * expansion of "SUSAR" does not differ between guidelines, so asking it once
+ * per document would be the same question three times in one queue.
+ */
+export function acronymId(acronym: string): string {
+  return `acronym:${acronym}`;
 }

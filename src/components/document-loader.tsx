@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   AudioLines,
   FileText,
+  GraduationCap,
   Layers,
   Library,
   Loader2,
@@ -15,6 +16,7 @@ import {
 
 import { BackupControls } from "@/components/backup-controls";
 import { CorpusIndex } from "@/components/corpus-index";
+import { ExamSession } from "@/components/exam-session";
 import { ReviewSession } from "@/components/review-session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +41,7 @@ export function DocumentLoader() {
   const [due, setDue] = React.useState(0);
   const [reviewing, setReviewing] = React.useState(false);
   const [indexing, setIndexing] = React.useState(false);
+  const [examining, setExamining] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   const loadDoc = useFocusStore((s) => s.loadDoc);
@@ -132,6 +135,20 @@ export function DocumentLoader() {
     return <CorpusIndex onBack={() => setIndexing(false)} />;
   }
 
+  if (examining) {
+    return (
+      <ExamSession
+        onDone={() => {
+          setExamining(false);
+          // An exam feeds the queue like everything else, so both the debt
+          // count and the reading engine's idea of what is weak are stale.
+          void db.countDue().then(setDue);
+          void refreshWeakTerms();
+        }}
+      />
+    );
+  }
+
   if (reviewing) {
     return (
       <ReviewSession
@@ -197,6 +214,26 @@ export function DocumentLoader() {
               <span className="block text-xs text-muted-foreground">
                 Every term the parser found, and which of your{" "}
                 {recent.length === 1 ? "document" : `${recent.length} documents`} use it.
+              </span>
+            </span>
+          </button>
+        )}
+
+        {/* The reading tool's own machinery, pointed at the actual objective:
+            a timed paper across the whole corpus rather than interruptions
+            inside one document. */}
+        {recent.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setExamining(true)}
+            className="mb-6 flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors hover:bg-accent/60"
+          >
+            <GraduationCap className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 text-sm">
+              <span className="font-medium">Mock exam</span>
+              <span className="block text-xs text-muted-foreground">
+                Acronyms, terms in context and table cells, drawn across
+                everything and marked at the end.
               </span>
             </span>
           </button>

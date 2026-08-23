@@ -392,6 +392,29 @@ function carrierFor(
   return null;
 }
 
+/**
+ * Structural nouns which turn the number after them into a reference.
+ *
+ * "Section ____ states that…" and "Appendix ____ lists…" ask where something
+ * is, not what it says. A number is otherwise one of the best things to blank —
+ * thresholds and timeframes are exactly what a reader believes they retained
+ * and did not — so the rule keys on what introduces it rather than on the
+ * number itself: "an average of ____ days" survives, "Section ____" does not.
+ *
+ * Found by reading a real mock exam, which asked for section 4.5 and section
+ * 4.2 of the same guidance in one paper.
+ */
+const REFERENCE_LEAD =
+  /\b(sections?|sec|parts?|chapters?|appendix|annex|figures?|tables?|clauses?|paragraphs?|items?|steps?|volumes?|pages?)\.?\s*$/i;
+
+/** True when a blank is asking for a cross-reference rather than a fact. */
+export function isStructuralReference(carrier: string, answer: string): boolean {
+  if (!/^\d[\d.–-]*$/.test(answer)) return false;
+  const at = carrier.indexOf(BLANK);
+  if (at < 0) return false;
+  return REFERENCE_LEAD.test(carrier.slice(0, at));
+}
+
 /* ------------------------------------------------------------------ *
  * Grading
  * ------------------------------------------------------------------ */

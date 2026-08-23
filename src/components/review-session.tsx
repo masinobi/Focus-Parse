@@ -158,7 +158,7 @@ export function ReviewSession({ onDone }: ReviewSessionProps) {
 
       <div className="fp-scroll flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-2xl px-6 py-12">
-          {item.kind === "cloze" && (
+          {(item.kind === "cloze" || item.kind === "acronym") && (
             <ClozeReview
               item={item}
               draft={draft}
@@ -251,6 +251,8 @@ function ClozeReview({
   inputRef: React.RefObject<HTMLInputElement>;
   onMark: () => void;
 }) {
+  // An acronym item's prompt is a question rather than a carrier sentence, so
+  // it has no blank to split on and the whole prompt precedes the input.
   const at = item.prompt.indexOf(BLANK);
   const before = at >= 0 ? item.prompt.slice(0, at) : item.prompt;
   const after = at >= 0 ? item.prompt.slice(at + BLANK.length) : "";
@@ -258,7 +260,7 @@ function ClozeReview({
   return (
     <div>
       <p className="mb-6 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-        Term
+        {item.kind === "acronym" ? "Definition" : "Term"}
       </p>
       <p className="font-reader text-lg leading-[1.9] text-foreground/90">
         {before}
