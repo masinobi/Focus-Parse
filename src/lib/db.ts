@@ -1,3 +1,4 @@
+import { buildEntityIndex, ENTITY_SCHEMA, type DocEntityIndex } from "./entities";
 import { parseDocument, SCHEMA_VERSION } from "./parse";
 import {
   difficulty,
@@ -12,7 +13,7 @@ import {
 import type { ParsedDoc, SessionState } from "./types";
 
 /**
- * Thin IndexedDB layer. Three stores:
+ * Thin IndexedDB layer. Four stores:
  *   documents — the parsed document, keyed by id (source is kept so a document
  *               can be re-parsed after a parser change).
  *   sessions  — per-document reading state: position, flow nodes, summaries.
@@ -20,13 +21,18 @@ import type { ParsedDoc, SessionState } from "./types";
  *               `dueAt` so the loader can ask what is due without reading the
  *               whole queue, and by `docId` so forgetting a document does not
  *               leave its questions behind.
+ *   entities  — one compact entity index per document. Derived data, kept only
+ *               so the corpus view does not have to load nine parsed documents
+ *               — several hundred thousand tokens — to answer "where else does
+ *               this term come up?".
  */
 
 const DB_NAME = "focusparse";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const DOCS = "documents";
 const SESSIONS = "sessions";
 const REVIEWS = "reviews";
+const ENTITIES = "entities";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -52,6 +58,11 @@ function open(): Promise<IDBDatabase> {
         const store = db.createObjectStore(REVIEWS, { keyPath: "id" });
         store.createIndex("dueAt", "dueAt");
         store.createIndex("docId", "docId");
+      }
+      // Added in version 3. No indexes: the whole store is read at once when
+      // the corpus view opens, and it holds one small record per document.
+      if (!db.objectStoreNames.contains(ENTITIES)) {
+        db.createObjectStore(ENTITIES, { keyPath: "docId" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -95,6 +106,7 @@ export const db = {
       tx<IDBValidKey>(DOCS, "readwrite", (s) => s.put(doc)).then(() => undefined as void),
       undefined as void
     );
+    await db.syncEntityIndex(doc);
   },
 
   async getDoc(id: string): Promise<ParsedDoc | null> {
@@ -149,6 +161,13 @@ export const db = {
     // Reviews outlive the reading session by design, but not the document they
     // quote: a question whose source text is gone can never be checked again.
     await db.deleteReviewsForDoc(id);
+    // The index is derived data. Nothing can rebuild it once its document is
+    // gone, and leaving it behind would show the corpus a document it no
+    // longer has.
+    await safe(
+      tx<undefined>(ENTITIES, "readwrite", (s) => s.delete(id)).then(() => undefined),
+      undefined
+    );
   },
 
   async saveSession(session: SessionState): Promise<void> {
@@ -303,5 +322,99 @@ export const db = {
         undefined
       );
     }
+  },
+
+  /* ---- Entity index ---------------------------------------------------- */
+
+  /**
+   * Keep a document's entity index in step with the document.
+   *
+   * Rebuilt only when it could actually have changed: a different word count
+   * means a re-parse, a different schema means different extraction rules, and
+   * a rename is folded in without walking the token stream again. Renaming a
+   * 524-page guideline should not cost a full re-index.
+   */
+  async syncEntityIndex(doc: ParsedDoc): Promise<DocEntityIndex> {
+    const existing = await safe(
+      tx<DocEntityIndex | undefined>(ENTITIES, "readonly", (s) => s.get(doc.id)).then(
+        (v) => v ?? null
+      ),
+      null
+    );
+
+    if (
+      existing &&
+      existing.schema === ENTITY_SCHEMA &&
+      existing.wordCount === doc.wordCount
+    ) {
+      if (existing.docTitle === doc.title) return existing;
+      const renamed = { ...existing, docTitle: doc.title };
+      await safe(
+        tx<IDBValidKey>(ENTITIES, "readwrite", (s) => s.put(renamed)).then(
+          () => undefined as void
+        ),
+        undefined as void
+      );
+      return renamed;
+    }
+
+    const built = buildEntityIndex(doc);
+    await safe(
+      tx<IDBValidKey>(ENTITIES, "readwrite", (s) => s.put(built)).then(
+        () => undefined as void
+      ),
+      undefined as void
+    );
+    return built;
+  },
+
+  /**
+   * Every stored document's index, building any that are missing or stale.
+   *
+   * Documents stored before this existed have no index, and rebuilding one
+   * means loading the whole parsed document — which for the GCDMP is a few
+   * hundred thousand tokens. That is why `onProgress` is here: the first open
+   * after an upgrade has real work to do and the reader should see it, not
+   * wonder whether the view has hung.
+   */
+  async listEntityIndexes(
+    onProgress?: (done: number, total: number, title: string) => void
+  ): Promise<DocEntityIndex[]> {
+    const summaries = await db.listDocs();
+    const stored = await safe(
+      tx<DocEntityIndex[]>(
+        ENTITIES,
+        "readonly",
+        (s) => s.getAll() as IDBRequest<DocEntityIndex[]>
+      ),
+      []
+    );
+    const byId = new Map(stored.map((i) => [i.docId, i]));
+
+    const out: DocEntityIndex[] = [];
+    for (let i = 0; i < summaries.length; i++) {
+      const summary = summaries[i];
+      onProgress?.(i, summaries.length, summary.title);
+
+      const index = byId.get(summary.id);
+      if (
+        index &&
+        index.schema === ENTITY_SCHEMA &&
+        index.wordCount === summary.wordCount &&
+        index.docTitle === summary.title
+      ) {
+        out.push(index);
+        continue;
+      }
+
+      // `getDoc` re-parses a stale document, so this also picks up any parser
+      // change since the index was written.
+      const doc = await db.getDoc(summary.id);
+      if (!doc) continue;
+      out.push(await db.syncEntityIndex(doc));
+    }
+
+    onProgress?.(summaries.length, summaries.length, "");
+    return out;
   },
 };

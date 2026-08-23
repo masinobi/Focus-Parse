@@ -29,7 +29,14 @@ import {
  *  - **Furniture.** Running heads, folios and footnote markers are not prose.
  */
 
-interface RawItem {
+/**
+ * One extracted glyph run. Exported, with `PageItems`, `assemble` and
+ * `isBoldFont`, so the offline scanners can drive the *same* assembly the app
+ * uses instead of re-implementing it — `extractPdf` itself is browser-only
+ * (it loads the pdf.js worker from a URL), but everything after the glyphs
+ * come out of pdf.js is pure and runs anywhere.
+ */
+export interface RawItem {
   str: string;
   x: number;
   xEnd: number;
@@ -55,7 +62,7 @@ interface Line {
   grid?: GridData;
 }
 
-interface PageItems {
+export interface PageItems {
   items: RawItem[];
   width: number;
   height: number;
@@ -117,7 +124,7 @@ const FRONT_MATTER = /@|https?:|doi\.org|et al\.|,\s*[A-Z]{2}$|^\*/;
 const LIST_MARKER = /^([•●▪◦·‣]|[-–—](?=\s))\s*/;
 const NUMBERED = /^(\d{1,3})[.)]\s+/;
 
-function isBoldFont(family: string | undefined): boolean {
+export function isBoldFont(family: string | undefined): boolean {
   return Boolean(family && /bold|black|heavy|semibold|-bd\b/i.test(family));
 }
 
@@ -494,7 +501,7 @@ function toMarkdown(pages: Line[][], body: BodyStyle): string {
 }
 
 /** Turn extracted pages into markdown. */
-function assemble(pages: PageItems[]): string {
+export function assemble(pages: PageItems[]): string {
   const allItems = pages.flatMap((p) => p.items);
   if (!allItems.length) return "";
 

@@ -5,6 +5,7 @@ import {
   AudioLines,
   FileText,
   Layers,
+  Library,
   Loader2,
   Pencil,
   Sparkles,
@@ -12,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 
+import { CorpusIndex } from "@/components/corpus-index";
 import { ReviewSession } from "@/components/review-session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +37,7 @@ export function DocumentLoader() {
   /** How many retrieval items are owed right now. */
   const [due, setDue] = React.useState(0);
   const [reviewing, setReviewing] = React.useState(false);
+  const [indexing, setIndexing] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   const loadDoc = useFocusStore((s) => s.loadDoc);
@@ -119,6 +122,10 @@ export function DocumentLoader() {
     await hydrateSession(doc.id);
   };
 
+  if (indexing) {
+    return <CorpusIndex onBack={() => setIndexing(false)} />;
+  }
+
   if (reviewing) {
     return (
       <ReviewSession
@@ -166,6 +173,25 @@ export function DocumentLoader() {
             </span>
             <span className="shrink-0 text-xs text-muted-foreground">
               ~{Math.max(1, Math.round((due * 15) / 60))} min
+            </span>
+          </button>
+        )}
+
+        {/* Nine guidelines on one subject are one corpus, and until this the
+            app had no way to say so. */}
+        {recent.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setIndexing(true)}
+            className="mb-6 flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors hover:bg-accent/60"
+          >
+            <Library className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 text-sm">
+              <span className="font-medium">Corpus index</span>
+              <span className="block text-xs text-muted-foreground">
+                Every term the parser found, and which of your{" "}
+                {recent.length === 1 ? "document" : `${recent.length} documents`} use it.
+              </span>
             </span>
           </button>
         )}
