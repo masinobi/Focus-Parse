@@ -1,4 +1,5 @@
 import { ACRONYMS, matchAcronym } from "./acronyms";
+import { termKey, type WeakTerms } from "./review";
 import type { Block, ParsedDoc, Token } from "./types";
 
 /**
@@ -155,6 +156,12 @@ export interface ClozeBlank {
   acronym?: string;
   /** Position of the occurrence, so the reader can seek back to it. */
   tokenIndex: number;
+  /**
+   * Times this term has already been failed in review, when it was chosen
+   * partly *because* of that. Shown after marking — being told a term is one
+   * you keep losing is the point of having preferred it.
+   */
+  missed?: number;
 }
 
 export interface ClozeCheck {
@@ -253,17 +260,35 @@ interface Candidate {
 }
 
 /**
+ * What a term is worth being *stuck* on.
+ *
+ * Sized against `salience` deliberately: a fully stuck capitalized noun (3 + 6)
+ * outranks a fresh acronym (10) only just, and a stuck acronym (16) outranks
+ * everything. The reader still meets the vocabulary the material is written in;
+ * they just meet the part of it that is not sticking first. Any larger and the
+ * checks would stop following the text and start being a personalized drill,
+ * which is what the review queue is already for.
+ */
+const WEAK_BOOST = 6;
+
+/**
  * Build a cloze check over the stretch of text just read.
  *
  * Scoped to a token window rather than to a section, because this is the cheap
  * rung of the ladder: it fires on a reading cadence, several times between the
  * full intercepts that fire on structure.
+ *
+ * `weak` is what the retrieval queue has learned about this reader, keyed by
+ * term rather than by document. Terms in it are preferred over equally salient
+ * ones — the window still decides *what can* be asked, and this decides which
+ * of those is worth the interruption.
  */
 export function buildCloze(
   doc: ParsedDoc,
   from: number,
   to: number,
-  max: number = MAX_BLANKS
+  max: number = MAX_BLANKS,
+  weak: WeakTerms = {}
 ): ClozeCheck | null {
   const start = Math.max(0, Math.min(from, doc.tokens.length));
   const end = Math.max(start, Math.min(to, doc.tokens.length));
@@ -282,7 +307,9 @@ export function buildCloze(
     const score = salience(doc, token, shell.core);
     if (score <= 0) continue;
 
-    const key = token.acronym ?? shell.core.toLowerCase();
+    // Keyed the same way the review queue keys difficulty, so a candidate and
+    // the record of having failed it are the same string.
+    const key = termKey(shell.core, token.acronym);
     const existing = byKey.get(key);
     if (existing) {
       existing.occurrences.push(i);
@@ -293,7 +320,11 @@ export function buildCloze(
     }
   }
 
-  const ranked = Array.from(byKey.values()).sort((a, b) => b.score - a.score);
+  // The boost is applied once per term, not once per occurrence: a stuck term
+  // said five times in one stretch is still one term the reader is stuck on.
+  const ranked = Array.from(byKey.values())
+    .map((c) => ({ ...c, score: c.score + WEAK_BOOST * (weak[c.key]?.weight ?? 0) }))
+    .sort((a, b) => b.score - a.score);
   const blanks: ClozeBlank[] = [];
   /**
    * One blank per sentence. Two blanks cut from the same carrier print that
@@ -307,6 +338,8 @@ export function buildCloze(
     if (blanks.length >= max) break;
     const blank = carrierFor(doc, candidate, usedChunks);
     if (blank) {
+      const lapses = weak[candidate.key]?.lapses ?? 0;
+      if (lapses > 0) blank.missed = lapses;
       blanks.push(blank);
       usedChunks.add(doc.tokens[blank.tokenIndex].chunk);
     }

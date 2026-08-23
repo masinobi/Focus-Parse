@@ -153,6 +153,51 @@ export function scheduleReview(
   };
 }
 
+/* ------------------------------------------------------------------ *
+ * Difficulty
+ * ------------------------------------------------------------------ */
+
+/**
+ * What the reader is currently struggling with.
+ *
+ * The queue already knows this — it is the whole content of `lapses` and
+ * `ease` — but until now it only spent that knowledge on *when* to ask again.
+ * The reading engine picks blanks by salience alone, so a term failed three
+ * times in review is no more likely to be blanked on the next pass through a
+ * document than one that has never given any trouble. Weighting closes that
+ * loop: what the queue has learned steers what the next spot check asks about.
+ */
+export interface WeakTerm {
+  key: string;
+  /** 0 (solid) to 1 (badly stuck). */
+  weight: number;
+  /** Times it has been failed outright, for reporting it back to the reader. */
+  lapses: number;
+}
+
+export type WeakTerms = Record<string, WeakTerm>;
+
+/** Lapses at which a term counts as fully stuck. */
+const WEAK_LAPSES = 3;
+
+/**
+ * How badly an item is going, as 0–1.
+ *
+ * Two independent signals, combined with `max` so either alone is enough.
+ * Lapses are the direct evidence — the item was failed outright. Ease is the
+ * slower one: a summary self-graded `hard` three times has never been failed
+ * but is plainly not settling, and an item whose ease has been driven to the
+ * floor is by definition the queue's own account of a term that will not stick.
+ */
+export function difficulty(item: Pick<ReviewItem, "lapses" | "ease">): number {
+  const fromLapses = Math.min(1, Math.max(0, item.lapses) / WEAK_LAPSES);
+  const fromEase = Math.max(
+    0,
+    Math.min(1, (DEFAULT_EASE - item.ease) / (DEFAULT_EASE - MIN_EASE))
+  );
+  return Math.max(fromLapses, fromEase);
+}
+
 /** Human-readable interval, for the "next in…" line after an answer. */
 export function formatInterval(item: ReviewItem): string {
   if (item.intervalDays <= 0) return "10 minutes";
@@ -181,6 +226,22 @@ function slug(value: string): string {
 
 export function clozeId(docId: string, answer: string): string {
   return `${docId}:cloze:${slug(answer)}`;
+}
+
+/**
+ * Identity of a *term*, independent of the document it was met in.
+ *
+ * Review ids are per-document on purpose — the same word blanked out of two
+ * guidelines is two questions with two carrier sentences. Difficulty is not:
+ * a reader who cannot hold on to "SUSAR" cannot hold on to it in the GCDMP
+ * either, so the weakness has to be keyed by the term alone or nine documents
+ * each learn the same lesson separately and none of them acts on it.
+ *
+ * An acronym keys on its dictionary entry rather than its spelling, so "CRFs"
+ * and "CRF" are one term.
+ */
+export function termKey(answer: string, acronym?: string): string {
+  return acronym ?? slug(answer);
 }
 
 export function gridId(docId: string, block: number, row: string, column: string): string {

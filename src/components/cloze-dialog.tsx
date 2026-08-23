@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, SquarePen, X } from "lucide-react";
+import { Check, History, SquarePen, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -31,6 +31,7 @@ export function ClozeDialog() {
   const passCheck = useFocusStore((s) => s.passCheck);
   const abandonCheck = useFocusStore((s) => s.abandonCheck);
   const seekToken = useFocusStore((s) => s.seekToken);
+  const refreshWeakTerms = useFocusStore((s) => s.refreshWeakTerms);
 
   const [drafts, setDrafts] = React.useState<string[]>([]);
   const [marked, setMarked] = React.useState<boolean[] | null>(null);
@@ -59,8 +60,12 @@ export function ClozeDialog() {
     );
     setMarked(results);
 
+    // These answers are exactly what the weighting reads, so the next check
+    // must be built from the queue as it stands after them, not before.
+    const written: Promise<unknown>[] = [];
+
     cloze.blanks.forEach((blank, i) => {
-      void db.recordAnswer(
+      written.push(db.recordAnswer(
         {
           id: clozeId(doc.id, blank.answer),
           docId: doc.id,
@@ -72,8 +77,10 @@ export function ClozeDialog() {
           section: doc.tokens[blank.tokenIndex]?.section,
         },
         results[i] ? QUALITY.good : QUALITY.again
-      );
+      ));
     });
+
+    void Promise.all(written).then(refreshWeakTerms);
   };
 
   if (!open || !cloze) return null;
@@ -172,6 +179,17 @@ export function ClozeDialog() {
                       Correct.
                     </p>
                   )}
+
+                  {/* Why this term and not another. Shown only after marking:
+                      before it, knowing a blank was chosen for being hard is
+                      noise the reader can do nothing with. */}
+                  {state !== null && blank.missed ? (
+                    <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <History className="h-3 w-3 shrink-0" />
+                      Asked because you have lost it{" "}
+                      {blank.missed === 1 ? "once" : `${blank.missed} times`} in review.
+                    </p>
+                  ) : null}
                 </div>
               );
             })}

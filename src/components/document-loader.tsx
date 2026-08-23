@@ -39,6 +39,7 @@ export function DocumentLoader() {
 
   const loadDoc = useFocusStore((s) => s.loadDoc);
   const hydrateSession = useFocusStore((s) => s.hydrateSession);
+  const refreshWeakTerms = useFocusStore((s) => s.refreshWeakTerms);
 
   React.useEffect(() => {
     void db.listDocs().then(setRecent);
@@ -124,6 +125,9 @@ export function DocumentLoader() {
         onDone={() => {
           setReviewing(false);
           void db.countDue().then(setDue);
+          // A warm-up is where most lapses are recorded, so the reading engine's
+          // idea of what this reader keeps losing is stale the moment it ends.
+          void refreshWeakTerms();
         }}
       />
     );

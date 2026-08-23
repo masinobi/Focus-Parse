@@ -1,5 +1,14 @@
 import { parseDocument, SCHEMA_VERSION } from "./parse";
-import { newReview, scheduleReview, type ReviewItem, type ReviewQuality, type ReviewSeed } from "./review";
+import {
+  difficulty,
+  newReview,
+  scheduleReview,
+  termKey,
+  type ReviewItem,
+  type ReviewQuality,
+  type ReviewSeed,
+  type WeakTerms,
+} from "./review";
 import type { ParsedDoc, SessionState } from "./types";
 
 /**
@@ -239,6 +248,42 @@ export const db = {
       tx<number>(REVIEWS, "readonly", (s) => s.count()),
       0
     );
+  },
+
+  /**
+   * What the reader is currently losing, keyed by term rather than document.
+   *
+   * Read in full rather than through an index: there is no index on difficulty,
+   * the queue is a few hundred items at most, and this is read once when a
+   * document opens and again after a check — not on any hot path.
+   *
+   * Summaries are excluded. Their "answer" is a whole sentence the reader
+   * wrote, so it can never be the term a blank is cut around, and folding them
+   * in would only put unreachable keys in the map.
+   */
+  async weakTerms(): Promise<WeakTerms> {
+    const all = await safe(
+      tx<ReviewItem[]>(REVIEWS, "readonly", (s) => s.getAll() as IDBRequest<ReviewItem[]>),
+      []
+    );
+
+    const weak: WeakTerms = {};
+    for (const item of all) {
+      if (item.kind === "summary") continue;
+      const weight = difficulty(item);
+      if (weight <= 0) continue;
+
+      const key = termKey(item.answer, item.acronym);
+      const existing = weak[key];
+      // The same term can be queued from several documents. Take the worst
+      // showing: struggling with it anywhere is struggling with it.
+      if (!existing || weight > existing.weight) {
+        weak[key] = { key, weight, lapses: Math.max(item.lapses, existing?.lapses ?? 0) };
+      } else if (item.lapses > existing.lapses) {
+        existing.lapses = item.lapses;
+      }
+    }
+    return weak;
   },
 
   async deleteReviewsForDoc(docId: string): Promise<void> {

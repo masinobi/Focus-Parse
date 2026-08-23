@@ -4,7 +4,7 @@ import { create } from "zustand";
 
 import { db } from "@/lib/db";
 import type { ClozeCheck } from "@/lib/quiz";
-import { QUALITY, summaryId } from "@/lib/review";
+import { QUALITY, summaryId, type WeakTerms } from "@/lib/review";
 import type { FlowNode, LogicTag, ParsedDoc, ViewMode } from "@/lib/types";
 
 export const MIN_RATE = 1.0;
@@ -125,6 +125,13 @@ interface FocusState {
    * check over text that was never read.
    */
   lastCheckToken: number;
+  /**
+   * What the retrieval queue says this reader keeps losing, keyed by term.
+   * Read from IndexedDB rather than derived, and refreshed whenever an answer
+   * changes it — the reading engine consults it synchronously when it builds a
+   * spot check, and a promise there would arm the check a beat late.
+   */
+  weakTerms: WeakTerms;
   /** Grid blocks already answered correctly — never asked about twice. */
   gridsPassed: Record<number, boolean>;
   /** Attempts spent on each grid block, which also varies the cell asked. */
@@ -170,6 +177,8 @@ interface FocusState {
   replayGrid: () => void;
   abandonCheck: () => void;
   noteCheckPoint: (tokenIndex: number) => void;
+  /** Re-read the queue's account of which terms are not sticking. */
+  refreshWeakTerms: () => Promise<void>;
 
   toggleVigilance: () => void;
   raiseVigilance: () => void;
@@ -255,6 +264,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   check: IDLE_CHECK,
   vigilance: freshVigilance(),
   lastCheckToken: 0,
+  weakTerms: {},
   gridsPassed: {},
   gridAttempts: {},
 
@@ -567,6 +577,16 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   },
 
   noteCheckPoint: (tokenIndex) => set({ lastCheckToken: tokenIndex }),
+
+  /**
+   * Deliberately not reset by `loadDoc`. Difficulty is a property of the reader
+   * and the term, not of the document open at the time — the whole point of
+   * keying it by term is that a word lost in the GCDMP is asked about again in
+   * ICH E6.
+   */
+  refreshWeakTerms: async () => {
+    set({ weakTerms: await db.weakTerms() });
+  },
 
   /* ---- Vigilance ------------------------------------------------------- */
 

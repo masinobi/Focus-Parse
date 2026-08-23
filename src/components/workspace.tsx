@@ -39,10 +39,20 @@ export function Workspace() {
   const nodes = useFocusStore((s) => s.nodes);
   const summaries = useFocusStore((s) => s.summaries);
 
+  const refreshWeakTerms = useFocusStore((s) => s.refreshWeakTerms);
+
   const { supported, voices, estimating } = useSpeechEngine();
   const noise = useBrownNoise();
   useKeyboardControls();
   useVigilance();
+
+  // What the review queue has learned steers what the next spot check asks
+  // about, so it has to be in hand before the first check can fire. Read once
+  // per document rather than per check: the queue only changes when an answer
+  // is given, and those paths refresh it themselves.
+  React.useEffect(() => {
+    if (doc) void refreshWeakTerms();
+  }, [doc, refreshWeakTerms]);
 
   // Persist reading position and captures, debounced so word-level advances do
   // not hammer IndexedDB.

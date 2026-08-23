@@ -41,6 +41,7 @@ execFileSync(
     "src/lib/quiz.ts",
     "src/lib/parse.ts",
     "src/lib/tables.ts",
+    "src/lib/review.ts",
     "--outDir", out,
     // CommonJS, not ESM: these modules import each other without file
     // extensions, which Node's ESM resolver rejects outright.
@@ -55,6 +56,7 @@ execFileSync(
 // tsc infers src/lib as the root, so the emitted files sit flat in outDir.
 const load = createRequire(import.meta.url);
 const { buildGridQuestion, buildCloze, answerMatches, BLANK } = load(join(out, "quiz.js"));
+const { termKey } = load(join(out, "review.js"));
 const { parseDocument } = load(join(out, "parse.js"));
 const { detectTablesOnPage, toGrid, flattenGrid } = load(join(out, "tables.js"));
 
@@ -164,10 +166,13 @@ let leaked = 0;
 let selfReject = 0;
 let sharedCarrier = 0;
 const byKind = { acronym: 0, numeric: 0, capitalized: 0 };
+/** Parsed prose, kept so the adaptive pass can re-walk the same windows. */
+const prose = [];
 
 for (const file of files.filter((f) => f.toLowerCase().endsWith(".md"))) {
   const source = readFileSync(join(dir, file), "utf8");
   const doc = parseDocument(source, file);
+  prose.push({ file, doc });
 
   let fileChecks = 0;
   for (let from = 0; from + CLOZE_INTERVAL_TOKENS <= doc.tokens.length; from += CLOZE_INTERVAL_TOKENS) {
@@ -212,6 +217,91 @@ for (const file of files.filter((f) => f.toLowerCase().endsWith(".md"))) {
   );
 }
 
+/* ---- Adaptive difficulty ------------------------------------------ *
+ *
+ * The weighting is only worth having if it can actually displace a blank the
+ * unweighted builder would have chosen. Measured rather than asserted: for
+ * every term present in a window but *not* blanked, mark it as one the reader
+ * keeps losing and rebuild the same window. If it now appears, the queue's
+ * account of this reader reached the reading engine.
+ *
+ * `promoted: 0` would mean the boost is inert — a control wired to nothing —
+ * which is exactly the failure the acronym-precision and never-incremented-
+ * counter false alarms both wore. It is asserted as must-be-nonzero for that
+ * reason.
+ */
+
+const SHELL = /^([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9]*)$/;
+/** Enough per window to find a displacement without walking every stopword. */
+const MAX_PROBES_PER_WINDOW = 40;
+
+let probedWindows = 0;
+let promoted = 0;
+let weightedLeaked = 0;
+let weightedShared = 0;
+
+for (const { file, doc } of prose) {
+  for (
+    let from = 0;
+    from + CLOZE_INTERVAL_TOKENS <= doc.tokens.length;
+    from += CLOZE_INTERVAL_TOKENS
+  ) {
+    const to = from + CLOZE_INTERVAL_TOKENS;
+    const base = buildCloze(doc, from, to);
+    if (!base) continue;
+
+    probedWindows += 1;
+    const chosen = new Set(
+      base.blanks.map((b) => termKey(b.answer, b.acronym))
+    );
+
+    // Every distinct term in the window that the unweighted builder passed over.
+    const others = [];
+    const seen = new Set();
+    for (let i = from; i < to; i++) {
+      const token = doc.tokens[i];
+      const core = SHELL.exec(token.text)?.[2];
+      if (!core) continue;
+      const key = termKey(core, token.acronym);
+      if (chosen.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      others.push(key);
+      if (others.length >= MAX_PROBES_PER_WINDOW) break;
+    }
+
+    for (const key of others) {
+      const weak = { [key]: { key, weight: 1, lapses: 3 } };
+      const weighted = buildCloze(doc, from, to, undefined, weak);
+      if (!weighted) continue;
+
+      const keys = weighted.blanks.map((b) => termKey(b.answer, b.acronym));
+      if (!keys.includes(key)) continue;
+
+      promoted += 1;
+
+      // A promoted blank is still a blank: the same two invariants hold.
+      const carriers = new Set(
+        weighted.blanks.map((b) => doc.tokens[b.tokenIndex].chunk)
+      );
+      if (carriers.size !== weighted.blanks.length) weightedShared += 1;
+      for (const blank of weighted.blanks) {
+        if (blank.carrier.includes(blank.answer)) weightedLeaked += 1;
+      }
+
+      if (verbose) {
+        const blank = weighted.blanks.find(
+          (b) => termKey(b.answer, b.acronym) === key
+        );
+        console.log(
+          `   ${file} @${from}: “${blank.answer}” displaced a blank once weighted` +
+            (blank.missed ? ` (missed ${blank.missed}x)` : "")
+        );
+      }
+      break;
+    }
+  }
+}
+
 /* ---- Report ------------------------------------------------------- */
 
 console.log(`\n=== grids ===`);
@@ -238,3 +328,11 @@ console.log(
 console.log(`  answer visible in its own carrier: ${leaked}   (must be 0)`);
 console.log(`  carrier missing its blank: ${selfReject}   (must be 0)`);
 console.log(`  two blanks sharing one carrier: ${sharedCarrier}   (must be 0)`);
+
+console.log(`\n=== adaptive difficulty ===`);
+console.log(`  windows probed: ${probedWindows}`);
+console.log(
+  `  windows where a weak term displaced a blank: ${promoted}   (must be > 0)`
+);
+console.log(`  weighted blank visible in its own carrier: ${weightedLeaked}   (must be 0)`);
+console.log(`  weighted blanks sharing one carrier: ${weightedShared}   (must be 0)`);

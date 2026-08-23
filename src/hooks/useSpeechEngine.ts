@@ -399,7 +399,13 @@ export function useSpeechEngine(): SpeechEngineStatus {
       //    just heard, marked locally, several times between intercepts.
       const readTo = doc.chunks[chunkIndex].tokenEnd;
       if (readTo - state.lastCheckToken >= CLOZE_INTERVAL_TOKENS) {
-        const cloze = buildCloze(doc, state.lastCheckToken, readTo);
+        const cloze = buildCloze(
+          doc,
+          state.lastCheckToken,
+          readTo,
+          undefined,
+          state.weakTerms
+        );
         if (cloze) {
           state.advanceToken(readTo - 1);
           state.armCloze(cloze, next);
