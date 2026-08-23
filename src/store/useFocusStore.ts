@@ -137,6 +137,14 @@ interface FocusState {
    * spot check, and a promise there would arm the check a beat late.
    */
   weakTerms: WeakTerms;
+  /**
+   * True once this document's stored session has been read back (or found not
+   * to exist). The session writer waits on it: `loadDoc` resets captures to
+   * empty and `hydrateSession` fills them in a tick later, so a writer that did
+   * not wait could persist the empty state over a real session — losing every
+   * node and summary for a document whose hydration happened to be slow.
+   */
+  hydrated: boolean;
   /** Grid blocks already answered correctly — never asked about twice. */
   gridsPassed: Record<number, boolean>;
   /** Attempts spent on each grid block, which also varies the cell asked. */
@@ -280,6 +288,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   vigilance: freshVigilance(),
   lastCheckToken: 0,
   weakTerms: {},
+  hydrated: false,
   gridsPassed: {},
   gridAttempts: {},
 
@@ -301,6 +310,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       check: IDLE_CHECK,
       vigilance: { ...freshVigilance(), enabled: get().vigilance.enabled },
       lastCheckToken: 0,
+      hydrated: false,
       gridsPassed: {},
       gridAttempts: {},
       wordsSpoken: 0,
@@ -323,6 +333,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       check: IDLE_CHECK,
       vigilance: { ...freshVigilance(), enabled: get().vigilance.enabled },
       lastCheckToken: 0,
+      hydrated: false,
       gridsPassed: {},
       gridAttempts: {},
     }),
@@ -339,9 +350,17 @@ export const useFocusStore = create<FocusState>((set, get) => ({
 
   hydrateSession: async (docId) => {
     const session = await db.getSession(docId);
-    if (!session) return;
     const doc = get().doc;
     if (!doc || doc.id !== docId) return;
+
+    // Marked hydrated on every path, including "there was nothing to restore".
+    // A freshly ingested document has no session, and if that case did not
+    // arrive here the writer would stay blocked and the first reading of a new
+    // document would never be saved at all.
+    if (!session) {
+      set({ hydrated: true });
+      return;
+    }
 
     const tokenIndex = Math.min(Math.max(0, session.tokenIndex), Math.max(0, doc.tokens.length - 1));
     set({
@@ -350,7 +369,11 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       seekNonce: get().seekNonce + 1,
       nodes: session.nodes ?? [],
       summaries: session.summaries ?? {},
+      // Absent on every session written before grid results were persisted.
+      gridsPassed: session.gridsPassed ?? {},
+      gridAttempts: session.gridAttempts ?? {},
       lastCheckToken: tokenIndex,
+      hydrated: true,
     });
   },
 
@@ -376,7 +399,21 @@ export const useFocusStore = create<FocusState>((set, get) => ({
 
   setView: (view) => set({ view }),
 
-  setVoice: (voiceURI) => set({ voiceURI }),
+  /**
+   * Remembered across sessions. The choice is a property of the machine's
+   * installed voices rather than of any document, so it lives in localStorage
+   * rather than in a session record — and it is written here, from an action,
+   * never during render.
+   */
+  setVoice: (voiceURI) => {
+    set({ voiceURI });
+    try {
+      if (voiceURI) window.localStorage.setItem("focusparse:voice", voiceURI);
+      else window.localStorage.removeItem("focusparse:voice");
+    } catch {
+      // Private mode: the voice simply is not remembered.
+    }
+  },
 
   toggleAnchor: (key) =>
     set((s) => ({ anchors: { ...s.anchors, [key]: !s.anchors[key] } })),

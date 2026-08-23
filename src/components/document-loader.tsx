@@ -52,9 +52,14 @@ export function DocumentLoader() {
   const ingest = React.useCallback(
     (source: string, name?: string) => {
       if (!source.trim()) return;
-      loadDoc(parseDocument(source, name));
+      const doc = parseDocument(source, name);
+      loadDoc(doc);
+      // A freshly parsed document has no stored session, but the session
+      // writer waits on hydration having happened at all — so every load path
+      // goes through it, including the one with nothing to restore.
+      void hydrateSession(doc.id);
     },
-    [loadDoc]
+    [loadDoc, hydrateSession]
   );
 
   const readFile = React.useCallback(

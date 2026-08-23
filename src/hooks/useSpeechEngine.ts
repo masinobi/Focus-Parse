@@ -43,6 +43,48 @@ const LATENCY_HEADROOM = 1.5;
 /** Utterances to give a voice before concluding it fires no boundaries at all. */
 const SILENT_VOICE_ATTEMPTS = 2;
 
+/** Where the chosen voice is remembered between sessions. */
+const VOICE_KEY = "focusparse:voice";
+
+/**
+ * Voices to prefer when the reader has not chosen one yet, best first.
+ *
+ * Not a taste ranking — these are the fastest to their first boundary in the
+ * `/voice-check` run on this machine (Aria 576ms, Guy 637ms, Jenny 729ms,
+ * Christopher 760ms), and the engine pays that latency once per *sentence*.
+ * What this exists to avoid is the platform default: Windows nominates David,
+ * which the same probe measured as the slowest of all 49 voices to report a
+ * boundary. Picking `v.default` first meant every session started on the worst
+ * available voice until the reader changed it by hand, every time.
+ *
+ * Matched as a case-insensitive substring, because the full names carry
+ * platform decoration ("Microsoft Aria Online (Natural) - English (United
+ * States)"). Absent every one of them, the old default-first order applies.
+ */
+const PREFERRED_VOICES = ["Aria", "Guy", "Jenny", "Christopher"];
+
+/**
+ * Voices to pass over when falling back. Both are word-exact, so this is about
+ * lead-in latency alone; either is still chosen if nothing else is installed.
+ */
+const SLOW_DEFAULTS = ["David", "Zira"];
+
+/** The voice a fresh install should start on. */
+function pickVoice(list: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+  const english = list.filter((v) => v.lang.startsWith("en"));
+  const pool = english.length ? english : list;
+
+  for (const wanted of PREFERRED_VOICES) {
+    const match = pool.find((v) => v.name.toLowerCase().includes(wanted.toLowerCase()));
+    if (match) return match;
+  }
+
+  const notSlow = pool.find(
+    (v) => !SLOW_DEFAULTS.some((slow) => v.name.toLowerCase().includes(slow.toLowerCase()))
+  );
+  return notSlow ?? pool.find((v) => v.default) ?? pool[0];
+}
+
 /** What the engine has learned about the currently selected voice. */
 interface VoiceLatency {
   voiceURI: string | null;
@@ -160,11 +202,24 @@ export function useSpeechEngine(): SpeechEngineStatus {
       setVoices(list);
 
       if (!useFocusStore.getState().voiceURI) {
-        const preferred =
-          list.find((v) => v.default && v.lang.startsWith("en")) ??
-          list.find((v) => v.lang.startsWith("en")) ??
-          list.find((v) => v.default) ??
-          list[0];
+        // Read here rather than in the store's initial state: a "use client"
+        // store is still evaluated on the server, and a value that differs
+        // between the two renders is a hydration error.
+        let stored: string | null = null;
+        try {
+          stored = window.localStorage.getItem(VOICE_KEY);
+        } catch {
+          // Private mode. Fall through to picking one.
+        }
+
+        // A remembered voice only counts if it is still installed — voices come
+        // and go with the platform, and selecting a missing one silently drops
+        // the utterance's voice rather than erroring.
+        const remembered = stored
+          ? list.find((v) => v.voiceURI === stored)
+          : undefined;
+
+        const preferred = remembered ?? pickVoice(list);
         if (preferred) useFocusStore.getState().setVoice(preferred.voiceURI);
       }
     };

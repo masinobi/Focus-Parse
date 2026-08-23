@@ -38,6 +38,9 @@ export function Workspace() {
   const tokenIndex = useFocusStore((s) => s.tokenIndex);
   const nodes = useFocusStore((s) => s.nodes);
   const summaries = useFocusStore((s) => s.summaries);
+  const gridsPassed = useFocusStore((s) => s.gridsPassed);
+  const gridAttempts = useFocusStore((s) => s.gridAttempts);
+  const hydrated = useFocusStore((s) => s.hydrated);
 
   const refreshWeakTerms = useFocusStore((s) => s.refreshWeakTerms);
 
@@ -56,19 +59,28 @@ export function Workspace() {
 
   // Persist reading position and captures, debounced so word-level advances do
   // not hammer IndexedDB.
+  //
+  // Gated on `hydrated`: `loadDoc` resets captures to empty and the stored
+  // session arrives a tick later, so writing before that could persist the
+  // empty state over a real session.
   React.useEffect(() => {
-    if (!doc) return;
+    if (!doc || !hydrated) return;
     const timer = window.setTimeout(() => {
       void db.saveSession({
         docId: doc.id,
         tokenIndex,
         nodes,
         summaries,
+        // Without these, reopening a document re-interrogated every grid that
+        // had already been answered correctly, and reset the two-attempt cap
+        // with it.
+        gridsPassed,
+        gridAttempts,
         updatedAt: Date.now(),
       });
     }, SESSION_WRITE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [doc, tokenIndex, nodes, summaries]);
+  }, [doc, hydrated, tokenIndex, nodes, summaries, gridsPassed, gridAttempts]);
 
   if (!doc) {
     return (

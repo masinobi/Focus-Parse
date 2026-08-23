@@ -130,5 +130,15 @@ export interface SessionState {
   tokenIndex: number;
   nodes: FlowNode[];
   summaries: Record<number, string>;
+  /**
+   * Grid blocks already answered correctly, and attempts spent on each.
+   *
+   * Optional for the same reason as `FlowNode.links`: sessions carry no schema
+   * version, so every session written before these existed reads back without
+   * them. Both must be treated as empty when absent rather than assumed
+   * present — see `hydrateSession`.
+   */
+  gridsPassed?: Record<number, boolean>;
+  gridAttempts?: Record<number, number>;
   updatedAt: number;
 }
