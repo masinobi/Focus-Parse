@@ -23,7 +23,20 @@ import { cn } from "@/lib/utils";
  * no reflow loop and no layout library.
  */
 
-const NODE_W = 196;
+/**
+ * Widest a node is drawn. Lanes shrink from here to fit the pane: the whole
+ * point of the layered view is seeing the shape of the chain at a glance, and
+ * at the default 45% split three lanes at full width do not fit — the graph
+ * came out as one visible lane and a horizontal scrollbar, which is the one
+ * thing it must not be.
+ */
+const MAX_NODE_W = 196;
+/**
+ * Narrowest before the graph gives up and scrolls instead. Below this a card
+ * holds about three words and the lanes stop being readable, at which point an
+ * honest scrollbar beats an unreadable fit.
+ */
+const MIN_NODE_W = 124;
 const NODE_H = 66;
 const COL_GAP = 44;
 const ROW_GAP = 14;
@@ -57,6 +70,13 @@ interface Placed {
   y: number;
 }
 
+/** Lane width that fits `lanes` columns into `available` pixels. */
+function laneWidth(available: number, lanes: number): number {
+  if (!available || lanes < 1) return MAX_NODE_W;
+  const fits = (available - PAD * 2 - COL_GAP * (lanes - 1)) / lanes;
+  return Math.max(MIN_NODE_W, Math.min(MAX_NODE_W, Math.floor(fits)));
+}
+
 interface FlowGraphProps {
   nodes: FlowNode[];
   chainHead: string | null;
@@ -78,7 +98,29 @@ export function FlowGraph({
   onUnlink,
   onRemove,
 }: FlowGraphProps) {
-  const { placed, lanes, width, height } = React.useMemo(() => {
+  /**
+   * A callback ref rather than `useRef`, because the empty state returns before
+   * the scroll container exists: a mount-time effect would find nothing, never
+   * run again once the first node arrived, and leave the lanes at full width in
+   * a pane that cannot hold them.
+   */
+  const [scrollEl, setScrollEl] = React.useState<HTMLDivElement | null>(null);
+  /** Width of the pane the graph is drawn into; 0 until first measure. */
+  const [available, setAvailable] = React.useState(0);
+
+  // The scratchpad lives in a resizable pane, so this is not a one-off read:
+  // dragging the divider has to re-lay the lanes.
+  React.useEffect(() => {
+    if (!scrollEl || typeof ResizeObserver === "undefined") return;
+    setAvailable(scrollEl.clientWidth);
+    const observer = new ResizeObserver(([entry]) =>
+      setAvailable(entry.contentRect.width)
+    );
+    observer.observe(scrollEl);
+    return () => observer.disconnect();
+  }, [scrollEl]);
+
+  const { placed, lanes, nodeW, width, height } = React.useMemo(() => {
     const byLane = new Map<Lane, FlowNode[]>();
     for (const node of nodes) {
       const lane: Lane = node.tag ?? "note";
@@ -94,6 +136,8 @@ export function FlowGraph({
       (lane) => lane !== "note" || (byLane.get(lane)?.length ?? 0) > 0
     );
 
+    const w = laneWidth(available, active.length);
+
     const out: Placed[] = [];
     let rows = 0;
     active.forEach((lane, laneIndex) => {
@@ -103,7 +147,7 @@ export function FlowGraph({
         out.push({
           node,
           lane,
-          x: PAD + laneIndex * (NODE_W + COL_GAP),
+          x: PAD + laneIndex * (w + COL_GAP),
           y: PAD + HEADER_H + rowIndex * (NODE_H + ROW_GAP),
         });
       });
@@ -112,10 +156,11 @@ export function FlowGraph({
     return {
       placed: out,
       lanes: active,
-      width: PAD * 2 + active.length * NODE_W + Math.max(0, active.length - 1) * COL_GAP,
+      nodeW: w,
+      width: PAD * 2 + active.length * w + Math.max(0, active.length - 1) * COL_GAP,
       height: PAD * 2 + HEADER_H + Math.max(1, rows) * (NODE_H + ROW_GAP),
     };
-  }, [nodes]);
+  }, [nodes, available]);
 
   const positions = React.useMemo(
     () => new Map(placed.map((p) => [p.node.id, p])),
@@ -155,11 +200,11 @@ export function FlowGraph({
       for (const targetId of p.node.links ?? []) {
         const t = positions.get(targetId);
         if (!t) continue;
-        list.push({ from: p, to: t, d: edgePath(p, t) });
+        list.push({ from: p, to: t, d: edgePath(p, t, nodeW) });
       }
     }
     return list;
-  }, [placed, positions]);
+  }, [placed, positions, nodeW]);
 
   if (!nodes.length) {
     return (
@@ -174,7 +219,7 @@ export function FlowGraph({
   }
 
   return (
-    <div className="fp-scroll h-full overflow-auto p-1">
+    <div ref={setScrollEl} className="fp-scroll h-full overflow-auto">
       <div className="relative" style={{ width, height }}>
         <svg
           width={width}
@@ -216,7 +261,7 @@ export function FlowGraph({
           <div
             key={lane}
             className="absolute text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
-            style={{ left: PAD + i * (NODE_W + COL_GAP), top: PAD, width: NODE_W }}
+            style={{ left: PAD + i * (nodeW + COL_GAP), top: PAD, width: nodeW }}
           >
             {LANE_LABEL[lane]}
           </div>
@@ -226,6 +271,7 @@ export function FlowGraph({
           <GraphNode
             key={p.node.id}
             placed={p}
+            width={nodeW}
             isHead={chainHead === p.node.id}
             /**
              * With a chain open, every other node offers to be its target —
@@ -261,12 +307,12 @@ export function FlowGraph({
  * card on the side the line is actually heading, so an edge never crosses the
  * node it starts from.
  */
-function edgePath(from: Placed, to: Placed): string {
+function edgePath(from: Placed, to: Placed, nodeW: number): string {
   const y1 = from.y + NODE_H / 2;
   const y2 = to.y + NODE_H / 2;
 
   if (to.x > from.x) {
-    const x1 = from.x + NODE_W;
+    const x1 = from.x + nodeW;
     const x2 = to.x;
     const bend = Math.max(24, (x2 - x1) / 2);
     return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
@@ -274,19 +320,20 @@ function edgePath(from: Placed, to: Placed): string {
 
   if (to.x < from.x) {
     const x1 = from.x;
-    const x2 = to.x + NODE_W;
+    const x2 = to.x + nodeW;
     const bend = Math.max(24, (x1 - x2) / 2);
     return `M ${x1} ${y1} C ${x1 - bend} ${y1}, ${x2 + bend} ${y2}, ${x2} ${y2}`;
   }
 
   // Same lane: bulge out to the right rather than drawing straight through
   // every card between them.
-  const x = from.x + NODE_W;
+  const x = from.x + nodeW;
   return `M ${x} ${y1} C ${x + 46} ${y1}, ${x + 46} ${y2}, ${x} ${y2}`;
 }
 
 function GraphNode({
   placed,
+  width,
   isHead,
   linkableFrom,
   sectionTitle,
@@ -298,6 +345,8 @@ function GraphNode({
   onRemove,
 }: {
   placed: Placed;
+  /** Lane width for this render, which follows the pane. */
+  width: number;
   isHead: boolean;
   /** Id of the open chain head, when an edge into this node could be drawn. */
   linkableFrom: string | null;
@@ -319,7 +368,7 @@ function GraphNode({
         meta ? meta.ring : "border-l-muted-foreground/30",
         isHead && "ring-2 ring-primary"
       )}
-      style={{ left: placed.x, top: placed.y, width: NODE_W, height: NODE_H }}
+      style={{ left: placed.x, top: placed.y, width, height: NODE_H }}
     >
       <div className="flex items-center gap-1">
         <button
