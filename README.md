@@ -70,6 +70,23 @@ Three things make real documents hard:
   page, while the page margins are several times wider and would otherwise be
   detected instead. Counting coverage rather than treating it as boolean stops one
   full-width running head from bridging the gutter and hiding it.
+
+  Coverage alone was not enough. One full-width element the table detector did not
+  remove — a spanning heading, an undetected table — puts glyphs in the gutter bins,
+  breaks the quiet run, and drops the **whole page** to single column. Measured
+  before the fix: about a fifth of the two-column pages in the corpus, ~25,000 words,
+  read with the columns interleaved a fragment at a time. That is worse than
+  obviously broken text, because it sounds plausible and nothing announces it.
+
+  So a second detector runs when the first finds nothing: **where the text starts**.
+  A body column has one left edge shared by most of its lines, and nothing crossing
+  the gutter moves it. Being the looser rule, it carries a check the first does not
+  need — a proposed cut is kept only if almost no runs cross it. On a single-column
+  page with numbered clauses indenting the body (ICH E6 is entirely of that shape:
+  "1.1" at x=72, its text at x=112) every full-width line crosses, the cut is
+  rejected, and that document parses byte-identically to before. `npm run
+  scan-columns` measures both: ~11,500 words recovered across the corpus, with the
+  gutter detector still preferred wherever it fires.
 - **Headings are often smaller, not bigger.** In journal typesetting a heading is
   frequently set smaller and in a contrasting family against the body. Detection keys
   on any deviation from the dominant body style — size, family or weight. Because

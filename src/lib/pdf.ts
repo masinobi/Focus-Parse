@@ -145,6 +145,106 @@ function dominant<T>(values: { key: T; weight: number }[]): T | undefined {
   return best;
 }
 
+/* ------------------------------------------------------------------ *
+ * Columns
+ * ------------------------------------------------------------------ *
+ *
+ * Losing a gutter is not a small error. The rows are then read straight
+ * across, so the left column's sentence and the right column's sentence
+ * interleave a fragment at a time and the result is plausible-sounding
+ * nonsense — worse than obviously broken text, because nothing announces it.
+ * Measured before this existed: about a fifth of the two-column pages in the
+ * corpus, ~25,000 words, including the page where the heading "5) Best
+ * Practices" ended up inside "…in compliance with 21 CFR 5) Best Practices
+ * 312.62(c) and 812.140(d)."
+ *
+ * Two independent detectors, because they fail on different pages:
+ *
+ *   1. `detectBandCuts` — a quiet vertical strip. Precise when it fires, but
+ *      one full-width element that the table detector did not remove (a
+ *      spanning heading, an undetected table) puts glyphs in the gutter bins
+ *      and hides it for the *entire page*.
+ *   2. `detectColumnStarts` — where the text begins. A body column has one
+ *      left edge shared by most of its lines, and nothing crossing the gutter
+ *      moves it. This sees what the first one cannot.
+ *
+ * The second is the looser rule, so it carries a check the first does not
+ * need: a proposed cut is kept only if very few runs actually cross it. On a
+ * single-column page with an indented list — two left edges, no gutter — every
+ * full-width line crosses, and the cut is rejected.
+ */
+
+/** Left edges within this many points are the same column. */
+const EDGE_BUCKET = 8;
+
+/** Runs that must share a left edge before it counts as a column. */
+const MIN_EDGE_SUPPORT = 6;
+
+/** Two column starts closer than this are an indent, not a column. */
+const MIN_COLUMN_SEPARATION = 100;
+
+/** A gutter this far into the text is a margin note, not a column boundary. */
+const MIN_GAP_RATIO = 0.3;
+
+/**
+ * Share of runs allowed to cross a proposed cut. A real gutter is crossed by
+ * almost nothing — a running head, the odd figure. Anything more means the
+ * page is one column and the second "start" was an indent.
+ */
+const MAX_STRADDLE_RATIO = 0.08;
+
+/**
+ * Find columns by where text starts.
+ *
+ * Deliberately independent of coverage: the whole point is to survive the
+ * full-width element that defeats gutter detection.
+ */
+export function detectColumnStarts(items: RawItem[], body: number): number[] {
+  if (items.length < 20) return [];
+
+  const support = new Map<number, number>();
+  let contentStart = Number.POSITIVE_INFINITY;
+  let contentEnd = Number.NEGATIVE_INFINITY;
+
+  for (const item of items) {
+    contentStart = Math.min(contentStart, item.x);
+    contentEnd = Math.max(contentEnd, item.xEnd);
+    const bucket = Math.round(item.x / EDGE_BUCKET) * EDGE_BUCKET;
+    support.set(bucket, (support.get(bucket) ?? 0) + 1);
+  }
+
+  const contentWidth = contentEnd - contentStart;
+  if (!Number.isFinite(contentWidth) || contentWidth <= 0) return [];
+
+  const edges = [...support.entries()]
+    .filter(([, n]) => n >= MIN_EDGE_SUPPORT)
+    .map(([x]) => x)
+    .sort((a, b) => a - b);
+
+  // Collapse edges that are really one column, keeping the leftmost.
+  const starts: number[] = [];
+  for (const x of edges) {
+    if (!starts.length || x - starts[starts.length - 1] > MIN_COLUMN_SEPARATION) {
+      starts.push(x);
+    }
+  }
+  if (starts.length < 2) return [];
+
+  const cuts: number[] = [];
+  for (let i = 1; i < starts.length; i++) {
+    if (starts[i] - starts[i - 1] < contentWidth * MIN_GAP_RATIO) continue;
+
+    // Just left of the column's first glyph, so nothing in it is clipped.
+    const cut = starts[i] - body * 0.5;
+    const straddling = items.filter((it) => it.x < cut && it.xEnd > cut).length;
+    if (straddling / items.length > MAX_STRADDLE_RATIO) continue;
+
+    cuts.push(cut);
+  }
+
+  return cuts;
+}
+
 /**
  * Find vertical gutters: interior x-ranges that carry almost no text.
  *
@@ -234,7 +334,11 @@ function buildLines(page: PageItems, pageNumber: number, body: number): Line[] {
   );
   if (!items.length) return [];
 
-  const cuts = detectBandCuts(items, page.width, body);
+  // Gutter detection first — it is the precise one, and where it fires it is
+  // right. Left-edge clustering only supplies what it missed, so a page that
+  // already parses correctly is untouched.
+  const gutters = detectBandCuts(items, page.width, body);
+  const cuts = gutters.length ? gutters : detectColumnStarts(items, body);
   const bandOf = (x: number) => cuts.filter((cut) => cut < x).length;
 
   // Group into rows by baseline.

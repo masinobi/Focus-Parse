@@ -260,7 +260,16 @@ how a parser change propagates into it. A rename updates the stored title withou
 re-walking tokens; re-indexing the 524-page GCDMP on every rename would be minutes
 of work for a new name.
 
-**15. Journal furniture is marked, never removed.** `Section.furniture` is a
+**15. Two column detectors, and the loose one must prove itself.**
+`detectBandCuts` (a quiet vertical strip) runs first and wins wherever it fires —
+it is precise, and a page it handles must not change. `detectColumnStarts` (left
+edges) only supplies pages it missed, because one full-width element hides a
+gutter for the entire page. The second rule is loose enough to see a column in an
+indented list, so it keeps a cut only when almost no runs cross it. Removing that
+straddle check would silently split single-column documents down the middle; ICH
+E6 is the canary, and it must stay byte-identical.
+
+**16. Journal furniture is marked, never removed.** `Section.furniture` is a
 heuristic over recovered PDF typography, and deleting text on a heuristic is how
 a real section vanishes with nobody noticing. Everything marked is still parsed,
 still in the structure map, and still reachable by seeking to it. What changes:
@@ -269,21 +278,21 @@ seek does not), the question builders and the entity index draw nothing from it,
 and it arms no intercept. Measured at 3.6% of the corpus and 11% of the EDC
 implementation chapter.
 
-**16. Every load path must go through `hydrateSession`.** The session writer
+**17. Every load path must go through `hydrateSession`.** The session writer
 waits on `hydrated`, which only that function sets — including on the path
 where there is nothing to restore. Miss it on a new code path and that
 document's reading is never saved at all. The flag exists because `loadDoc`
 resets captures to empty and hydration fills them a tick later: a writer that
 did not wait could persist the empty state over a real session.
 
-**17. Backups carry `source`, never parsed documents.** Measured at 21x smaller
+**18. Backups carry `source`, never parsed documents.** Measured at 21x smaller
 on a real database (263KB against 5.6MB for 40k words), and it is the only form
 that survives a parser change — which is the same reason `getDoc` rebuilds from
 `source`. Import merges by timestamp and never deletes; an older review item
 carries an older interval, and applying it over a newer one silently undoes
 weeks of scheduling.
 
-**18. `source` is a complete record.** Everything rides through the markdown
+**19. `source` is a complete record.** Everything rides through the markdown
 intermediate rather than a side channel, so `db.getDoc` can rebuild a document
 with the current parser when `schema` is stale. Schema is currently **3**; bump
 `SCHEMA_VERSION` in `src/lib/parse.ts` whenever the Token/Chunk shape changes, or
@@ -615,23 +624,11 @@ marked *candidate* are things that could actually be fixed.
 - *(candidate)* Acronym expansion inside grid steps reads clumsily: "CRF
   Creation" becomes "case report form Creation". Could suppress expansion
   inside steps.
-- **Column recovery loses the gutter on roughly a fifth of two-column pages,
-  and the two columns are then read interleaved.** This is the largest quality
-  problem in the app and it is not confined to front matter. `detectBandCuts`
-  looks for a quiet vertical strip, and one full-width element anywhere on the
-  page — a table, a spanning heading — fills it in, so the whole page falls back
-  to single-column and rows are read straight across. Confirmed at the glyph
-  level on page 5 of the EDC implementation chapter: body text at x=62 and
-  x=308, the heading "5) Best Practices" at x=308 on the same baseline as
-  "and documents be retained in compliance with 21 CFR" at x=62, assembling to
-  "…in compliance with 21 CFR 5) Best Practices 312.62(c) and 812.140(d)." It is
-  also why headings 5) and 6) never reach the structure map. `npm run
-  scan-columns` measures it: ~22% of that chapter, 47% of vendor management,
-  ~10% of the corpus. The fix is to find columns by *where text starts* — left
-  edges cluster hard and survive anything crossing the gutter — rather than by
-  where it is absent. Not attempted yet: `pdf.ts` is the most load-bearing and
-  most corpus-tuned file here, and a wrong change silently corrupts documents
-  that currently parse.
+- Heading recovery still misses a heading that *wraps* across two lines: "6) What
+  it Means to Design a Study Application Within an EDC System" reaches the
+  structure map as "Within an EDC System", because only the second line is
+  promoted. Separate from the column problem below it and not attempted — the
+  text now reads in the right order, which was the damaging part.
 - A cloze carrier is only as good as the sentence the parser produced. Where PDF
   column recovery fused two lines in a document's front matter, the blank is
   presented inside that fused sentence. The builder reproduces the chunk exactly

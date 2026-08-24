@@ -102,12 +102,21 @@ async function loadDocument() {
   // the network never goes idle and the wait would burn its whole timeout. The
   // retry below is what actually handles hydration.
   await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+  // A cold dev server compiles assets on demand, so the very first request can
+  // 404 one versioned file and then succeed on a reload. Only a *repeat*
+  // failure is the stale-cache trap; failing on first sight cried wolf.
+  if (deadChunks.size) {
+    deadChunks.clear();
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });
+    await page.waitForTimeout(1500);
+  }
+
   if (deadChunks.size) {
     console.error(
       [
         "",
-        `The page loaded but ${deadChunks.size} script chunks 404'd, so nothing on it`,
-        "is interactive. This is the stale-.next trap: stop the dev server,",
+        `${deadChunks.size} static chunks 404'd twice, so nothing on the page is`,
+        "interactive. This is the stale-.next trap: stop the dev server,",
         "delete .next, and start it again.",
         "",
         `  e.g. ${[...deadChunks][0]}`,

@@ -54,7 +54,7 @@ execFileSync(
 );
 
 const load = createRequire(import.meta.url);
-const { detectBandCuts, isBoldFont } = load(join(out, "pdf.js"));
+const { detectBandCuts, detectColumnStarts, isBoldFont } = load(join(out, "pdf.js"));
 const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
 /**
@@ -87,6 +87,7 @@ const MIN_RUNS = 20;
 
 let corpusWords = 0;
 let corpusFused = 0;
+let corpusRescued = 0;
 
 for (const file of readdirSync(dir).filter((f) => /\.pdf$/i.test(f))) {
   const doc = await pdfjs.getDocument({
@@ -97,6 +98,8 @@ for (const file of readdirSync(dir).filter((f) => /\.pdf$/i.test(f))) {
 
   let twoColumn = 0;
   let missed = 0;
+  let rescued = 0;
+  let rescuedWords = 0;
   let words = 0;
   let fused = 0;
   const bad = [];
@@ -137,10 +140,16 @@ for (const file of readdirSync(dir).filter((f) => /\.pdf$/i.test(f))) {
     if (columnStarts(items).length < 2) continue;
     twoColumn += 1;
 
-    if (!detectBandCuts(items, viewport.width, body).length) {
+    // Exactly what `buildLines` does: the gutter first, left edges as backup.
+    const gutters = detectBandCuts(items, viewport.width, body);
+    const cuts = gutters.length ? gutters : detectColumnStarts(items, body);
+    if (!cuts.length) {
       missed += 1;
       fused += pageWords;
       bad.push(n);
+    } else if (!gutters.length) {
+      rescued += 1;
+      rescuedWords += pageWords;
     }
   }
 
@@ -149,24 +158,37 @@ for (const file of readdirSync(dir).filter((f) => /\.pdf$/i.test(f))) {
   corpusFused += fused;
 
   const pct = words ? Math.round((fused / words) * 100) : 0;
+  corpusRescued += rescuedWords;
   console.log(
-    `${file.replace(/\.pdf$/i, "").slice(0, 44).padEnd(44)} ` +
-      `two-column ${String(twoColumn).padStart(3)}p  gutter missed ${String(missed).padStart(3)}p  ` +
-      `~${String(fused).padStart(6)} words interleaved (${pct}%)`
+    `${file.replace(/\.pdf$/i, "").slice(0, 42).padEnd(42)} ` +
+      `two-col ${String(twoColumn).padStart(3)}p  rescued by left edges ${String(rescued).padStart(3)}p ` +
+      `(~${String(rescuedWords).padStart(5)}w)  still interleaved ${String(missed).padStart(2)}p (${pct}%)`
   );
   if (verbose && bad.length) console.log(`      pages: ${bad.join(", ")}`);
 }
 
 console.log(`\n=== columns ===`);
 console.log(
-  `  interleaved across the corpus: ~${corpusFused.toLocaleString()} of ` +
+  `  rescued by left-edge clustering: ~${corpusRescued.toLocaleString()} words`
+);
+console.log(
+  `  not rescued: ~${corpusFused.toLocaleString()} of ` +
     `${corpusWords.toLocaleString()} words ` +
     `(${Math.round((corpusFused / corpusWords) * 100)}%)`
 );
-console.log(`  pages where the gutter is missed: (must be 0)`);
 console.log(
-  `\n  Note: the first page of a chapter is often a single-column abstract\n` +
-    `  under a two-column author block, which this report can miscount. Treat\n` +
-    `  the totals as an upper bound; page 5 of the EDC implementation chapter\n` +
-    `  is confirmed at the glyph level.`
+  `
+  "Not rescued" is NOT a defect count. This report's two-column test is
+` +
+    `  looser than the parser's on purpose — it has to be, to see failures the
+` +
+    `  parser cannot — so it also flags single-column pages whose numbered
+` +
+    `  clauses indent the body. ICH E6 is entirely of that shape ("1.1" at
+` +
+    `  x=72, its text at x=112); the parser declines every one of them and that
+` +
+    `  document is byte-identical before and after. Read "rescued" as the
+` +
+    `  result, and this line as an upper bound on what may remain.`
 );
