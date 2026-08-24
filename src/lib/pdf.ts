@@ -157,7 +157,7 @@ function dominant<T>(values: { key: T; weight: number }[]): T | undefined {
  * Coverage is counted rather than boolean: one full-width element (a running
  * head, a title, a figure) would otherwise bridge the gutter and hide it.
  */
-function detectBandCuts(items: RawItem[], width: number, body: number): number[] {
+export function detectBandCuts(items: RawItem[], width: number, body: number): number[] {
   const BIN = 2; // points
   const bins = Math.max(1, Math.ceil(width / BIN));
   const coverage = new Array<number>(bins).fill(0);

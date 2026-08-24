@@ -615,6 +615,23 @@ marked *candidate* are things that could actually be fixed.
 - *(candidate)* Acronym expansion inside grid steps reads clumsily: "CRF
   Creation" becomes "case report form Creation". Could suppress expansion
   inside steps.
+- **Column recovery loses the gutter on roughly a fifth of two-column pages,
+  and the two columns are then read interleaved.** This is the largest quality
+  problem in the app and it is not confined to front matter. `detectBandCuts`
+  looks for a quiet vertical strip, and one full-width element anywhere on the
+  page — a table, a spanning heading — fills it in, so the whole page falls back
+  to single-column and rows are read straight across. Confirmed at the glyph
+  level on page 5 of the EDC implementation chapter: body text at x=62 and
+  x=308, the heading "5) Best Practices" at x=308 on the same baseline as
+  "and documents be retained in compliance with 21 CFR" at x=62, assembling to
+  "…in compliance with 21 CFR 5) Best Practices 312.62(c) and 812.140(d)." It is
+  also why headings 5) and 6) never reach the structure map. `npm run
+  scan-columns` measures it: ~22% of that chapter, 47% of vendor management,
+  ~10% of the corpus. The fix is to find columns by *where text starts* — left
+  edges cluster hard and survive anything crossing the gutter — rather than by
+  where it is absent. Not attempted yet: `pdf.ts` is the most load-bearing and
+  most corpus-tuned file here, and a wrong change silently corrupts documents
+  that currently parse.
 - A cloze carrier is only as good as the sentence the parser produced. Where PDF
   column recovery fused two lines in a document's front matter, the blank is
   presented inside that fused sentence. The builder reproduces the chunk exactly

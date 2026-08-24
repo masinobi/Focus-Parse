@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "postinstall": "node scripts/copy-pdf-worker.mjs",
     "test": "vitest run",
-    "probe": "node scripts/probe-ui.mjs"
+    "probe": "node scripts/probe-ui.mjs",
+    "scan-columns": "node scripts/scan-columns.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
