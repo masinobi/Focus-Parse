@@ -13,7 +13,8 @@ refuses to let the reader coast past a section boundary without restating what
 they just heard.
 
 The user (Michelle, GitHub `masinobi`) is studying for the **SCDM CCDA exam**.
-Source material lives in `<home>\OneDrive\Desktop\CCDA Study` — nine
+Source material lives in `<corpus folder>`
+(it moved off the Desktop, where a shortcut now stands in its place) — nine
 PDFs of GCDMP guidance, ICH E6(R3), and the SCDM exam study guide, plus one
 markdown study guide. That corpus is the ground truth for every parsing
 decision; test against it rather than against invented samples.
@@ -26,7 +27,7 @@ decision; test against it rather than against invented samples.
 | Remote | https://github.com/masinobi/Focus-Parse (**private**) |
 | Demo | https://claude.ai/code/artifact/bb5b76a5-5b7d-4a52-abdd-324313fc7d08 (private) |
 | Stack | Next.js 14 App Router · TypeScript · Tailwind · shadcn/ui · Zustand · IndexedDB · Web Speech · Web Audio · pdf.js |
-| Corpus | `<home>\OneDrive\Desktop\CCDA Study` — eight PDFs and one markdown guide. That is the nine documents every figure in this file refers to; a ninth PDF was a broken duplicate with no text layer and has been deleted. |
+| Corpus | `<corpus folder>` — eight PDFs and one markdown guide. That is the nine documents every figure in this file refers to; a ninth PDF was a broken duplicate with no text layer and has been deleted. |
 | Past sessions | `the Claude Code transcript folder for this project` |
 
 **Stored shapes carry four independent version numbers.** Bump the wrong one and
@@ -115,12 +116,32 @@ clone. If files go missing, clone from the remote rather than repairing.
 **First request after a dev restart takes 30–60s** while Next compiles the
 route. Not a hang.
 
-**The dev server sometimes exits on its own.** Once this session a healthy
-background `next dev` — serving fine, logging successful compiles — exited with
-code 0 for no visible reason, and the symptom in the browser was a frozen page
-and CDP calls timing out, which reads exactly like a renderer hang. Check
-whether the server is still alive before debugging the page. `rm -rf .next` and
-restart fixed it; the cause is unknown.
+**Never pipe a long-running server into `head`.** This killed the dev server
+five times across two sessions and was misdiagnosed each time — recorded here
+once as "exits on its own for no visible reason", which was wrong. Starting it
+as `npm run dev 2>&1 | head -20` looks harmless and is not: `head` exits after
+its twentieth line and closes the pipe, and the next log line Next writes goes
+to a reader that is gone. The process then dies with code 0, or worse survives
+with its socket still `LISTENING` while the event loop is stuck on that write —
+which presents as connections accepted and never answered.
+
+That is why the symptom always looked like something else. It fires on the
+*next log line*, so it correlates with how much the app is being used rather
+than with anything in the code: a page that hangs, CDP calls timing out, `/`
+answering 404 forever, a PDF that "fails to ingest". One of those was nearly
+committed as a parser regression.
+
+Start it detached from any pipe — `npm run dev > /tmp/fp-dev.log 2>&1` — and
+read the log file. Proved by doing exactly that and then running the full
+browser probe against it: 20 log lines, all 16 checks green, server still
+answering 200 afterwards.
+
+**Check the server is alive before believing the browser.**
+`curl -s -o /dev/null -w "%{http_code}" http://localhost:3000` costs nothing.
+And prefer killing the one process on port 3000 (`netstat -ano | grep :3000`,
+then `taskkill /F /PID <pid>`) over `taskkill /F /IM node.exe /T`, which takes
+out every node process on the machine and SIGKILLs `next dev` mid-write to
+`.next` — which is one way to produce the stale-cache trap below.
 
 **A bad compile can wedge the dev server outright.** Related to the 404 trap
 below but a different symptom: after one save with a half-finished JSX edit, the
@@ -239,21 +260,30 @@ how a parser change propagates into it. A rename updates the stored title withou
 re-walking tokens; re-indexing the 524-page GCDMP on every rename would be minutes
 of work for a new name.
 
-**15. Every load path must go through `hydrateSession`.** The session writer
+**15. Journal furniture is marked, never removed.** `Section.furniture` is a
+heuristic over recovered PDF typography, and deleting text on a heuristic is how
+a real section vanishes with nobody noticing. Everything marked is still parsed,
+still in the structure map, and still reachable by seeking to it. What changes:
+playback will not *wander* in (`finishChunk` skips forward past it, a deliberate
+seek does not), the question builders and the entity index draw nothing from it,
+and it arms no intercept. Measured at 3.6% of the corpus and 11% of the EDC
+implementation chapter.
+
+**16. Every load path must go through `hydrateSession`.** The session writer
 waits on `hydrated`, which only that function sets — including on the path
 where there is nothing to restore. Miss it on a new code path and that
 document's reading is never saved at all. The flag exists because `loadDoc`
 resets captures to empty and hydration fills them a tick later: a writer that
 did not wait could persist the empty state over a real session.
 
-**16. Backups carry `source`, never parsed documents.** Measured at 21x smaller
+**17. Backups carry `source`, never parsed documents.** Measured at 21x smaller
 on a real database (263KB against 5.6MB for 40k words), and it is the only form
 that survives a parser change — which is the same reason `getDoc` rebuilds from
 `source`. Import merges by timestamp and never deletes; an older review item
 carries an older interval, and applying it over a newer one silently undoes
 weeks of scheduling.
 
-**17. `source` is a complete record.** Everything rides through the markdown
+**18. `source` is a complete record.** Everything rides through the markdown
 intermediate rather than a side channel, so `db.getDoc` can rebuild a document
 with the current parser when `schema` is stale. Schema is currently **3**; bump
 `SCHEMA_VERSION` in `src/lib/parse.ts` whenever the Token/Chunk shape changes, or
@@ -600,8 +630,10 @@ marked *candidate* are things that could actually be fixed.
 - *(candidate)* The matrix flattener was verified on the vendor-management PDF
   (2 grids, 24 steps). The 524-page GCDMP holds most of the 22 detected grids
   and has not had a full in-browser pass.
-- *(candidate)* PDF front matter (author lists, affiliations) sometimes
-  survives as a section in the structure map.
+- PDF front matter is detected by title, which leaves the PRISMA
+  flow-diagram fragments in the EDC chapter ("Records excluded", "Screening")
+  reading as content. Seventeen words; not worth a rule shaped around one
+  document's methodology figure.
 - Scanned PDFs with no text layer are rejected rather than OCR'd.
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid

@@ -99,6 +99,9 @@ const indexes = [];
 let badFirst = 0;
 let emptyDisplay = 0;
 let underThreshold = 0;
+let fromFurniture = 0;
+let furnitureWords = 0;
+let contentWords = 0;
 
 for (const file of files) {
   const path = join(dir, file);
@@ -115,7 +118,15 @@ for (const file of files) {
   const index = buildEntityIndex(doc);
   indexes.push(index);
 
+  for (const section of doc.sections) {
+    if (section.furniture) furnitureWords += section.wordCount;
+    else contentWords += section.wordCount;
+  }
+
   for (const entry of index.entries) {
+    // An author list is nothing but capitalized names. Indexing one fills the
+    // corpus view with people instead of terms.
+    if (doc.sections[doc.tokens[entry.first]?.section]?.furniture) fromFurniture += 1;
     // "Open it here" is a token index into this document. Out of range is a
     // dead link, and a dead link in a nine-document index is invisible.
     if (!(entry.first >= 0 && entry.first < doc.tokens.length)) badFirst += 1;
@@ -157,6 +168,12 @@ console.log(
   `  acronyms: ${corpus.filter((e) => e.kind === "acronym").length}` +
     `, phrases: ${corpus.filter((e) => e.kind === "term").length}`
 );
+console.log(
+  `  journal furniture: ${furnitureWords.toLocaleString()} words of ` +
+    `${(furnitureWords + contentWords).toLocaleString()} ` +
+    `(${Math.round((furnitureWords / (furnitureWords + contentWords)) * 1000) / 10}%), skipped`
+);
+console.log(`  entity indexed out of furniture: ${fromFurniture}   (must be 0)`);
 console.log(`  entry pointing outside its document: ${badFirst}   (must be 0)`);
 console.log(`  entry with an empty or padded display form: ${emptyDisplay}   (must be 0)`);
 console.log(`  phrase kept below the occurrence floor: ${underThreshold}   (must be 0)`);

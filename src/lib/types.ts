@@ -88,6 +88,26 @@ export interface Section {
   wordCount: number;
   /** Level 1 and 2 headers arm a hard cognitive intercept. */
   intercept: boolean;
+  /**
+   * Journal furniture: an author list, an abstract, a reference list, a
+   * revision history. Part of the published artefact, not of the guidance.
+   *
+   * Marked rather than removed. Detection is a heuristic over recovered PDF
+   * typography, and silently deleting text on a heuristic is how a real section
+   * disappears without anyone noticing. Everything marked here is still
+   * present, still in the structure map, and still reachable by seeking to it —
+   * what changes is that playback will not *wander* into it and the question
+   * builders will not draw from it.
+   */
+  furniture?: boolean;
+  /**
+   * Set on the synthetic sections that pacing checkpoints create. `baseTitle`
+   * is the heading they were split out of and `part` is which slice this is,
+   * so the structure map can present six checkpoints of one section as one
+   * section rather than as six repeats of the same title.
+   */
+  baseTitle?: string;
+  part?: number;
 }
 
 export interface ParsedDoc {

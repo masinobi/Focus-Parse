@@ -300,6 +300,11 @@ export function buildCloze(
     const token = doc.tokens[i];
     const block = doc.blocks[token.block];
     if (!block || EXCLUDED_BLOCKS.has(block.kind)) continue;
+    // A reference list is full of capitalized words and numbers, which is
+    // exactly what salience rewards. This is the same failure the heading rule
+    // was written for — "Amatya S, Edgerton D. Vendor Selection and ___" — one
+    // level up.
+    if (doc.sections[token.section]?.furniture) continue;
 
     const shell = shellOf(token.text);
     if (!shell) continue;

@@ -6,13 +6,17 @@ import { Check, CircleDot, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { EditableTitle } from "@/components/editable-title";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { formatDuration } from "@/lib/parse";
+import { contentWordCount, formatDuration } from "@/lib/parse";
 import type { Section } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useFocusStore } from "@/store/useFocusStore";
 
 interface RowProps {
   section: Section;
+  /** Words across every checkpoint folded into this row. */
+  wordCount: number;
+  /** How many pacing checkpoints this row stands for. */
+  parts: number;
   state: "done" | "current" | "ahead";
   summarized: boolean;
   seconds: number;
@@ -28,6 +32,8 @@ interface RowProps {
  */
 const SectionRow = React.memo(function SectionRow({
   section,
+  wordCount,
+  parts,
   state,
   summarized,
   seconds,
@@ -41,7 +47,9 @@ const SectionRow = React.memo(function SectionRow({
       className={cn(
         "group flex w-full flex-col gap-1 px-3 py-2 text-left transition-colors hover:bg-accent/60",
         section.level >= 2 && "pl-6",
-        state === "current" && "bg-accent"
+        state === "current" && "bg-accent",
+        // Still listed, still clickable — playback simply will not wander in.
+        section.furniture && "opacity-55"
       )}
     >
       <div className="flex items-start gap-2">
@@ -68,14 +76,24 @@ const SectionRow = React.memo(function SectionRow({
             state === "done" && "text-muted-foreground"
           )}
         >
-          {section.title}
+          {section.baseTitle ?? section.title}
         </span>
       </div>
 
       <div className="flex items-center gap-2 pl-5">
         <span className="text-[11px] tabular-nums text-muted-foreground">
-          {section.wordCount.toLocaleString()}w · {formatDuration(seconds)}
+          {wordCount.toLocaleString()}w · {formatDuration(seconds)}
         </span>
+        {parts > 1 && (
+          <span className="text-[10px] text-muted-foreground/70">
+            {parts} checkpoints
+          </span>
+        )}
+        {section.furniture && (
+          <span className="rounded bg-muted px-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            skipped
+          </span>
+        )}
         {section.intercept && (
           <span
             className={cn(
@@ -113,7 +131,55 @@ export function StructureSidebar() {
   if (!doc) return null;
 
   const currentSection = doc.tokens[tokenIndex]?.section ?? 0;
-  const remaining = Math.max(0, doc.wordCount - tokenIndex);
+  // Counted over what will actually be read. Billing the reader for a
+  // bibliography the engine skips makes every estimate in the map too long —
+  // on the EDC implementation chapter, by about a ninth.
+  const content = contentWordCount(doc);
+  const skipped = doc.wordCount - content;
+  const remaining = Math.max(0, content - tokenIndex);
+
+  /**
+   * Pacing checkpoints folded back into the heading they were cut from.
+   *
+   * The engine needs them as separate sections — that is the whole point of
+   * them — but the map does not: a 3,700-word section showed as "4) Minimum
+   * Standards" followed by five more rows of the same words, which reads as a
+   * document repeating itself. Reported by the reader as exactly that.
+   */
+  const rows = doc.sections.reduce<
+    {
+      section: Section;
+      wordCount: number;
+      tokenEnd: number;
+      parts: number;
+      lastIndex: number;
+    }[]
+  >((acc, section) => {
+    const previous = acc[acc.length - 1];
+    const continues =
+      previous &&
+      section.part !== undefined &&
+      section.part > 1 &&
+      section.baseTitle !== undefined &&
+      section.baseTitle === previous.section.baseTitle;
+
+    if (continues) {
+      previous.wordCount += section.wordCount;
+      previous.tokenEnd = section.tokenEnd;
+      previous.parts += 1;
+      previous.lastIndex = section.i;
+      return acc;
+    }
+
+    acc.push({
+      section,
+      wordCount: section.wordCount,
+      tokenEnd: section.tokenEnd,
+      parts: 1,
+      lastIndex: section.i,
+    });
+    return acc;
+  }, []);
 
   if (!open) {
     return (
@@ -157,31 +223,38 @@ export function StructureSidebar() {
           inputClassName="w-full"
         />
         <p className="mt-1 text-xs text-muted-foreground">
-          {doc.wordCount.toLocaleString()} words ·{" "}
+          {content.toLocaleString()} words ·{" "}
           {formatDuration((remaining / wpm) * 60)} left
         </p>
+        {skipped > 0 && (
+          <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+            {skipped.toLocaleString()} more in front matter and references,
+            skipped
+          </p>
+        )}
       </div>
 
       <nav className="fp-scroll flex-1 overflow-y-auto py-2">
-        {doc.sections.map((section) => {
-          const isCurrent = section.i === currentSection;
-          const isDone = tokenIndex >= section.tokenEnd && section.wordCount > 0;
+        {rows.map((row) => {
+          const isCurrent =
+            currentSection >= row.section.i && currentSection <= row.lastIndex;
+          const isDone = tokenIndex >= row.tokenEnd && row.wordCount > 0;
 
           const read = Math.min(
-            Math.max(0, tokenIndex - section.tokenStart),
-            section.wordCount
+            Math.max(0, tokenIndex - row.section.tokenStart),
+            row.wordCount
           );
 
           return (
             <SectionRow
-              key={section.i}
-              section={section}
+              key={row.section.i}
+              section={row.section}
+              wordCount={row.wordCount}
+              parts={row.parts}
               state={isCurrent ? "current" : isDone ? "done" : "ahead"}
-              summarized={Boolean(summaries[section.i])}
-              seconds={(section.wordCount / wpm) * 60}
-              progress={
-                isCurrent && section.wordCount ? (read / section.wordCount) * 100 : -1
-              }
+              summarized={Boolean(summaries[row.section.i])}
+              seconds={(row.wordCount / wpm) * 60}
+              progress={isCurrent && row.wordCount ? (read / row.wordCount) * 100 : -1}
               onSeek={seekSection}
             />
           );

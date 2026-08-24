@@ -228,6 +228,12 @@ export function buildEntityIndex(doc: ParsedDoc): DocEntityIndex {
       flush();
       continue;
     }
+    // Author lists and bibliographies are nothing but capitalized names, and
+    // indexing them would fill the corpus view with people rather than terms.
+    if (doc.sections[token.section]?.furniture) {
+      flush();
+      continue;
+    }
 
     // An acronym is its own entity and never folds into a phrase: "the CDM
     // Plan" is a mention of CDM, not of a term called "CDM Plan".

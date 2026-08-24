@@ -391,12 +391,29 @@ export function useSpeechEngine(): SpeechEngineStatus {
       synth.speak(utterance);
     };
 
+    /**
+     * First chunk at or after `from` that is not journal furniture.
+     *
+     * The engine declines to *wander* into an author list or a bibliography;
+     * it does not refuse to read them. A deliberate seek — clicking the
+     * section in the structure map — still starts there and plays it, because
+     * the reader asking for the references is a different thing from the
+     * reader being handed them after the chapter ends.
+     */
+    const skipFurniture = (from: number): number => {
+      let at = from;
+      while (at < doc.chunks.length && doc.sections[doc.chunks[at].section]?.furniture) {
+        at += 1;
+      }
+      return at;
+    };
+
     const finishChunk = (chunkIndex: number) => {
       if (!alive()) return;
       clearTimers();
 
       const state = store.getState();
-      const next = chunkIndex + 1;
+      const next = skipFurniture(chunkIndex + 1);
 
       if (next >= doc.chunks.length) {
         state.advanceToken(doc.tokens.length - 1);
@@ -473,7 +490,7 @@ export function useSpeechEngine(): SpeechEngineStatus {
         state.noteCheckPoint(readTo);
       }
 
-      speakFromToken(doc.chunks[next].tokenStart);
+      speakFromToken(doc.chunks[skipFurniture(next)]?.tokenStart ?? doc.tokens.length - 1);
     };
 
     startTimer.current = window.setTimeout(() => {

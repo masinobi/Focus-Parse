@@ -3,6 +3,7 @@
 import { create } from "zustand";
 
 import { db } from "@/lib/db";
+import { firstContentToken } from "@/lib/parse";
 import type { ClozeCheck } from "@/lib/quiz";
 import { QUALITY, summaryId, type WeakTerms } from "@/lib/review";
 import type { FlowNode, LogicTag, ParsedDoc, ViewMode } from "@/lib/types";
@@ -297,11 +298,15 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   lastTickAt: null,
 
   loadDoc: (doc) => {
+    // Past the citation line, the author list and the abstract — where a
+    // published chapter starts saying anything. A stored session overrides this
+    // a tick later, so resuming a document is unaffected.
+    const start = firstContentToken(doc);
     set({
       doc,
       isPlaying: false,
-      tokenIndex: 0,
-      chunkIndex: 0,
+      tokenIndex: start,
+      chunkIndex: doc.tokens[start]?.chunk ?? 0,
       seekNonce: get().seekNonce + 1,
       intercept: { open: false, section: null, resumeChunk: null },
       summaries: {},
@@ -309,7 +314,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       chainHead: null,
       check: IDLE_CHECK,
       vigilance: { ...freshVigilance(), enabled: get().vigilance.enabled },
-      lastCheckToken: 0,
+      lastCheckToken: start,
       hydrated: false,
       gridsPassed: {},
       gridAttempts: {},

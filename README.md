@@ -191,6 +191,37 @@ node scripts/scan-tables.mjs "path/to/pdfs" --verbose
 The script compiles `tables.ts` and runs that same module, so the report and the
 app can never drift apart.
 
+## Journal furniture
+
+A published guidance chapter is not only guidance. It opens with a citation line,
+an author list and an abstract that states the whole chapter before the reader has
+read it, and closes with a revision history, a competing-interests declaration and
+a bibliography. Measured across the corpus that is **3.6% of everything, and 11% of
+the EDC implementation chapter** — about ten minutes of listening to authors and
+references, none of it examinable.
+
+It also explains a complaint. That chapter was reported as "super long and
+repetitive"; measured, six of its 1,351 sentences repeat verbatim and 2% of its
+six-word phrases occur twice, most of those being citation boilerplate. What
+repeats is the abstract saying in advance what the chapter then says.
+
+Those sections are **marked, not removed** ([src/lib/parse.ts](src/lib/parse.ts)).
+Detection is a heuristic over recovered typography, and deleting text on a
+heuristic is how a real section disappears without anyone noticing. Marked
+sections stay parsed, stay in the structure map with a `skipped` badge, and stay
+reachable — seek to the references and they play. What changes is that playback
+never *wanders* in, no blank or exam question is drawn from them, the entity index
+ignores them (126 entities came out of author lists before this), they arm no
+intercept, and the time estimate stops billing for them.
+
+Two detection rules survived measurement, both keyed on things prose does not do:
+a citation marker in a *heading*, and the run-together names PDF extraction
+produces where the original had line breaks ("Redkar-Brown,Olivia"). A third —
+"three or more capitalized words with a separator" — was written and then dropped:
+it matches an author list, but it matches "Data Management and Quality Control"
+just as well, and across the whole corpus it found only 452 further words while
+changing nothing in the document that prompted the work.
+
 ## Pacing checkpoints
 
 Intercepts cannot depend on heading recovery succeeding, so any stretch longer than
@@ -536,7 +567,10 @@ disabled; the only ways out are submitting or ending the session. Your own captu
 for that section are hidden behind a toggle so recall comes first.
 
 **Pre-scan structure map** — generated at load from the header hierarchy, with live
-per-section time estimates, progress, and intercept status.
+per-section time estimates, progress, and intercept status. Pacing checkpoints are
+folded back into the heading they were cut from: a 3,738-word section shows once,
+as "6 checkpoints", rather than as six consecutive rows carrying the same title —
+which was itself a reason a long document read as repetitive.
 
 **Sensory masking** — brown noise under the audio, from a toggle and volume slider in
 the top bar. See below.

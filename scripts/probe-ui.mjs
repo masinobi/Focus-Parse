@@ -41,13 +41,24 @@ function check(label, ok, detail = "") {
   if (!ok) failures.push(label);
 }
 
-/** A dead dev server looks exactly like a hung page. Rule it out first. */
-const reachable = await fetch(BASE).then(
-  (r) => r.ok,
-  () => false
-);
+/**
+ * A dead dev server looks exactly like a hung page, so rule it out first — but
+ * a *live* one answers 404 for up to a minute after a restart while Next
+ * compiles the route on demand. Wait for a real 200 rather than for any reply.
+ */
+const READY_TIMEOUT_MS = 180_000;
+const startedWaiting = Date.now();
+let reachable = false;
+while (Date.now() - startedWaiting < READY_TIMEOUT_MS) {
+  reachable = await fetch(BASE).then(
+    (r) => r.ok,
+    () => false
+  );
+  if (reachable) break;
+  await new Promise((r) => setTimeout(r, 2000));
+}
 if (!reachable) {
-  console.error(`No dev server on ${BASE}. Start one with \`npm run dev\` first.`);
+  console.error(`No dev server answering on ${BASE}. Start one with \`npm run dev\`.`);
   process.exit(1);
 }
 
@@ -87,7 +98,10 @@ page.on("response", (r) => {
 
 /** Ingest a real PDF through the app's own file input. */
 async function loadDocument() {
-  await page.goto(BASE, { waitUntil: "networkidle" });
+  // Not `networkidle`: the workspace polls an API endpoint while it is open, so
+  // the network never goes idle and the wait would burn its whole timeout. The
+  // retry below is what actually handles hydration.
+  await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
   if (deadChunks.size) {
     console.error(
       [
@@ -110,15 +124,41 @@ async function loadDocument() {
    * "hydrated" on this page — it renders the same before and after — so the
    * honest fix is to set the file and check whether the app reacted.
    */
+  const playing = page.getByRole("button", { name: "Play" });
+  const working = page.getByText(/Opening PDF|Extracting text|Reading /);
+  const input = 'input[type="file"][accept*="pdf"]';
+
+  // Let React attach before the first try. Without this the first attempt is
+  // always wasted, and the retry used to be wasted too — see below.
+  await page.waitForTimeout(2000);
+
   for (let attempt = 1; attempt <= 3; attempt++) {
-    await page.setInputFiles('input[type="file"][accept*="pdf"]', join(dir, sample.f));
-    try {
-      await page.getByRole("button", { name: "Play" }).waitFor({ timeout: 45_000 });
-      return;
-    } catch {
-      if (attempt === 3) throw new Error(`${sample.f} never finished ingesting`);
+    // Cleared first, because setting the *same* file again is not a change:
+    // the input already holds it, no change event fires, and the retry is a
+    // silent no-op. That defeated the retry entirely until it was found.
+    await page.setInputFiles(input, []);
+    await page.setInputFiles(input, join(dir, sample.f));
+
+    // Retry only when the app did not react *at all* — that is the hydration
+    // case. Once it is visibly parsing, setting the file again would restart
+    // the parse and race two of them, which is how this probe first failed on
+    // a 28,000-word guideline.
+    const reacted = await playing
+      .or(working)
+      .first()
+      .waitFor({ timeout: 20_000 })
+      .then(() => true, () => false);
+
+    if (!reacted) {
+      if (attempt === 3) throw new Error(`${sample.f} never reached the app`);
       await page.waitForTimeout(1000);
+      continue;
     }
+
+    // Generous: a cold dev server compiles the workspace on this first render,
+    // on top of parsing the PDF.
+    await playing.waitFor({ timeout: 240_000 });
+    return;
   }
 }
 

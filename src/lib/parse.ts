@@ -10,10 +10,13 @@ import type { Block, BlockKind, Chunk, ParsedDoc, Section, Token } from "./types
 const MAX_CHUNK_CHARS = 180;
 
 /**
- * Bump whenever the emitted Token/Chunk shape changes. Version 2 added the
- * separate speech string, per-token speech offsets and clause indices.
+ * Bump whenever the emitted Token/Chunk/Section shape changes. Version 2 added
+ * the separate speech string, per-token speech offsets and clause indices.
+ * Version 4 marks journal furniture and records which sections are pacing
+ * checkpoints of a larger one — both are on `Section`, and stored documents
+ * have to be rebuilt to gain them.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * Sections shorter than this do not arm a cognitive intercept. Stopping a
@@ -267,6 +270,89 @@ function readGridPayload(json: string): GridData | null {
 }
 
 
+interface Seed {
+  title: string;
+  level: 0 | 1 | 2 | 3;
+  blockStart: number;
+  baseTitle?: string;
+  part?: number;
+}
+
+/* ------------------------------------------------------------------ *
+ * Journal furniture
+ * ------------------------------------------------------------------ *
+ *
+ * A published guidance chapter is not only guidance. It opens with a citation
+ * line, an author list and an abstract that restates the whole chapter before
+ * the reader has read it, and it closes with a revision history, a competing
+ * interests declaration and a bibliography. Measured on the EDC
+ * implementation chapter: about 2,400 of its 20,290 words — roughly ten
+ * minutes of listening — are one of those, and none of it is examinable.
+ *
+ * Worse than the time, the reader reported the chapter as "repetitive". It is
+ * not: six of its 1,351 sentences repeat verbatim. What repeats is the
+ * abstract saying in advance what the chapter then says.
+ */
+
+/**
+ * Section titles that end the document proper. Anchored at the start so a
+ * heading that merely *mentions* references — "27) Literature Review" — is
+ * left alone; it is the chapter's own methodology, not its back matter.
+ */
+const TRAILING_FURNITURE =
+  /^(references?|bibliography|works cited|revision history|competing interests?|conflicts? of interest|acknowledge?ments?|funding|author contributions?|open access|copyright|about the authors?|disclaimer)\b/i;
+
+/** How far into a document front matter can still plausibly be. */
+const FRONT_MATTER_SECTIONS = 6;
+
+/**
+ * An author list or a self-citation, used as a heading.
+ *
+ * Two signals only, both of which prose does not produce. A citation marker
+ * (`et al.`, a DOI, a URL) in a *heading* is a self-citation line. And PDF
+ * extraction runs author lists together where the original had line breaks —
+ * "Redkar-Brown,Olivia", "Kerkar andMeredith" — which no sentence does.
+ *
+ * A third rule was written and then measured out: "three or more capitalized
+ * words with a separator" also matches an author list, but it matches "Data
+ * Management and Quality Control" just as well. Across the whole corpus it
+ * found 452 further words — 0.18% — and changed nothing at all in the document
+ * that prompted this work. That is not worth a rule that can swallow a real
+ * heading.
+ */
+function looksLikeFrontMatter(title: string): boolean {
+  if (/\bet al\b|\bdoi\b|https?:/i.test(title)) return true;
+  return /[a-z],[A-Z]|\band[A-Z]/.test(title);
+}
+
+/** Which sections are the artefact rather than the guidance. */
+function markFurniture(sections: Section[]): Section[] {
+  return sections.map((section) => {
+    const title = section.title.trim();
+    const furniture =
+      TRAILING_FURNITURE.test(title) ||
+      (section.i < FRONT_MATTER_SECTIONS && looksLikeFrontMatter(title));
+    // A section playback will never reach on its own must not also demand a
+    // summary of itself. Seeking into the references deliberately is allowed;
+    // being asked to restate them is not.
+    return furniture ? { ...section, furniture: true, intercept: false } : section;
+  });
+}
+
+/** Words the engine will actually read: everything outside the furniture. */
+export function contentWordCount(doc: ParsedDoc): number {
+  return doc.sections.reduce(
+    (n, section) => n + (section.furniture ? 0 : section.wordCount),
+    0
+  );
+}
+
+/** First token the engine should start on: past any opening furniture. */
+export function firstContentToken(doc: ParsedDoc): number {
+  const section = doc.sections.find((s) => !s.furniture && s.wordCount > 0);
+  return section ? section.tokenStart : 0;
+}
+
 /**
  * Insert synthetic section boundaries so a document can never run for too long
  * without a cognitive intercept.
@@ -279,13 +365,14 @@ function readGridPayload(json: string): GridData | null {
  * summaries all work on them unchanged.
  */
 function withPacingCheckpoints(
-  seeds: { title: string; level: 0 | 1 | 2 | 3; blockStart: number }[],
+  seeds: Seed[],
   blockWords: number[],
   blockCount: number
-): { title: string; level: 0 | 1 | 2 | 3; blockStart: number }[] {
-  const out: { title: string; level: 0 | 1 | 2 | 3; blockStart: number }[] = [];
+): Seed[] {
+  const out: Seed[] = [];
 
   seeds.forEach((seed, i) => {
+    const seedAt = out.length;
     out.push(seed);
 
     const start = seed.blockStart;
@@ -300,11 +387,19 @@ function withPacingCheckpoints(
 
       // Only break where a paragraph ends, never mid-thought.
       part += 1;
+      const base = seed.title || "Section";
       out.push({
-        title: `${seed.title || "Section"} (part ${part})`,
+        title: `${base} (part ${part})`,
         level: 2,
         blockStart: b + 1,
+        baseTitle: base,
+        part,
       });
+      // The heading these were split out of is part 1 of the same run, and the
+      // structure map needs to know that to fold them back together. Written
+      // by position: the seed object has already been replaced once by the
+      // time a second part is cut, so searching for it would miss.
+      out[seedAt] = { ...seed, baseTitle: base, part: 1 };
       words = 0;
     }
   });
@@ -543,7 +638,7 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
   for (const chunk of chunks) chunk.section = sectionOfBlock[chunk.block] ?? 0;
   for (const token of tokens) token.section = sectionOfBlock[token.block] ?? 0;
 
-  const sections: Section[] = seeds.map((seed, i) => {
+  const built: Section[] = seeds.map((seed, i) => {
     const blockStart = seed.blockStart;
     const blockEnd = i + 1 < seeds.length ? seeds[i + 1].blockStart : blocks.length;
     const owned = chunks.filter((c) => c.block >= blockStart && c.block < blockEnd);
@@ -565,8 +660,11 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
       intercept:
         (seed.level === 1 || seed.level === 2) &&
         tokenEnd - tokenStart >= MIN_INTERCEPT_WORDS,
+      ...(seed.baseTitle ? { baseTitle: seed.baseTitle, part: seed.part } : {}),
     };
   });
+
+  const sections = markFurniture(built);
 
   const firstHeading = sectionSeeds[0]?.title;
   const title =
