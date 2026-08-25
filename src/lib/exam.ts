@@ -1,5 +1,6 @@
 import { ACRONYMS, type AcronymCategory } from "./acronyms";
 import { buildCloze, buildGridQuestion, gridPrompt, isStructuralReference } from "./quiz";
+import { termKey, type WeakTerms } from "./review";
 import type { ParsedDoc } from "./types";
 
 /**
@@ -126,7 +127,11 @@ export function expansionOf(key: string): string {
  * that never appeared in anything the reader has read is a vocabulary quiz, not
  * an exam on this corpus.
  */
-function acronymQuestions(doc: ParsedDoc, seed: string): AcronymQuestion[] {
+function acronymQuestions(
+  doc: ParsedDoc,
+  seed: string,
+  limit: number = PER_DOC_PER_KIND
+): AcronymQuestion[] {
   const present = new Set<string>();
   for (const token of doc.tokens) {
     if (token.acronym && ACRONYMS[token.acronym]) present.add(token.acronym);
@@ -166,9 +171,23 @@ function acronymQuestions(doc: ParsedDoc, seed: string): AcronymQuestion[] {
       answer,
       options: shuffle([answer, ...distractors], seed + key + ":opt", (o) => o),
     });
-    if (out.length >= PER_DOC_PER_KIND) break;
+    if (out.length >= limit) break;
   }
   return out;
+}
+
+/**
+ * Every acronym one document uses, uncapped.
+ *
+ * `PER_DOC_PER_KIND` exists so an exam is not dominated by whichever document
+ * happens to be longest — a paper that drew half its questions from the GCDMP
+ * would be testing the GCDMP rather than the corpus. A drill has the opposite
+ * requirement: it *is* the vocabulary, and a term left out of it is the term
+ * the reader meets on the day. Measured before this existed, the cap held the
+ * drill to 30 acronyms where the corpus uses 50.
+ */
+export function collectAcronyms(doc: ParsedDoc, seed: string): AcronymQuestion[] {
+  return acronymQuestions(doc, seed, Number.POSITIVE_INFINITY);
 }
 
 function clozeQuestions(doc: ParsedDoc, seed: string): ClozeQuestion[] {
@@ -255,6 +274,55 @@ export function collectQuestions(doc: ParsedDoc, seed: string): QuestionPool {
     cloze: clozeQuestions(doc, seed),
     grid: gridQuestions(doc, seed),
   };
+}
+
+/**
+ * Assemble an acronym drill.
+ *
+ * Everything this needs already existed: `collectQuestions` builds acronym
+ * definitions with same-category distractors, `acronymId` keys them by the term
+ * alone, and the retrieval queue already carries an `acronym` kind. What did not
+ * exist was a way to reach any of it without sitting a mixed forty-question
+ * paper — so this is an ordering and a deduplication, not a feature.
+ *
+ * Two things it does that `assembleExam` deliberately does not:
+ *
+ *  - **Everything the corpus uses, not a sample.** An exam takes a share of
+ *    each kind because it is predicting a result. A drill is the vocabulary
+ *    itself, and leaving a term out of it is the term the reader will meet on
+ *    the day.
+ *  - **Worst first.** `weak` is the queue's own account of what is not
+ *    sticking, keyed by term — the same map the reading spot checks consult. A
+ *    drill that opened on the eight acronyms the reader has never missed is a
+ *    drill that spends its first minute on the part already done.
+ *
+ * The same acronym is defined identically in every guideline that uses it, so
+ * it is asked once and attributed to the first document that had it. Within a
+ * weakness band the order is seeded rather than random, so a drill can be sat
+ * twice and be the same drill.
+ */
+export function assembleDrill(
+  perDocument: AcronymQuestion[][],
+  weak: WeakTerms,
+  seed: string
+): AcronymQuestion[] {
+  const byAcronym = new Map<string, AcronymQuestion>();
+  for (const questions of perDocument) {
+    for (const question of questions) {
+      if (!byAcronym.has(question.acronym)) byAcronym.set(question.acronym, question);
+    }
+  }
+
+  const unique = shuffle([...byAcronym.values()], seed + ":drill", (q) => q.acronym);
+  // Descending difficulty, and the sort has to be stable to keep the seeded
+  // order inside a band. Array.prototype.sort is stable in every engine this
+  // runs on, so the shuffle above survives as the tie-break.
+  const weightOf = (q: AcronymQuestion) =>
+    weak[termKey(q.answer, q.acronym)]?.weight ?? 0;
+  // Sorted descending directly rather than ascending-then-reversed: reversing
+  // would also reverse the seeded order inside each band, which is the tie-break
+  // the stability is there to preserve.
+  return unique.sort((a, b) => weightOf(b) - weightOf(a));
 }
 
 const KINDS: ExamKind[] = ["acronym", "cloze", "grid"];

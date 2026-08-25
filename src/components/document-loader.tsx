@@ -10,10 +10,12 @@ import {
   Loader2,
   Pencil,
   Sparkles,
+  Tags,
   Upload,
   X,
 } from "lucide-react";
 
+import { AcronymDrill } from "@/components/acronym-drill";
 import { BackupControls } from "@/components/backup-controls";
 import { CorpusIndex } from "@/components/corpus-index";
 import { ExamSession } from "@/components/exam-session";
@@ -42,6 +44,7 @@ export function DocumentLoader() {
   const [reviewing, setReviewing] = React.useState(false);
   const [indexing, setIndexing] = React.useState(false);
   const [examining, setExamining] = React.useState(false);
+  const [drilling, setDrilling] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   const loadDoc = useFocusStore((s) => s.loadDoc);
@@ -149,6 +152,20 @@ export function DocumentLoader() {
     );
   }
 
+  if (drilling) {
+    return (
+      <AcronymDrill
+        onDone={() => {
+          setDrilling(false);
+          // A drill feeds the queue like everything else, so both the debt
+          // count and the reading engine's idea of what is weak are stale.
+          void db.countDue().then(setDue);
+          void refreshWeakTerms();
+        }}
+      />
+    );
+  }
+
   if (reviewing) {
     return (
       <ReviewSession
@@ -234,6 +251,26 @@ export function DocumentLoader() {
               <span className="block text-xs text-muted-foreground">
                 Acronyms, terms in context and table cells, drawn across
                 everything and marked at the end.
+              </span>
+            </span>
+          </button>
+        )}
+
+        {/* The vocabulary on its own. The exam already asks these, but a
+            handful at a time on a clock — and the acronyms are the one part of
+            this corpus that rewards being sat down with. */}
+        {recent.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setDrilling(true)}
+            className="mb-6 flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors hover:bg-accent/60"
+          >
+            <Tags className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 text-sm">
+              <span className="font-medium">Acronym drill</span>
+              <span className="block text-xs text-muted-foreground">
+                Every acronym your documents use, marked as you go, hardest
+                first. No clock.
               </span>
             </span>
           </button>

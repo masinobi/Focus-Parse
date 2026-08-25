@@ -32,6 +32,7 @@ execFileSync(
     resolve("node_modules/typescript/bin/tsc"),
     "src/lib/exam.ts",
     "src/lib/parse.ts",
+    "src/lib/review.ts",
     "src/lib/pdf.ts",
     "src/lib/tables.ts",
     "--outDir", out,
@@ -44,7 +45,10 @@ execFileSync(
 );
 
 const load = createRequire(import.meta.url);
-const { collectQuestions, assembleExam, scoreExam } = load(join(out, "exam.js"));
+const { collectQuestions, assembleExam, assembleDrill, collectAcronyms, scoreExam } =
+  load(join(out, "exam.js"));
+const { ACRONYMS } = load(join(out, "acronyms.js"));
+const { termKey } = load(join(out, "review.js"));
 const { parseDocument } = load(join(out, "parse.js"));
 const { assemble, isBoldFont } = load(join(out, "pdf.js"));
 const { answerMatches, isStructuralReference } = load(join(out, "quiz.js"));
@@ -94,6 +98,9 @@ async function pagesOf(path) {
 
 const seed = "exam:scan";
 const pools = [];
+const drillPools = [];
+/** Every acronym any document actually uses, counted from the tokens. */
+const usedInCorpus = new Set();
 
 for (const file of files) {
   const path = join(dir, file);
@@ -108,6 +115,16 @@ for (const file of files) {
   const doc = parseDocument(source, file);
   const pool = collectQuestions(doc, seed);
   pools.push(pool);
+  drillPools.push(collectAcronyms(doc, seed));
+
+  // Ground truth for the drill, taken from the token stream rather than from
+  // anything the question builders produced. Comparing the drill against a
+  // count derived from the same capped pools would be a check that cannot
+  // fail — which is how the 12-per-document cap went unnoticed in the first
+  // place.
+  for (const token of doc.tokens) {
+    if (token.acronym && ACRONYMS[token.acronym]) usedInCorpus.add(token.acronym);
+  }
   console.log(
     `${file}: ${pool.acronym.length} acronym, ${pool.cloze.length} cloze, ` +
       `${pool.grid.length} grid`
@@ -193,3 +210,91 @@ console.log(
   `  worst breakdown row: ${worst.byDocument[0]?.label.slice(0, 30) ?? "—"}, ` +
     `best paper's worst row: ${best.byDocument[0]?.label.slice(0, 30) ?? "—"}`
 );
+
+/* ---- The acronym drill --------------------------------------------- */
+
+/*
+ * A drill is the whole vocabulary rather than a sample of it, so the numbers
+ * that matter are different from the paper's: not "is this a fair draw" but
+ * "is anything missing, and is anything asked twice".
+ *
+ * The ordering check is the one worth reading. Weak-first is a control, and a
+ * control that never displaces anything is wired to nothing — the same failure
+ * `scan-checks` found in the cloze weighting. So the drill is assembled twice,
+ * once with an empty weak map and once with a synthetic one, and the report
+ * says how far the stuck terms actually moved.
+ */
+const drill = assembleDrill(drillPools, {}, seed);
+
+const drillSeen = new Set();
+let drillDuplicates = 0;
+let drillAnswerNotInOptions = 0;
+let drillUnknown = 0;
+
+for (const q of drill) {
+  if (drillSeen.has(q.acronym)) drillDuplicates += 1;
+  drillSeen.add(q.acronym);
+  if (q.options.filter((o) => o === q.answer).length !== 1) drillAnswerNotInOptions += 1;
+  if (!usedInCorpus.has(q.acronym)) drillUnknown += 1;
+}
+
+// A term used by a document and never drilled is the one the reader meets on
+// the day. `expansionOf` can refuse an entry with no expansion and the
+// distractor pool can come up short, so this is reported rather than asserted
+// to zero — but it must be read, not skipped.
+const undrilled = [...usedInCorpus].filter((a) => !drillSeen.has(a));
+
+// Three terms marked as fully stuck, drawn from the back half of the unweighted
+// order so that leaving them where they are would be visible as a zero.
+const tail = drill.slice(Math.floor(drill.length / 2));
+const stuck = [tail[0], tail[Math.floor(tail.length / 2)], tail[tail.length - 1]].filter(
+  Boolean
+);
+const weak = {};
+for (const q of stuck) {
+  weak[termKey(q.answer, q.acronym)] = {
+    key: termKey(q.answer, q.acronym),
+    weight: 1,
+    lapses: 3,
+  };
+}
+
+const weighted = assembleDrill(drillPools, weak, seed);
+const positionIn = (list, acronym) => list.findIndex((q) => q.acronym === acronym);
+const promoted = stuck.filter(
+  (q) => positionIn(weighted, q.acronym) < positionIn(drill, q.acronym)
+).length;
+const atFront = stuck.filter((q) => positionIn(weighted, q.acronym) < stuck.length).length;
+
+// Reordering must not lose or invent a question.
+const sameSet =
+  weighted.length === drill.length &&
+  new Set(weighted.map((q) => q.acronym)).size === drillSeen.size;
+
+console.log(`
+=== acronym drill ===`);
+console.log(`  acronyms the corpus uses, counted from the tokens: ${usedInCorpus.size}`);
+console.log(`  drilled: ${drill.length}`);
+console.log(
+  `  used but never drilled: ${undrilled.length}` +
+    (undrilled.length ? `   (${undrilled.join(", ")})` : "   (must be 0)")
+);
+console.log(`  asked twice: ${drillDuplicates}   (must be 0)`);
+console.log(`  answer missing from its own options: ${drillAnswerNotInOptions}   (must be 0)`);
+console.log(`  drilled but used by no document: ${drillUnknown}   (must be 0)`);
+console.log(
+  `  stuck terms moved forward: ${promoted} of ${stuck.length}   (must be ${stuck.length})`
+);
+console.log(
+  `  stuck terms now in the opening ${stuck.length}: ${atFront} of ${stuck.length}   (must be ${stuck.length})`
+);
+console.log(`  weighting kept the same set: ${sameSet}   (must be true)`);
+
+if (verbose) {
+  console.log(
+    `  unweighted opening: ${drill.slice(0, 8).map((q) => q.acronym).join(", ")}`
+  );
+  console.log(
+    `  with three stuck:   ${weighted.slice(0, 8).map((q) => q.acronym).join(", ")}`
+  );
+}
