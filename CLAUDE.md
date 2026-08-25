@@ -36,10 +36,10 @@ change for different reasons:
 
 | Constant | Where | Now | Bump when |
 |---|---|---|---|
-| `DB_VERSION` | `db.ts` | 3 | An object store or index is added. Every store creation is guarded by `contains`, so a fresh database and an upgraded one take the identical path. |
+| `DB_VERSION` | `db.ts` | **4** | An object store or index is added. Every store creation is guarded by `contains`, so a fresh database and an upgraded one take the identical path. Version 4 added `exams`. **A bump silently hangs any other tab already holding the database**: the second tab blocks the upgrade, `open()` neither resolves nor rejects, so `safe()` cannot catch it and every `db.*` call awaits for ever. Cost half an hour of measuring a page that was fine. Close other tabs before verifying a bump. |
 | `SCHEMA_VERSION` | `parse.ts` | **4** | The Token/Chunk/**Section** shape changes. A stored document whose `schema` differs is rebuilt from `source` on read — which is how documents already in a reader's browser pick up parser fixes. Version 4 added `Section.furniture` and the pacing-checkpoint metadata. |
 | `ENTITY_SCHEMA` | `entities.ts` | 1 | Entity extraction rules change. A stale index rebuilds itself rather than reporting yesterday's rules. |
-| `BACKUP_FORMAT` | `backup.ts` | 1 | The backup envelope changes. Import validates per record, so a bump need not invalidate old files. |
+| `BACKUP_FORMAT` | `backup.ts` | **2** | The backup envelope changes. Import validates per record, so a bump need not invalidate old files. Version 2 added `exams`; a version-1 file simply has no such key and reads as absent rather than malformed. |
 
 `SessionState` deliberately has **no** version — see invariant 10. Every field
 added to it since must read as `undefined` on sessions already on disk.
@@ -314,6 +314,27 @@ something (the target, or the voice). `rate` is a dependency of the speech
 engine's effect, so a controller that corrected as it read would cancel and
 restart the utterance at intervals nobody asked for.
 
+**22. The horizon only ever shortens, and only where it is read.**
+`scheduleReview` takes an optional `horizonDays` and applies it as a *cap* on
+the interval it would otherwise have granted. It must never raise one, never
+touch `ease`/`reps`/`lapses`, and never reach the relearning path — a failed
+item comes back in ten minutes, which is sooner than any horizon and is not the
+horizon's business. `undefined`/`null` has to be byte-for-byte the old
+scheduler, because that is what a reader with no exam date is running. And it is
+read inside `db.recordAnswer` rather than passed by each of the eight call
+sites: a scheduling rule that must be remembered at every dialog, the drill, the
+exam and the reading engine is one that will be missing from the ninth. Same
+reasoning as invariant 17.
+
+**23. An exam record is immutable, and outlives the document it quoted.**
+`deleteDoc` takes reviews and the entity index with the document — a question
+whose source text is gone can never be checked again — and deliberately does
+*not* take exam records. A paper is a fact about the reader on a date; forgetting
+one of the nine guidelines afterwards does not make it untrue, and each
+breakdown row keeps the title it was sat under so it still reads. For the same
+reason the backup importer has no newer-wins contest for papers: a record
+already present is the same record.
+
 **19. `source` is a complete record.** Everything rides through the markdown
 intermediate rather than a side channel, so `db.getDoc` can rebuild a document
 with the current parser when `schema` is stale. Schema is currently **4**; bump
@@ -419,6 +440,18 @@ and 3 of 5
 cloze windows promote a weak term into the check when one is marked as repeatedly
 failed (must be > 0 — a boost that never displaces anything is a control wired to
 nothing; confirmed it goes to 0 with `WEAK_BOOST` at 0).
+
+**Some claims have no corpus, and a property test is the substitute.** The
+exam-date horizon touches no document, so there is nothing to scan — and its
+promise ("nothing is scheduled past the exam") is about a reader answering over
+*weeks*, not about one call. `deadline.test.ts` therefore simulates a thousand
+seeded run-ups from 1 to 120 days out at random qualities and asserts no
+interval ever lands after the date. Worth knowing why there are two tests and
+not one: setting the horizon share to 1.0 — schedule right up to the exam —
+leaves that property **green**, because it does not actually violate it. What
+catches it is the second test, that a settled item comes back five or more times
+rather than once, which is the whole reason the share is a half. A single test
+here would have passed the wrong rule.
 
 **Measure a voice before trusting it.** `/voice-check` (dev route) speaks real
 parser output through every installed voice and resolves each boundary event
@@ -602,6 +635,14 @@ than nine separate reading sessions. The exam draws across all of them, the
 index reports what they share, and difficulty is keyed by term so a word lost in
 one guideline is preferred as a blank in another.
 
+The exam history and the exam date are one idea too, and it is the only one in
+this app that looks *forward*. Everything else here reports on material — how
+much was read, what was verified, which terms are not sticking. Neither of those
+can answer "is this working" or "is there time", because both questions need a
+series and a date, and the app had neither: a marked paper died with its dialog,
+and the scheduler did not know the exam existed. See "Exam history" and "The
+exam date" in the README.
+
 The coverage map is the fourth thing that belongs to the enforcement-ladder
 idea above, and arguably the point of it. The ladder was already producing
 per-section evidence — a summary, a grid pass, a marked spot check — and
@@ -618,8 +659,9 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed on `main`. The fourth round's four commits are
-**local and not yet pushed** — pushing is outward-facing and was not asked for.
+Everything here is committed on `main`. Seven commits across the fourth and
+fifth rounds are **local and not yet pushed** — pushing is outward-facing and
+has not been asked for.
 
 **Where the last session left it.** Four rounds have landed. The first three
 were the feature trio (entity index, node linking, adaptive difficulty), the
@@ -640,7 +682,27 @@ about it. The drill was silently bounded by the exam's per-document cap (30
 acronyms offered where the corpus uses 50). The coverage map demanded three
 different debts the enforcement ladder will never raise. The wrapped-heading
 join needed its looser word cap to travel with the line, or it merged a heading
-and then demoted it. Assume the fifth item has one too.
+and then demoted it.
+
+The fifth round added two things that were *not* on the original list, because
+the reader asked what else was worth building: keeping the mock paper, and
+telling the app when the exam is. Both had the second problem underneath, and
+both were again found by running it. The repeat-miss report named one term two
+different ways depending on which kind of question was missed last — a cloze cut
+around an acronym has the acronym as its answer, a definition question has the
+expansion, and they key to the same term. And an auto-graded item can never
+exceed the horizon on its first rep, so the cap could not be *seen* to work until
+an item with a long earned interval was injected and answered through the real
+UI: 60 days earned, 4 days to the exam, "back in 2 days" — and "back in 5
+months" with the date cleared. **Assume the next item has one too, and find it
+by driving the app rather than by reading the diff.**
+
+Three assertions written this round could not go red, all caught by breaking
+them on purpose: the repeat-miss ordering test (insertion order already matched
+what it expected), the guard against printing an acronym as its own expansion
+(only exercised by a term with no acronym), and — the interesting one — the
+horizon's headline property, which stays green at a share of 1.0. See "Some
+claims have no corpus" above.
 
 The reader is currently working through *Electronic Data Capture — Study
 Implementation and Start-up*. Documents already in their browser rebuild
@@ -653,7 +715,26 @@ Done and not to be redone: the five-item feature list's items 1 and 2 (backup,
 mock exam), the entity index / node linking / adaptive difficulty trio, the two
 defects (grid results surviving a reload, voice persistence), journal furniture,
 column recovery, the coverage map, the words-per-minute control, the acronym
-drill, and wrapped headings. The backlog below is what is left.
+drill, wrapped headings, the exam history, and the exam-date horizon. The
+backlog below is what is left.
+
+**Suggested and not built, in the order they were pitched.** The reader took the
+first two. The third is the one worth returning to: the coverage map answers
+"of the material I have, what have I been held to" and *structurally cannot*
+answer "of what the exam tests, do I have material at all". Everything in this
+app is document-shaped and the exam is domain-shaped, so a whole weighted domain
+could be missing and nothing here would ever say so. A coarse version — the CCDA
+content outline entered by hand, sections tagged to domains, weight against
+corpus words against verified words — is buildable, but the honest risk is
+invariant 20's: a sloppy mapping produces confident wrong percentages, which is
+worse than no map. The trustworthy part is the rows with weight and *no words*;
+the percentages are not. The fourth was a one-key "that sounded wrong" marker
+during reading, which stamps the current chunk and section into an exportable
+list — cheap, and justified by this project's own history of vague complaints
+turning out to be real parser defects (twice). Deliberately declined:
+hands-free/commute mode, which sounds the most attractive and is the most
+expensive, because the whole enforcement ladder assumes a dialog and speech
+recognition fails hardest on exactly the acronyms this corpus is made of.
 
 **T-SQL logical stepper** — the last item from the user's original feature list.
 Code blocks are never spoken by design; this would reverse that for SQL: split on
@@ -750,6 +831,30 @@ marked *candidate* are things that could actually be fixed.
   flow-diagram fragments in the EDC chapter ("Records excluded", "Screening")
   reading as content. Seventeen words; not worth a rule shaped around one
   document's methodology figure.
+- The exam date is not carried by a backup. Backups are an IndexedDB export and
+  the date lives in `localStorage` beside the voice and the words-per-minute
+  target; widening the format to reach in for one string was judged not worth
+  it, and re-entering a date takes ten seconds. Stated in `deadline.ts` rather
+  than left to be discovered after a restore.
+- An exam record keeps only the questions that were got *wrong*. A right answer
+  has no next action and the counts it contributes to are already in the two
+  breakdowns — but it does mean the app cannot later ask "which terms have you
+  always got right", and it never will from stored papers.
+- The repeat-miss report is blind to papers sat before it existed: records
+  written before the acronym fix carry no `acronym` field, so those rows are
+  still labelled by whichever question kind was missed last. Confirmed to render
+  rather than crash — invariant 10's habit applied to a store that does have a
+  version — and it corrects itself as new papers accumulate.
+- The horizon compresses intervals but cannot compress a *corpus*. It guarantees
+  every item already in the queue comes round again before the exam; it says
+  nothing about material never read, and the readiness block deliberately does
+  not fold coverage in, because corpus-wide coverage means loading nine parsed
+  documents and the home screen must not do that.
+- *(candidate)* The readiness block reports four numbers and refuses to draw a
+  conclusion from them, because the app does not know the pass mark or what a
+  paper it wrote itself predicts. If the real CCDA pass mark and blueprint were
+  entered by hand it could say considerably more — see the note on the content
+  outline under Outstanding.
 - Scanned PDFs with no text layer are rejected rather than OCR'd.
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid

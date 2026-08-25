@@ -413,7 +413,8 @@ intervals a reader can predict, which matters — a retention system that behave
 unpredictably is one that gets abandoned. A failed item returns in ten minutes rather
 than tomorrow, because the point of failing is to see it again while the miss is still
 felt. Ease is floored at 1.3 so a repeatedly-failed item cannot become a daily leech,
-and intervals cap at six months.
+and intervals cap at six months — or at half the time remaining, once an exam date is
+set. See *The exam date* below.
 
 | Kind | Prompt | Marked by |
 | --- | --- | --- |
@@ -473,6 +474,111 @@ node scripts/scan-exam.mjs "path/to/pdfs" --verbose
 The report asserts the ways a paper can be quietly unfair — an answer missing from its own
 options cannot be answered at all, and a duplicate asks one fact twice while a document
 goes unexamined — and scores a perfect paper and a blank one to prove the marker moves.
+
+## Exam history
+
+The paper is the closest thing in this app to the actual objective, and the only artefact
+that scores the whole corpus at once. Its result lived in one React state variable and was
+destroyed by closing the dialog.
+
+That is the same defect the coverage map was built to fix one rung down — evidence
+produced, shown for a moment, discarded — and a worse version of it. The marked screen
+already answers "how did that paper go". It cannot answer "is this getting better",
+because no single paper can: that question needs a series, and there was none
+([src/lib/history.ts](src/lib/history.ts)).
+
+So a sitting becomes a record — score, time, both breakdowns, and the misses.
+
+**Only the misses are kept.** A record exists to say what to do next, and a question
+answered correctly has no next action; the counts a right answer contributes to are
+already in `byKind` and `byDocument`. Keeping all forty questions would triple the record
+for material the parser can regenerate from the documents at any time. The cost is real
+and worth stating: the app can never later ask which terms you have *always* got right.
+
+**Misses are keyed by term, not by question.** The same rule the retrieval queue uses:
+"SUSAR" missed in the GCDMP and "SUSAR" missed in ICH E6 are two questions and one
+problem. Everything below depends on that.
+
+**The one report only a history can produce** is the terms missed on more than one paper.
+The retrieval queue already reschedules a missed item — and then forgives it the moment it
+comes back right, which is correct for scheduling and useless as evidence. A term missed
+on three papers weeks apart has *survived being learned*, and nothing else here can see
+that. Counted by paper rather than by occurrence, so a term blanked twice in one sitting
+is one problem, not two.
+
+Two things came out of running it rather than reading it.
+
+The repeat-miss list named one term two different ways. A cloze cut around an acronym has
+the acronym as its answer; a definition question about the same term has the expansion.
+Both key to the same term, so the row was named after whichever kind was missed last —
+"CDISC" on one paper and "Clinical Data Interchange Standards Consortium" on the next. The
+miss now carries the acronym separately, the row is named after it, and the expansion sits
+beside it where a definition question has supplied one.
+
+And two assertions could not go red. The ordering test passed with the sort deleted,
+because insertion order already matched what it expected; it now meets the worst term
+last. The guard that stops an acronym being printed as its own expansion was only
+exercised by a term that had no acronym at all.
+
+**The trend is reported three ways because one of them lies.** A single paper carries real
+sampling noise — a 20-question set moves 5 percentage points per question — and two papers
+of different lengths are not directly comparable. So the change since the last paper is
+shown, because a reader will look for it, next to the mean of the last three, which is the
+figure that moves for a reason. The chart's 70% line is a reference to read the shape
+against; this app does not know the real pass mark and does not claim one.
+
+## The exam date
+
+SM-2 grows an interval for as long as an item keeps coming back right, capped at six
+months because past that it stops being study. That is the right shape for open-ended
+retention and the wrong one for a dated exam. An item scheduled for after the date is
+worth exactly nothing — and it is the items going *best* that earn the long intervals
+falling off the far end. A reader six weeks out, doing everything the app asked, would sit
+the paper having not seen their strongest hundred terms since the month before.
+
+So the interval gets a horizon ([src/lib/deadline.ts](src/lib/deadline.ts)).
+
+**Never schedule beyond half the time remaining.** Not "before the exam", which is the
+obvious rule and the wrong one: an item landing the day before gets one look and no room
+to recover if it fails, and near the date every item collapses onto the same day. Halving
+is self-correcting — from 60 days out a term lands at 30, then 15, 7, 3, 1 — so it gets
+roughly log2(days) further looks, spread out, each with time behind it to re-learn from a
+miss.
+
+**It only ever shortens.** No date, or a date that has passed, is byte-for-byte the
+original scheduler; ease, reps and lapses are untouched, so a horizon that comes and goes
+leaves no mark on what the queue has learned; and a failed item still returns in ten
+minutes, which is sooner than any horizon and is not the horizon's business.
+
+**It is read inside `db.recordAnswer`, not passed by each caller.** There are eight call
+sites — every dialog, the drill, the exam, the reading engine — and a scheduling rule that
+has to be remembered at each of them is a rule that will be missing from the ninth.
+
+The date is kept in `localStorage` beside the voice and the words-per-minute target,
+because like those it is a property of the reader rather than of any document. Unlike
+those it is worth saying out loud that **a backup does not carry it**: a backup is an
+IndexedDB export, and widening the format to reach in for one string is not a trade worth
+making when re-entering a date takes ten seconds.
+
+**Checked over a run-up, not over a call.** The promise is about a reader answering items
+over weeks, so `deadline.test.ts` simulates a thousand seeded sequences from 1 to 120 days
+out at random qualities and asserts no interval ever lands after the date. A per-call test
+would pass on a rule that quietly lets an item drift past the date after five good
+answers. A second test pins the reason for *half* — that a settled item comes back five or
+more times rather than once — and both are needed: setting the share to 1.0 leaves the
+first test green and turns only the second red.
+
+Measured through the running app in both directions, on one item that had earned a 60-day
+interval. With the exam four days out it came back **in 2 days**, matching the horizon on
+the home screen. With the date cleared, the same item answered the same way came back **in
+5 months**.
+
+**The home screen reports four numbers and draws no conclusion from them**: days left, the
+last three papers, what the queue owes, and the cap now in force. The app does not know
+the pass mark, what a paper it wrote itself predicts, or how much of the corpus this
+reader needs — so "on track" from those four numbers would be invented. What it does state
+is the one thing the date actually guarantees: nothing in the queue is scheduled to come
+round after the exam.
 
 ## The coverage map
 
@@ -763,6 +869,12 @@ just how far the caret got, and points at the next section worth your time. See 
 **Acronym drill** — every acronym your documents use, marked as you go, hardest first,
 no clock. See above.
 
+**Exam history** — every mock paper is kept, so the app can say how the scores are
+moving and which terms have survived being learned. See above.
+
+**An exam date** — set one on the home screen and no review item is ever scheduled to
+come round after it. Intervals cap at half the time remaining. See above.
+
 **Sensory masking** — brown noise under the audio, from a toggle and volume slider in
 the top bar. See below.
 
@@ -856,6 +968,16 @@ Three things the browser forces:
 - A section counts as verified on a spot check every blank of which was answered wrong.
   Getting through the check is what proves someone was there; recall is reported
   separately and turns red below half.
+- The exam date is not carried by a backup. It lives in `localStorage` with the voice
+  and the words-per-minute target; re-entering it after a restore takes ten seconds.
+- An exam record keeps only the questions that were got wrong, so the app cannot later
+  say which terms you have always got right.
+- Papers sat before the repeat-miss report learned about acronyms are still labelled by
+  whichever question kind was missed last. They render; they correct themselves as new
+  papers accumulate.
+- The horizon compresses intervals; it cannot compress a corpus. It guarantees that
+  everything already in the queue comes round again before the exam, and says nothing
+  about material never read.
 
 ## Keyboard
 
@@ -887,6 +1009,12 @@ words across three documents — source-only is 263KB against 5.6MB for the pars
 21× smaller, and it cannot carry a stale token shape into a future parser. The entity
 index is left out for the same reason: derived, and rebuilt on demand.
 
+**Papers are carried too, at format 2.** A version-1 file simply has no such key, so it
+reads as absent rather than malformed — it is still a complete backup of everything that
+existed when it was taken, and refusing it would be the worst possible way to handle a
+format bump. Papers need no newer-wins contest either: a marked paper never changes, so
+a record already present is the same record.
+
 **Import merges and never deletes.** Where both sides hold a record, the one touched last
 wins. Restoring a three-week-old backup onto a machine that has been read on since must
 not rewind that reading — an older review item carries an older interval, and applying it
@@ -896,12 +1024,12 @@ skipped instead of discarding a whole backup over one bad row.
 
 ## Persistence
 
-IndexedDB ([src/lib/db.ts](src/lib/db.ts)), four stores: `documents` (parsed document
+IndexedDB ([src/lib/db.ts](src/lib/db.ts)), five stores: `documents` (parsed document
 plus its source), `sessions` (reading position, flow nodes and their links,
 summaries, which grids have been answered, and what each spot check established)
-written debounced at 700 ms, `reviews` (the spaced-retrieval queue) and `entities` (one
-compact index per document). Every write is best-effort — a browser in private mode
-loses persistence, not the reading session.
+written debounced at 700 ms, `reviews` (the spaced-retrieval queue), `entities` (one
+compact index per document) and `exams` (one record per mock paper sat). Every write is
+best-effort — a browser in private mode loses persistence, not the reading session.
 
 `entities` is derived data, kept only so the corpus view does not have to load nine
 parsed documents — several hundred thousand tokens — to answer "where else does this
@@ -914,6 +1042,18 @@ so the loader can ask what is owed without reading the whole queue, and by `docI
 forgetting a document does not leave its questions behind. It arrived in database
 version 2; the upgrade adds the store and leaves `documents` and `sessions` untouched.
 
+`exams` arrived in database version 4, indexed by `at` so the home screen can ask for
+the last few papers without reading every one ever sat. Unlike `reviews` and `entities`
+it is deliberately **not** deleted with a document: those are questions about a
+document and cannot outlive it, while a paper is a fact about the reader on a date, and
+forgetting one guideline afterwards does not make it untrue. Each breakdown row keeps
+the title it was sat under, so it still reads.
+
+A version bump has one sharp edge worth knowing: a second tab already holding the
+database blocks the upgrade, and a blocked `open()` neither resolves nor rejects — so
+the best-effort wrapper cannot catch it and every call simply waits. Close other tabs
+after an upgrade.
+
 **Schema versioning.** A stored document is a snapshot of whatever the parser emitted
 that day, and the token/chunk model changes as features land. Each document carries a
 `schema` number; on read, a document whose version does not match the parser's is
@@ -923,10 +1063,12 @@ not need the original file. The engine additionally falls back to display text w
 chunk has no speech string, so a stale shape degrades to reading without acronym
 expansion rather than failing to play.
 
-Two things are deliberately **not** in IndexedDB. The chosen voice and the reading
+Some things are deliberately **not** in IndexedDB. The chosen voice and the reading
 speed live in `localStorage`, along with what each voice has been measured to deliver
 at each rate: none of it belongs to a document, and all of it is a property of the
-voices this particular machine happens to have installed.
+voices this particular machine happens to have installed. The exam date is there for
+the same reason — it belongs to the reader, not to anything they are reading — with the
+consequence that a backup does not carry it.
 
 And `sessions` carries no `schema` number of its own, which is a constraint rather
 than an oversight — there is no migration path, so every field added to a session since
