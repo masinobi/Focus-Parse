@@ -1,3 +1,4 @@
+import type { SqlStep } from "./sql";
 import type { GridData, GridStep } from "./tables";
 
 export type LogicTag = "entity" | "mechanism" | "output";
@@ -73,6 +74,20 @@ export interface Block {
   grid?: GridData;
   /** The grid flattened into one step per chunk, aligned with `chunks`. */
   steps?: GridStep[];
+  /**
+   * A SQL code block cut into clauses in evaluation order, one per chunk and
+   * whose fence said sql, so every other code block stays unspoken.
+   */
+  sqlSteps?: SqlStep[];
+  /**
+   * Which step each of `chunks` belongs to.
+   *
+   * Not an index-for-index alignment, unlike `steps` on a grid: a clause is a
+   * unit of evaluation and can be far longer than one utterance, so a long one
+   * becomes several chunks that are all still the same step. Monotonic
+   * non-decreasing, one entry per chunk.
+   */
+  sqlStepOfChunk?: number[];
 }
 
 export interface Section {

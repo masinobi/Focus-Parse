@@ -30,6 +30,7 @@ import { db, type DocSummary } from "@/lib/db";
 import { parseDocument } from "@/lib/parse";
 import { extractPdf } from "@/lib/pdf";
 import { SAMPLE_DOCUMENT } from "@/lib/sample";
+import { sqlToMarkdown } from "@/lib/sql";
 import { useFocusStore } from "@/store/useFocusStore";
 
 export function DocumentLoader() {
@@ -87,7 +88,12 @@ export function DocumentLoader() {
         setBusy(`Reading ${file.name}…`);
         const text = await file.text();
         setBusy(null);
-        ingest(text, file.name);
+        // A `.sql` file is not a document with code in it — it is mostly prose,
+        // in comments, with the queries between. Parsed as plain text it reads
+        // its own delimiters aloud; wrapped whole in one fence it goes silent.
+        // `sqlToMarkdown` separates the two, and the markdown it produces is
+        // what gets stored as `source`, so a rebuild needs nothing else.
+        ingest(/\.sql$/i.test(file.name) ? sqlToMarkdown(text) : text, file.name);
         return;
       }
 
@@ -332,16 +338,19 @@ export function DocumentLoader() {
           <Upload className="mb-3 h-5 w-5 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             Drop a <span className="text-foreground">.pdf</span>,{" "}
-            <span className="text-foreground">.md</span> or{" "}
-            <span className="text-foreground">.txt</span> file here
+            <span className="text-foreground">.md</span>,{" "}
+            <span className="text-foreground">.txt</span> or{" "}
+            <span className="text-foreground">.sql</span> file here
           </p>
           <p className="mt-1 text-xs text-muted-foreground/70">
             PDFs are parsed locally — headings are recovered from the typography.
+            A .sql script is split into its commentary and its queries, and each
+            query is stepped in the order it is evaluated.
           </p>
           <input
             ref={fileRef}
             type="file"
-            accept=".md,.markdown,.txt,.pdf,text/plain,text/markdown,application/pdf"
+            accept=".md,.markdown,.txt,.sql,.pdf,text/plain,text/markdown,application/pdf"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];

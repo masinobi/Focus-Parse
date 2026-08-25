@@ -13,7 +13,8 @@
     "probe": "node scripts/probe-ui.mjs",
     "scan-columns": "node scripts/scan-columns.mjs",
     "scan-headings": "node scripts/scan-headings.mjs",
-    "scan-coverage": "node scripts/scan-coverage.mjs"
+    "scan-coverage": "node scripts/scan-coverage.mjs",
+    "scan-sql": "node scripts/scan-sql.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

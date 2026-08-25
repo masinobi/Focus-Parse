@@ -126,6 +126,10 @@ const BlockViewImpl = ({
     );
   }
 
+  if (block.kind === "code" && block.sqlSteps?.length) {
+    return <SqlBlock doc={doc} block={block} activeToken={activeToken} onSeek={onSeek} style={style} />;
+  }
+
   if (block.kind === "code") {
     return (
       <div className="relative my-5" style={style}>
@@ -223,3 +227,118 @@ const BlockViewImpl = ({
 };
 
 export const BlockView = React.memo(BlockViewImpl);
+
+/**
+ * A SQL statement, shown as written and lit up in the order it is evaluated.
+ *
+ * The whole point is the mismatch between the two, so the text is never
+ * reordered on screen — the caret is what moves, jumping from the bottom of the
+ * query to the top and back as each clause is spoken. Reordering the display
+ * would hide exactly the thing the reader is here to notice.
+ *
+ * Every clause is clickable and seeks to its own step, which makes this the
+ * only way to replay one clause without scrubbing through the query.
+ */
+function SqlBlock({
+  doc,
+  block,
+  activeToken,
+  onSeek,
+  style,
+}: {
+  doc: ParsedDoc;
+  block: Block;
+  activeToken: number;
+  onSeek: (tokenIndex: number) => void;
+  style?: React.CSSProperties;
+}) {
+  const steps = block.sqlSteps ?? [];
+  const raw = block.raw ?? "";
+
+  // Which step is being spoken. A clause longer than one utterance is several
+  // chunks of the same step, so this goes through the map rather than assuming
+  // chunk k is step k.
+  const stepOfChunk = block.sqlStepOfChunk;
+  let active = -1;
+  for (let k = 0; k < block.chunks.length; k++) {
+    const chunk = doc.chunks[block.chunks[k]];
+    if (activeToken >= chunk.tokenStart && activeToken < chunk.tokenEnd) {
+      active = stepOfChunk?.[k] ?? k;
+      break;
+    }
+  }
+
+  /** First chunk of a step, which is where clicking its clause seeks to. */
+  const firstChunkOf = (step: number): number | undefined => {
+    if (!stepOfChunk) return block.chunks[step];
+    const k = stepOfChunk.indexOf(step);
+    return k === -1 ? undefined : block.chunks[k];
+  };
+
+  // Spans in written order, with the gaps between them — `WITH x AS (` belongs
+  // to no clause and still has to be on screen.
+  const inWritten = [...steps].sort((a, b) => a.start - b.start);
+  const parts: React.ReactNode[] = [];
+  let at = 0;
+  for (const step of inWritten) {
+    if (step.start > at) parts.push(raw.slice(at, step.start));
+    const isActive = step.i === active;
+    parts.push(
+      <span
+        key={step.i}
+        data-sql-step={step.i}
+        role="button"
+        tabIndex={-1}
+        title={`${step.i + 1} of ${steps.length} — ${step.role || "statement"}`}
+        onClick={() => {
+          const chunk = doc.chunks[firstChunkOf(step.i) ?? -1];
+          if (chunk) onSeek(chunk.tokenStart);
+        }}
+        className={cn(
+          "cursor-pointer rounded-sm",
+          isActive
+            ? "bg-primary/20 text-foreground ring-1 ring-primary/40"
+            : "hover:bg-accent/60"
+        )}
+      >
+        {raw.slice(step.start, step.end)}
+      </span>
+    );
+    at = Math.max(at, step.end);
+  }
+  if (at < raw.length) parts.push(raw.slice(at));
+
+  const current = active >= 0 ? steps[active] : null;
+
+  return (
+    <div className="relative my-5" style={style}>
+      <div className="flex items-baseline gap-2 rounded-t-md border border-b-0 border-dashed bg-muted/60 px-3 py-1.5 font-sans text-xs">
+        <span className="font-medium uppercase tracking-wider text-muted-foreground">
+          T-SQL · stepped in evaluation order
+        </span>
+        {current && (
+          <span className="ml-auto tabular-nums text-muted-foreground">
+            {current.cte ? `${current.cte} · ` : ""}
+            {current.i + 1} of {steps.length} — {current.role || "statement"}
+          </span>
+        )}
+      </div>
+      {/*
+        Wrapped, not scrolled — the opposite of the plain code block above.
+        There, horizontal scroll is fine: nobody is tracking a caret through it.
+        Here the highlight moves on its own while the audio plays, and a clause
+        that runs past the pane edge is a clause the reader cannot follow
+        without dragging a scrollbar sideways mid-sentence. Real SQL lines are
+        long and this pane is narrow, so it was every JOIN in the probe.
+        `pl-6 -indent-6` hangs the continuation so a wrapped clause still reads
+        as one line rather than as two statements.
+      */}
+      <pre
+        data-block={block.i}
+        className="fp-scroll overflow-x-auto whitespace-pre-wrap break-words rounded-b-md border border-dashed bg-muted/30 p-4 pl-6 -indent-6 font-mono text-xs leading-relaxed"
+      >
+        {parts}
+      </pre>
+    </div>
+  );
+}

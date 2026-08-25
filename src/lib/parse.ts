@@ -1,5 +1,12 @@
 import { matchAcronym, spokenForm } from "./acronyms";
 import { flattenGrid, stepText, type GridData, type GridStep } from "./tables";
+import {
+  isSqlFence,
+  sqlSpeechFor,
+  stepsOfScript,
+  stepText as sqlStepText,
+  type SqlStep,
+} from "./sql";
 import type { Block, BlockKind, Chunk, ParsedDoc, Section, Token } from "./types";
 
 /**
@@ -16,7 +23,7 @@ const MAX_CHUNK_CHARS = 180;
  * checkpoints of a larger one — both are on `Section`, and stored documents
  * have to be rebuilt to gain them.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * Sections shorter than this do not arm a cognitive intercept. Stopping a
@@ -246,6 +253,7 @@ interface PendingBlock {
   ordinal?: number;
   grid?: GridData;
   steps?: GridStep[];
+  sqlSteps?: SqlStep[];
 }
 
 /**
@@ -443,7 +451,19 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
             }
           }
         } else {
-          pending.push({ kind: "code", text: "", raw: fence.join("\n") });
+          const raw = fence.join("\n");
+          // A SQL fence is the one code block that *is* spoken, because the
+          // order a query is written in is not the order it runs in, and that
+          // is the whole thing worth teaching about one. Steps are cut here
+          // rather than at render time so `source` stays the only input a
+          // rebuild needs — invariant 19.
+          const sqlSteps = isSqlFence(fenceInfo) ? stepsOfScript(raw) : undefined;
+          pending.push({
+            kind: "code",
+            text: "",
+            raw,
+            sqlSteps: sqlSteps?.length ? sqlSteps : undefined,
+          });
         }
         fence = [];
         inFence = false;
@@ -512,7 +532,14 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
   }
 
   if (inFence && fence.length) {
-    pending.push({ kind: "code", text: "", raw: fence.join("\n") });
+    const raw = fence.join("\n");
+    const sqlSteps = isSqlFence(fenceInfo) ? stepsOfScript(raw) : undefined;
+    pending.push({
+      kind: "code",
+      text: "",
+      raw,
+      sqlSteps: sqlSteps?.length ? sqlSteps : undefined,
+    });
   }
   flushParagraph();
 
@@ -535,6 +562,7 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
       ordinal: p.ordinal,
       grid: p.grid,
       steps: p.steps,
+      sqlSteps: p.sqlSteps,
     };
 
     /**
@@ -544,15 +572,51 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
      * here, which keeps the token/offset machinery unchanged — the card UI
      * renders from `steps`, so nothing is lost by it.
      */
-    const pieces =
-      p.kind === "table"
-        ? (p.steps ?? []).map(stepText)
-        : p.kind === "code" || !p.text
-          ? []
-          : splitSentences(p.text).flatMap((s) => capLength(s));
+    /**
+     * A SQL block is spoken the same way a grid is — one chunk per step, so the
+     * gap between two clauses is a real utterance boundary rather than a pause
+     * the engine has to fake. Its tokens are voiced through `sqlSpeechFor`
+     * instead, because `p.PATIENT_ID` read literally is "p dot patient
+     * underscore i d" on every voice measured, and a step nobody can listen to
+     * is a step that is only being looked at.
+     */
+    const sqlBlock = p.kind === "code" && p.sqlSteps?.length ? p.sqlSteps : null;
+
+    const pieces: string[] = [];
+    /**
+     * For a SQL block, which step each piece belongs to.
+     *
+     * A clause is a unit of *evaluation* and not of breath: the feasibility
+     * screen's main `WHERE`, with its two `EXISTS` predicates, is 1,241
+     * characters — one correct step and seven times the chunk cap that exists
+     * to dodge the synthesizer's long-utterance truncation. Found by running
+     * `scan-sql` over the reader's real scripts; a unit test on a four-line
+     * query would never have produced one.
+     *
+     * So a long clause becomes several chunks that are all still *one step*.
+     * Cutting the clause instead would mean the step boundaries stopped meaning
+     * what this feature claims they mean, which is the whole product.
+     */
+    const chunkStep: number[] = [];
+    /** Aligned with `block.chunks`, so the renderer can map either way. */
+    const stepOfChunk: number[] = [];
+
+    if (p.kind === "table") {
+      pieces.push(...(p.steps ?? []).map(stepText));
+    } else if (sqlBlock) {
+      sqlBlock.forEach((step, s) => {
+        for (const part of capLength(sqlStepText(step))) {
+          pieces.push(part);
+          chunkStep.push(s);
+        }
+      });
+    } else if (!(p.kind === "code" || !p.text)) {
+      pieces.push(...splitSentences(p.text).flatMap((s) => capLength(s)));
+    }
 
     {
-      for (const piece of pieces) {
+      for (let pi = 0; pi < pieces.length; pi++) {
+        const piece = pieces[pi];
         const chunkIndex = chunks.length;
         const tokenStart = tokens.length;
 
@@ -563,7 +627,7 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
 
         for (const m of Array.from(piece.matchAll(/\S+/g))) {
           const raw = m[0];
-          const spoken = speechFor(raw);
+          const spoken = sqlBlock ? sqlSpeechFor(raw) : speechFor(raw);
 
           // A silent token contributes no separator either, so it leaves no gap
           // in the utterance. Its offset then coincides with the next token's,
@@ -582,7 +646,10 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
             block: b,
             section: 0,
             clause: clauseIndex,
-            acronym: matchAcronym(raw)?.key,
+            // Acronym badges are suppressed inside SQL. `SET`, `ID` and `CRO`
+            // are column names here, not the terms the dictionary means, and a
+            // badge that expands one is worse than no badge.
+            acronym: sqlBlock ? undefined : matchAcronym(raw)?.key,
           });
 
           // A clause ends at a comma, semicolon, colon or dash.
@@ -604,8 +671,13 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
           tokenEnd: tokens.length,
         });
         block.chunks.push(chunkIndex);
+        // Written here rather than alongside `pieces`, so a piece that yielded
+        // no tokens leaves no entry and the two arrays stay the same length.
+        if (sqlBlock) stepOfChunk.push(chunkStep[pi]);
       }
     }
+
+    if (sqlBlock && stepOfChunk.length) block.sqlStepOfChunk = stepOfChunk;
 
     blocks.push(block);
   });

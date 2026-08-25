@@ -14,13 +14,18 @@
  * A dev server must already be running on :3000. Each run gets a brand-new
  * browser context, so it never sees — or touches — the reader's IndexedDB.
  *
- * Two paths are covered, both of which have already shipped a defect:
+ * Three paths are covered, each of which has already shipped a defect:
  *
  *   1. The lane graph must fit the pane it lives in. It once rendered as one
  *      visible lane and a horizontal scrollbar, which every DOM-level check
  *      passed, because nothing in the DOM says "a human cannot see this".
  *   2. The mock exam must run from setup to a marked paper. Its assembler has
  *      twice produced a paper that was quietly wrong rather than broken.
+ *   3. The T-SQL stepper must read a query in evaluation order while showing it
+ *      as written. Every DOM-level fact about it — the spans exist, the classes
+ *      are applied, the counter increments — would be just as true of a stepper
+ *      that played the clauses top to bottom, so the assertion has to be that
+ *      the highlight moves *backwards* through the text on its own.
  */
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -309,6 +314,123 @@ check("the queue actually received them", reviews === 20, `${reviews} items`);
 
 await page.screenshot({ path: "scripts/.probe-exam.png", fullPage: true });
 
+/* ---- The SQL stepper ------------------------------------------------ *
+ *
+ * The third path, and the one with the most to go wrong that a DOM check
+ * cannot see. The claim is that the query is *shown* as written and *read* in
+ * evaluation order, which means the only convincing evidence is the highlight
+ * moving backwards through the text on its own. Everything else — the spans
+ * exist, the classes are applied, the counter increments — would be equally
+ * true of a stepper that played the clauses top to bottom.
+ */
+console.log(`
+=== T-SQL stepper ===`);
+
+const SQL_FIXTURE = `/* =============================================================
+   Probe query
+   ============================================================= */
+
+SELECT p.PATIENT_ID, a.RESULT_NUM
+FROM patients p
+JOIN RankedLabs a ON a.PATIENT_ID = p.PATIENT_ID AND a.rn = 1
+WHERE p.DEATHDATE IS NULL
+  AND EXISTS (SELECT 1 FROM conditions c WHERE c.PATIENT_ID = p.PATIENT_ID)
+ORDER BY p.PATIENT_ID;`;
+
+await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+await page.waitForTimeout(2000);
+await page.setInputFiles('input[type="file"][accept*="pdf"]', {
+  name: "probe.sql",
+  mimeType: "text/plain",
+  buffer: Buffer.from(SQL_FIXTURE, "utf8"),
+});
+await page.getByRole("button", { name: "Play" }).waitFor({ timeout: 120_000 });
+
+const spans = page.locator("[data-sql-step]");
+check("the query rendered as steps", (await spans.count()) === 5, `${await spans.count()} clauses`);
+
+const stepState = async () => {
+  return page.evaluate(() => {
+    const all = [...document.querySelectorAll("[data-sql-step]")];
+    const active = all.find((s) => s.className.includes("ring-1"));
+    if (!active) return null;
+    return {
+      step: Number(active.getAttribute("data-sql-step")),
+      written: all.indexOf(active),
+      text: active.textContent.replace(/\s+/g, " ").trim().slice(0, 30),
+    };
+  });
+};
+
+// The clause written first is not the clause evaluated first, and this is the
+// cheapest place to see it: click the topmost clause on screen and read back
+// which step it is.
+await spans.first().click();
+await page.waitForTimeout(400);
+const topmost = await stepState();
+check("clicking a clause seeks to it", topmost !== null, topmost?.text ?? "nothing highlighted");
+check(
+  "exactly one clause is lit",
+  (await page.locator("[data-sql-step]").evaluateAll(
+    (els) => els.filter((e) => e.className.includes("ring-1")).length
+  )) === 1
+);
+check(
+  "the clause written first is not the one evaluated first",
+  topmost !== null && topmost.written === 0 && topmost.step > 0,
+  `${topmost?.text} is step ${(topmost?.step ?? -1) + 1}`
+);
+
+// Now start from the step that really is first. `spans.first()` is written
+// order, which is exactly the confusion this feature exists to correct — and
+// it is what made this probe fail against a working app on its first run.
+await page.locator('[data-sql-step="0"]').click();
+await page.waitForTimeout(400);
+const seeded = await stepState();
+check("the first step is the row source", /^FROM/.test(seeded?.text ?? ""), seeded?.text ?? "");
+
+await page.getByRole("button", { name: "Play" }).click();
+const walk = [];
+for (let i = 0; i < 240; i++) {
+  await page.waitForTimeout(250);
+  const now = await stepState();
+  if (now && (!walk.length || walk[walk.length - 1].step !== now.step)) walk.push(now);
+  if (walk.length >= 2 && walk[walk.length - 1].written < walk[walk.length - 2].written) break;
+}
+const jumped = walk.length >= 2 && walk[walk.length - 1].written < walk[walk.length - 2].written;
+check(
+  "the caret jumps backwards through the query",
+  jumped,
+  walk.map((w) => `${w.text.split(" ")[0]}@${w.written}`).join(" → ")
+);
+check(
+  "the steps played are in evaluation order",
+  walk.every((w, i) => i === 0 || w.step > walk[i - 1].step),
+  walk.map((w) => w.step).join(",")
+);
+
+await page.getByRole("button", { name: "Pause" }).click().catch(() => {});
+await page.locator("pre").first().scrollIntoViewIfNeeded();
+
+// The lane graph's lesson applied to a second component: nothing in the DOM
+// says a human cannot see this. A clause running past the pane edge is a
+// clause the reader would have to drag a scrollbar to follow, while the audio
+// moves — and every JOIN in this fixture did exactly that before the block
+// started wrapping.
+const clipped = await page.evaluate(() => {
+  const pre = document.querySelector("pre");
+  if (!pre) return { pre: 0, steps: 0 };
+  const edge = pre.getBoundingClientRect().right;
+  const steps = [...document.querySelectorAll("[data-sql-step]")].filter(
+    (s) => s.getBoundingClientRect().right > edge + 1
+  ).length;
+  return { pre: Math.max(0, pre.scrollWidth - pre.clientWidth), steps };
+});
+check("the query fits the pane", clipped.pre === 0, `${clipped.pre}px of overflow`);
+check("no clause is clipped out of view", clipped.steps === 0, `${clipped.steps} clipped`);
+
+await page.screenshot({ path: "scripts/.probe-sql.png" });
+
 /* ---- Report -------------------------------------------------------- */
 
 check("no console errors", consoleErrors.length === 0, consoleErrors[0] ?? "");
@@ -318,7 +440,7 @@ await browser.close();
 console.log(`\n=== probe ===`);
 console.log(`  document: ${sample.f} (${Math.round(sample.size / 1024)}KB)`);
 console.log(`  clock at first question: ${clockAtStart ?? "—"}`);
-console.log(`  screenshots: scripts/.probe-graph.png, scripts/.probe-exam.png`);
+console.log(`  screenshots: scripts/.probe-graph.png, scripts/.probe-exam.png, scripts/.probe-sql.png`);
 console.log(`  failures: ${failures.length}   (must be 0)`);
 if (failures.length) {
   for (const f of failures) console.log(`    - ${f}`);
