@@ -725,6 +725,116 @@ from the token stream rather than from the question pools — a count taken from
 capped source would be a check that cannot fail — the corpus uses 50 acronyms and the
 capped drill was offering 30.
 
+## The T-SQL stepper
+
+Code blocks are never spoken here, and that is right for almost every code block:
+read aloud, source is noise. SQL is the exception — not because it sounds better, but
+because **the order a query is written in is not the order it is evaluated in**, and that
+one fact is what makes SQL click or not.
+
+`SELECT` is written first and happens sixth. `WHERE` runs before the columns it appears to
+filter on exist. Reading a query top to bottom teaches the wrong model, and every reader
+who has been confused about why a `SELECT` alias works in `ORDER BY` and not in `WHERE`
+has been taught it that way.
+
+So a statement is not read out. It is **stepped**: cut at its clauses, put into the order
+the engine actually evaluates them, and played one clause per utterance — which makes the
+gap between two clauses a real sentence boundary rather than a pause the engine has to
+fake ([src/lib/sql.ts](src/lib/sql.ts)).
+
+| Written | Evaluated |
+| --- | --- |
+| `SELECT p.PATIENT_ID` | 1. `FROM patients p` — the row source |
+| `FROM patients p` | 2. `JOIN RankedLabs a ON …` — rows matched in |
+| `JOIN RankedLabs a ON …` | 3. `WHERE p.DEATHDATE IS NULL` — filters rows, before any grouping |
+| `WHERE p.DEATHDATE IS NULL` | 4. `SELECT p.PATIENT_ID` — what comes out, after the filters |
+| `ORDER BY p.PATIENT_ID` | 5. `ORDER BY p.PATIENT_ID` — presentation order, last of all |
+
+**The display is never reordered.** The query stays exactly as written and the caret is
+what moves, walking down the text and then jumping back to the top for the `SELECT`. The
+jumping is the lesson; reordering the screen to match the audio would hide the very thing
+the reader is here to notice. Every clause is also clickable, which is the only way to
+replay one without scrubbing through the query.
+
+This is the same shape as the matrix flattener — one chunk per step, steps carried on the
+block, the reader rendering from them. Nothing in the token or offset machinery has to
+know SQL exists.
+
+### Not being fooled
+
+Finding clause boundaries is a lexical problem wearing a semantic hat, and every way of
+getting it wrong produces a *plausible* split rather than a crash. The query still
+renders, the steps still play, and the reader is quietly taught an evaluation order that
+is a fiction.
+
+- **Depth 0 only.** `EXISTS (SELECT 1 FROM conditions c WHERE …)` holds three clause
+  keywords and is *one predicate* of the outer `WHERE`. Cutting on them would present a
+  subquery's internals as steps of the statement containing it.
+- **Strings, bracketed identifiers and comments are inert.** A `LIKE` pattern containing
+  "select from" is not a clause boundary, `[Order By Date]` is a column name, and a
+  semicolon inside a comment does not end a statement. Block comments nest, because T-SQL
+  lets them.
+- **`ON` belongs to its `JOIN`.** A join and its condition are one thought; "on
+  a.PATIENT_ID = p.PATIENT_ID" as its own step gives no way to know which join it was.
+- **A `WITH` is replaced by its CTEs' own clauses**, each CTE built whole before the next.
+  `RankedLabs` is a five-clause query in its own right and it is the one that most needs
+  stepping, because the `WHERE` inside it deliberately does *not* carry the threshold.
+  Ordering the steps by clause rank alone interleaved the two CTEs — both `FROM`s, then
+  both `WHERE`s — which presents two independent queries as one.
+
+### Saying it out loud
+
+`p.PATIENT_ID` is read as "p dot patient underscore i d" by every voice measured. Without a
+transform this feature is a false promise: a step nobody can listen to is a step that is
+only being looked at. So underscores become spaces, a dot between identifiers becomes a
+space, operators are named, and parentheses become a space rather than nothing — deleting
+them welded `TRY_CAST(RESULT_VALUE` into "try castresult value". Comment markers are shown
+and never spoken, the same rule as evidence grades in prose.
+
+The honest limit: a string literal containing spaces is already several tokens by the time
+this sees it, so `'%type 2 diabetes%'` is voiced as three fragments. Structure is what the
+stepper is for and structure survives; literals read roughly.
+
+### A .sql file is not a document with code in it
+
+It is mostly *prose*, in block comments — the problem statement, why the technique matters,
+the trap — with the SQL as punctuation between. Wrapping the whole file in one fence would
+silence 80% of it; feeding it in raw would read the delimiters and operators aloud as if
+they were sentences.
+
+The two are separated on the one signal that is reliable in these files: **a block comment
+starting its own line is prose, everything else is SQL**. A comment whose first line is a
+rule of `=` or `-` takes its next line as a heading, which is how the files are already
+written — and headings are what arm the intercepts, so this is the difference between a
+drill set that can be enforced and one that is only read.
+
+Line comments stay inside the query. `-- NOTE: no 7.5 threshold here` explains why a
+filter is *absent* from the clause it sits in, and moving it out destroys the only reason
+it was written.
+
+```bash
+node scripts/scan-sql.mjs "path/to/SQL Practice - Trial Screening" --verbose
+```
+
+Every assertion in that report is a conservation law, because nothing downstream can tell
+a wrong split from a right one: no SQL left out of every step, no step overlapping
+another, no statement handed a `SELECT` belonging to its own subquery, no step spoken as
+silence, no utterance over the length cap, no gap in the step-to-chunk map. On the
+reader's own scripts: 3 files, 5 statements, 29 steps, zero on all seven.
+
+Two things came out of running it rather than reading it.
+
+That scan found a **1,241-character step** — the feasibility screen's main `WHERE` with
+its two `EXISTS` predicates. One correct clause, and seven times the utterance cap that
+exists to dodge the synthesizer's long-utterance truncation. A long clause is now several
+chunks that are all still *one step*; cutting the clause instead would mean step
+boundaries stopped meaning what this feature claims they mean.
+
+And a screenshot showed every `JOIN` running past the pane edge, reachable only by dragging
+a scrollbar sideways while the audio moved. The block wraps with a hanging indent now, and
+the probe asserts directly that nothing is clipped — the same lesson the lane graph taught,
+on a second component: nothing in the DOM says a human cannot see this.
+
 ## The corpus index
 
 Nine guidelines on one subject were nine separate reading sessions with no thread
@@ -875,6 +985,10 @@ moving and which terms have survived being learned. See above.
 **An exam date** — set one on the home screen and no review item is ever scheduled to
 come round after it. Intervals cap at half the time remaining. See above.
 
+**T-SQL stepper** — a `.sql` script loads as its commentary plus its queries, and each
+query is read in the order the engine evaluates it while the screen shows it as written.
+See above.
+
 **Sensory masking** — brown noise under the audio, from a toggle and volume slider in
 the top bar. See below.
 
@@ -950,7 +1064,14 @@ Three things the browser forces:
   as a section in the structure map. It is filtered where it can be recognised, but
   a line that looks typographically exactly like a heading will be read as one.
 - Scanned PDFs with no text layer are rejected with a message rather than OCR'd.
-- Tables and figures are linearized into prose; they read poorly aloud.
+- The stepper knows clause order, not semantics. It will step a query that does not run.
+- A stepped query is read and never asked about: no grid, cloze or acronym is drawn from
+  SQL. The enforcement ladder still fires on the prose around it, which is where the
+  reasoning lives.
+- A `.sql` file's headings come from comments ruled with `=` or `-`. A script that uses
+  some other banner style comes out as one long section with no intercepts.
+- Tables and figures are linearized into prose; they read poorly aloud. A detected grid
+  and a SQL fence are the two exceptions, and each has its own reader.
 - A cloze carrier is only as good as the sentence it came from. Where column recovery
   fused two lines in a PDF's front matter, the blank is presented inside that fused
   sentence — the builder reproduces the chunk exactly and does not attempt to detect or

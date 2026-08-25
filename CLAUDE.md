@@ -27,7 +27,7 @@ decision; test against it rather than against invented samples.
 | Remote | https://github.com/masinobi/Focus-Parse (**private**) |
 | Demo | https://claude.ai/code/artifact/bb5b76a5-5b7d-4a52-abdd-324313fc7d08 (private) |
 | Stack | Next.js 14 App Router · TypeScript · Tailwind · shadcn/ui · Zustand · IndexedDB · Web Speech · Web Audio · pdf.js |
-| Corpus | `<corpus folder>` — eight PDFs and one markdown guide. That is the nine documents every figure in this file refers to; a ninth PDF was a broken duplicate with no text layer and has been deleted. |
+| Corpus | `<corpus folder>` — eight PDFs and one markdown guide. That is the nine documents every figure in this file refers to; a ninth PDF was a broken duplicate with no text layer and has been deleted. **Plus, since 24 Aug 2026, a `SQL Practice - Trial Screening` subfolder**: a feasibility screen and two drill sets in T-SQL against a Synthea extract, with the CSVs beside them. It is not part of the nine and no figure above counts it — `scan-sql` is the report that reads it. |
 | Past sessions | `the Claude Code transcript folder for this project` |
 
 **Stored shapes carry four independent version numbers.** Bump the wrong one and
@@ -37,7 +37,7 @@ change for different reasons:
 | Constant | Where | Now | Bump when |
 |---|---|---|---|
 | `DB_VERSION` | `db.ts` | **4** | An object store or index is added. Every store creation is guarded by `contains`, so a fresh database and an upgraded one take the identical path. Version 4 added `exams`. **A bump silently hangs any other tab already holding the database**: the second tab blocks the upgrade, `open()` neither resolves nor rejects, so `safe()` cannot catch it and every `db.*` call awaits for ever. Cost half an hour of measuring a page that was fine. Close other tabs before verifying a bump. |
-| `SCHEMA_VERSION` | `parse.ts` | **4** | The Token/Chunk/**Section** shape changes. A stored document whose `schema` differs is rebuilt from `source` on read — which is how documents already in a reader's browser pick up parser fixes. Version 4 added `Section.furniture` and the pacing-checkpoint metadata. |
+| `SCHEMA_VERSION` | `parse.ts` | **5** | The Token/Chunk/**Section**/**Block** shape changes. A stored document whose `schema` differs is rebuilt from `source` on read — which is how documents already in a reader's browser pick up parser fixes. Version 4 added `Section.furniture` and the pacing-checkpoint metadata; version 5 added `Block.sqlSteps` and `Block.sqlStepOfChunk`. |
 | `ENTITY_SCHEMA` | `entities.ts` | 1 | Entity extraction rules change. A stale index rebuilds itself rather than reporting yesterday's rules. |
 | `BACKUP_FORMAT` | `backup.ts` | **2** | The backup envelope changes. Import validates per record, so a bump need not invalidate old files. Version 2 added `exams`; a version-1 file simply has no such key and reads as absent rather than malformed. |
 
@@ -335,6 +335,26 @@ breakdown row keeps the title it was sat under so it still reads. For the same
 reason the backup importer has no newer-wins contest for papers: a record
 already present is the same record.
 
+**24. A SQL clause is a unit of evaluation, not of breath.** `sqlSteps` is
+*not* index-aligned with `chunks`, unlike `steps` on a grid — the feasibility
+screen's main `WHERE`, with its two `EXISTS` predicates, is 1,241 characters:
+one correct step and seven times `MAX_CHUNK_CHARS`, which exists to dodge the
+synthesizer's long-utterance truncation. So a long clause becomes several chunks
+that are all still one step, tied together by `sqlStepOfChunk`. Never fix this by
+cutting the clause instead: the moment a step boundary is anything other than a
+clause boundary, the feature stops meaning what it claims. Anything reading
+`sqlSteps[k]` for `chunks[k]` is wrong.
+
+**25. Clause cutting happens at depth 0, outside strings and comments.** Every
+way of getting this wrong yields a *plausible* split rather than a crash: the
+query still renders, the steps still play, and the reader is quietly taught an
+evaluation order that is fiction. `EXISTS (SELECT 1 FROM c WHERE ...)` must stay
+one predicate of the outer `WHERE`; a `LIKE` pattern containing "select from"
+must not be a clause boundary; `[Order By Date]` is a column name. `ON` belongs
+to its `JOIN` and is never a clause of its own. And the `WITH` clause is
+*replaced* by its CTEs' clauses, each CTE built whole before the next — ordering
+them by clause rank alone interleaves two independent queries into one.
+
 **19. `source` is a complete record.** Everything rides through the markdown
 intermediate rather than a side channel, so `db.getDoc` can rebuild a document
 with the current parser when `schema` is stale. Schema is currently **4**; bump
@@ -440,6 +460,30 @@ and 3 of 5
 cloze windows promote a weak term into the check when one is marked as repeatedly
 failed (must be > 0 — a boost that never displaces anything is a control wired to
 nothing; confirmed it goes to 0 with `WEAK_BOOST` at 0).
+
+`node scripts/scan-sql.mjs "<folder>/SQL Practice - Trial Screening" --verbose`
+runs the clause splitter over the reader's real scripts, which asks something
+`sql.test.ts` cannot: **does a real query survive being cut up?** Every
+assertion is a conservation law, because the failure mode is not a crash — a
+splitter fooled by a keyword inside a string produces steps that look entirely
+reasonable and teach an evaluation order that is fiction. Current state: 3
+scripts, 5 statements, 29 steps, 0 on all seven must-be-zero lines. Read the
+"longest steps" list as the thing to watch; see invariant 24 for why the answer
+to a long one is never a shorter clause.
+
+Worth knowing before reading those step counts as a measure of reach: the two
+drill files yield **one step each**. They are almost entirely prose in block
+comments, which is the correct outcome — essentially all of the stepping lands
+on the feasibility screen.
+
+**The probe has a third path.** `probe-ui.mjs` drives the stepper in Playwright,
+and the assertion that matters could not have been written at the DOM level: the
+spans existing, the classes applying and the counter incrementing would all be
+equally true of a stepper that played clauses top to bottom. What it asserts is
+that **the highlight moves backwards through the text on its own** —
+`FROM@1 → JOIN@2 → WHERE@3 → SELECT@0`. It also asserts no clause is clipped out
+of the pane, which is the lane graph's lesson applied to a second component.
+23 checks, 0 failures.
 
 **Some claims have no corpus, and a property test is the substitute.** The
 exam-date horizon touches no document, so there is nothing to scan — and its
@@ -620,7 +664,9 @@ nodes with a lane graph** · **cloze weighting by what the queue says is not
 sticking** · **JSON export and merge-import of everything** · **a timed mock
 exam across the whole corpus** · **an acronym drill over the whole
 vocabulary** · **a coverage map that reports what has been verified rather than
-how far the caret got**.
+how far the caret got** · **a kept exam history with a repeat-miss report** ·
+**an exam date that caps every review interval at half the time remaining** ·
+**a T-SQL stepper that reads a query in the order it is evaluated**.
 
 Four of those are one idea, and reading them separately misses the point: grid
 interrogation, cloze spot checks, the presence check and the retrieval queue.
@@ -659,9 +705,9 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed on `main`. Seven commits across the fourth and
-fifth rounds are **local and not yet pushed** — pushing is outward-facing and
-has not been asked for.
+Everything here is committed on `main`. Nine commits across the fourth, fifth
+and sixth rounds are **local and not yet pushed** — pushing is outward-facing
+and has not been asked for.
 
 **Where the last session left it.** Four rounds have landed. The first three
 were the feature trio (entity index, node linking, adaptive difficulty), the
@@ -704,6 +750,23 @@ what it expected), the guard against printing an acronym as its own expansion
 horizon's headline property, which stays green at a share of 1.0. See "Some
 claims have no corpus" above.
 
+The sixth round added the T-SQL stepper, and it had the second problem too —
+two of them. `scan-sql` found a 1,241-character step, one correct clause and
+seven times the utterance cap that exists to dodge synthesizer truncation; and
+the screenshot showed every `JOIN` running off the pane edge, reachable only by
+dragging a scrollbar sideways while the audio moved. Neither is visible in a
+diff. **Three** of its assertions could not go red, all found by breaking them
+on purpose — including the scanner's headline check, which rebuilt each
+statement from its own step spans and so could never fail.
+
+**A working-practice note that has now cost time three times.** Edits to these
+files are applied by scripted string replacement, and a replacement that does
+not match is silent. It has produced: a `parse.ts` fence hook that was never
+installed while everything around it was, a feature-inventory line that stayed
+stale for a whole round, and — worst — a `git checkout -- .` in a recovery
+script that reverted every tracked file of an in-progress change. **Assert on
+every replacement, and never run a bulk checkout to recover one file.**
+
 The reader is currently working through *Electronic Data Capture — Study
 Implementation and Start-up*. Documents already in their browser rebuild
 themselves from `source` when opened, so they pick up anything that changes in
@@ -715,8 +778,9 @@ Done and not to be redone: the five-item feature list's items 1 and 2 (backup,
 mock exam), the entity index / node linking / adaptive difficulty trio, the two
 defects (grid results surviving a reload, voice persistence), journal furniture,
 column recovery, the coverage map, the words-per-minute control, the acronym
-drill, wrapped headings, the exam history, and the exam-date horizon. The
-backlog below is what is left.
+drill, wrapped headings, the exam history, the exam-date horizon, and the T-SQL
+stepper. The backlog below is what is left — which, of the original list, is
+nothing.
 
 **Suggested and not built, in the order they were pitched.** The reader took the
 first two. The third is the one worth returning to: the coverage map answers
@@ -736,11 +800,12 @@ hands-free/commute mode, which sounds the most attractive and is the most
 expensive, because the whole enforcement ladder assumes a dialog and speech
 recognition fails hardest on exactly the acronyms this corpus is made of.
 
-**T-SQL logical stepper** — the last item from the user's original feature list.
-Code blocks are never spoken by design; this would reverse that for SQL: split on
-clauses (SELECT/FROM/WHERE/JOIN/OVER), one chunk per logical step, with hard
-pauses between. Worth flagging that the CCDA corpus contains **no SQL**, so this
-remains the lowest-value item for the exam they are actually studying for.
+**Nothing is left of the original feature list.** The T-SQL stepper was the last
+of it and shipped in the sixth round. The note that used to sit here said the
+corpus contained no SQL and the item was therefore the lowest-value one — that
+stopped being true on 24 Aug 2026, when the `SQL Practice - Trial Screening`
+folder appeared. **Check the corpus folder before trusting any claim in this
+file about what is in it.**
 
 **Settled, do not redo: cloud TTS is not needed.** The obvious upgrade for
 better voices is a neural TTS service returning audio plus word timings — Azure
@@ -855,6 +920,24 @@ marked *candidate* are things that could actually be fixed.
   paper it wrote itself predicts. If the real CCDA pass mark and blueprint were
   entered by hand it could say considerably more — see the note on the content
   outline under Outstanding.
+- A `.sql` file's prose is recovered from block comments that start their own
+  line, and its headings from comments whose first line is a rule of `=` or `-`.
+  That is exactly how the reader's three scripts are written, and it degrades to
+  plain prose on a script written any other way — but a file using `--` banners
+  for its section titles would come out as one long section with no intercepts.
+- The two drill files step to one clause each. They are almost entirely prose,
+  which is right; it just means the stepper's reach on this corpus is really the
+  feasibility screen.
+- A string literal containing spaces is already several tokens by the time the
+  speech transform sees it, so `'%type 2 diabetes%'` is voiced as three
+  fragments. Structure is what the stepper is for and structure survives;
+  literals read roughly.
+- A `.sql` script's queries are stepped, but nothing checks them: there is no
+  grid, no cloze and no acronym drawn from SQL, so a stepped query is read and
+  never asked about. The enforcement ladder still fires on the *prose* around
+  it, which is where the reasoning lives.
+- The stepper knows clause order, not semantics. It will confidently step a
+  query that does not run.
 - Scanned PDFs with no text layer are rejected rather than OCR'd.
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid
