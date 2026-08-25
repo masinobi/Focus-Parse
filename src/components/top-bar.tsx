@@ -26,7 +26,15 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import type { BrownNoiseController } from "@/hooks/useBrownNoise";
-import { MAX_RATE, MIN_RATE, RATE_STEP, useFocusStore } from "@/store/useFocusStore";
+import {
+  MAX_RATE,
+  MAX_WPM,
+  MIN_RATE,
+  MIN_WPM,
+  WPM_STEP,
+  useFocusStore,
+} from "@/store/useFocusStore";
+import { reachOf, solveRate } from "@/lib/pace";
 import type { AnchorSettings } from "@/store/useFocusStore";
 import type { ViewMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -59,6 +67,8 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
   const doc = useFocusStore((s) => s.doc);
   const isPlaying = useFocusStore((s) => s.isPlaying);
   const rate = useFocusStore((s) => s.rate);
+  const targetWpm = useFocusStore((s) => s.targetWpm);
+  const pace = useFocusStore((s) => s.pace);
   const view = useFocusStore((s) => s.view);
   const tokenIndex = useFocusStore((s) => s.tokenIndex);
   const voiceURI = useFocusStore((s) => s.voiceURI);
@@ -66,7 +76,7 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
 
   const togglePlaying = useFocusStore((s) => s.togglePlaying);
   const stepSentence = useFocusStore((s) => s.stepSentence);
-  const setRate = useFocusStore((s) => s.setRate);
+  const setTargetWpm = useFocusStore((s) => s.setTargetWpm);
   const setView = useFocusStore((s) => s.setView);
   const setVoice = useFocusStore((s) => s.setVoice);
   const anchors = useFocusStore((s) => s.anchors);
@@ -79,6 +89,16 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
   if (!doc) return null;
 
   const progress = doc.wordCount ? ((tokenIndex + 1) / doc.wordCount) * 100 : 0;
+
+  // What the current voice will actually do with this target, and what it can
+  // do at all. The control asks; this is the app answering, and it is the whole
+  // difference between this and the multiplier it replaced.
+  const solved = solveRate(pace, voiceURI, targetWpm, MIN_RATE, MAX_RATE);
+  const reach = reachOf(pace, voiceURI, MIN_RATE, MAX_RATE);
+  const speedTitle = solved.calibrated
+    ? `${rate.toFixed(1)}x on this voice` +
+      (reach ? ` · measured range ${reach.min}–${reach.max} wpm` : "")
+    : `${rate.toFixed(1)}x — this voice has not been measured yet, so this is an estimate`;
 
   return (
     <header className="shrink-0 border-b bg-background">
@@ -137,20 +157,38 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
           </Button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="w-11 shrink-0 text-right text-sm font-medium tabular-nums">
-            {rate.toFixed(1)}x
+        {/* The speed control asks for words per minute, and the rate that
+            delivers them is solved for the selected voice. A number the voice
+            cannot reach is shown struck through beside what it will actually
+            do — the one thing this control must never do again is report a
+            speed nobody is reading at. */}
+        <div className="flex items-center gap-2" title={speedTitle}>
+          <span className="flex w-[4.5rem] shrink-0 items-baseline justify-end gap-1 text-sm font-medium tabular-nums">
+            {solved.clamped && (
+              <span className="text-[11px] font-normal text-muted-foreground line-through">
+                {targetWpm}
+              </span>
+            )}
+            <span className={cn(solved.clamped && "text-destructive")}>
+              {solved.clamped ? solved.expectedWpm : targetWpm}
+            </span>
           </span>
           <input
             type="range"
-            min={MIN_RATE}
-            max={MAX_RATE}
-            step={RATE_STEP}
-            value={rate}
-            onChange={(e) => setRate(Number(e.target.value))}
+            min={MIN_WPM}
+            max={MAX_WPM}
+            step={WPM_STEP}
+            value={targetWpm}
+            onChange={(e) => setTargetWpm(Number(e.target.value))}
             className="h-1 w-28 cursor-pointer appearance-none rounded-full bg-secondary accent-primary"
-            aria-label="Playback speed"
+            aria-label="Reading speed, words per minute"
           />
+          <span className="shrink-0 text-[11px] text-muted-foreground">
+            wpm
+            {!solved.calibrated && (
+              <span className="ml-1 text-muted-foreground/60">est.</span>
+            )}
+          </span>
         </div>
 
         <div className="flex items-center rounded-md border p-0.5">
@@ -268,9 +306,15 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
             </Badge>
           )}
 
-          <span className="text-xs tabular-nums text-muted-foreground">
+          {/* Measured, not asked for. The control on the left is the target;
+              this is what the reading is actually coming out at, and the two
+              being different is information rather than a defect. */}
+          <span
+            className="text-xs tabular-nums text-muted-foreground"
+            title="Measured pace, from the synthesizer's own word boundaries"
+          >
             {tokenIndex.toLocaleString()} / {doc.wordCount.toLocaleString()} ·{" "}
-            <span className="text-foreground">{wpm}</span> wpm
+            <span className="text-foreground">{wpm}</span> wpm read
           </span>
 
           {voices.length > 0 && (

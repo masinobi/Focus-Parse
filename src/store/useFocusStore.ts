@@ -3,14 +3,40 @@
 import { create } from "zustand";
 
 import { db } from "@/lib/db";
+import {
+  BASELINE_WPM,
+  loadPace,
+  noteWords,
+  savePace,
+  solveRate,
+  type PaceTable,
+} from "@/lib/pace";
 import { firstContentToken } from "@/lib/parse";
 import type { ClozeCheck } from "@/lib/quiz";
 import { QUALITY, summaryId, type WeakTerms } from "@/lib/review";
 import type { FlowNode, LogicTag, ParsedDoc, ViewMode } from "@/lib/types";
 
+/**
+ * The rate range the synthesizer is asked for. Not a control any more — the
+ * reader asks for a reading speed and this is what the solver is allowed to
+ * choose between to deliver it.
+ */
 export const MIN_RATE = 1.0;
 export const MAX_RATE = 3.0;
 export const RATE_STEP = 0.1;
+
+/**
+ * The speed control, in words per minute.
+ *
+ * The floor is slower than any voice reads at rate 1.0 and the ceiling is
+ * faster than any has been measured to reach, deliberately: the control's job
+ * is to let the reader ask, and the app's job is to say plainly when the answer
+ * is no. A range trimmed to what happens to be reachable would hide exactly the
+ * fact this replaced a control that quietly did not deliver.
+ */
+export const MIN_WPM = 120;
+export const MAX_WPM = 480;
+export const WPM_STEP = 10;
 
 /**
  * Reading covered between cheap checks. Roughly a third of the 700-word pacing
@@ -26,9 +52,6 @@ export const CLOZE_INTERVAL_TOKENS = 250;
  * and a check with no exit is a check that ends the session.
  */
 export const MAX_GRID_ATTEMPTS = 2;
-
-/** Words-per-minute assumed for a fresh session before telemetry accumulates. */
-const BASELINE_WPM = 185;
 
 /** Boundary gaps longer than this are treated as stalls, not reading time. */
 const MAX_TICK_GAP_MS = 1500;
@@ -100,7 +123,26 @@ interface FocusState {
   doc: ParsedDoc | null;
 
   isPlaying: boolean;
+  /**
+   * What the reader asked for, in words per minute. This is the control.
+   *
+   * `rate` below is derived from it and is not set directly by anything the
+   * reader touches — the multiplier means something different on every voice,
+   * so it is an implementation detail of hitting this number rather than a
+   * setting in its own right.
+   */
+  targetWpm: number;
+  /** Multiplier handed to the synthesizer, solved from `targetWpm`. */
   rate: number;
+  /** What each voice has been heard to deliver at each rate. */
+  pace: PaceTable;
+  /**
+   * Reading accumulated against the voice and rate that produced it, not yet
+   * folded into `pace`. Held apart because a word is far too small a unit to
+   * price a rate with, and rebuilding the table on every boundary event would
+   * be sixty object allocations a minute for a number that moves in hours.
+   */
+  paceRun: { voiceURI: string | null; rate: number; words: number; ms: number } | null;
   view: ViewMode;
   tokenIndex: number;
   chunkIndex: number;
@@ -162,8 +204,20 @@ interface FocusState {
 
   setPlaying: (playing: boolean) => void;
   togglePlaying: () => void;
-  setRate: (rate: number) => void;
-  nudgeRate: (delta: number) => void;
+  /** Ask for a reading speed. The rate that delivers it is solved for. */
+  setTargetWpm: (wpm: number) => void;
+  nudgeTargetWpm: (delta: number) => void;
+  /**
+   * Read the remembered pace table and the remembered target.
+   *
+   * Called from an effect rather than folded into the store's initial state: a
+   * `"use client"` store is still evaluated on the server, and a value read
+   * from `localStorage` differs between the two renders, which is a hydration
+   * error rather than a stale number.
+   */
+  hydratePace: () => void;
+  /** Fold the open run into the table. Called when the voice, rate or playback changes. */
+  settlePace: () => void;
   setView: (view: ViewMode) => void;
   setVoice: (uri: string | null) => void;
   toggleAnchor: (key: keyof AnchorSettings) => void;
@@ -222,6 +276,14 @@ function clampRate(r: number): number {
   return Math.min(MAX_RATE, Math.max(MIN_RATE, Math.round(r * 10) / 10));
 }
 
+function clampWpm(w: number): number {
+  if (!Number.isFinite(w)) return BASELINE_WPM;
+  return Math.min(MAX_WPM, Math.max(MIN_WPM, Math.round(w / WPM_STEP) * WPM_STEP));
+}
+
+/** Where the asked-for reading speed is remembered, beside the chosen voice. */
+const TARGET_KEY = "focusparse:wpm";
+
 const IDLE_CHECK: CheckState = {
   kind: null,
   block: null,
@@ -271,7 +333,12 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   doc: null,
 
   isPlaying: false,
+  // 260 wpm at the baseline is rate 1.4, which is what this control used to
+  // start on. An uncalibrated voice therefore reads exactly as it did before.
+  targetWpm: 260,
   rate: 1.4,
+  pace: {},
+  paceRun: null,
   view: "standard",
   tokenIndex: 0,
   chunkIndex: 0,
@@ -382,15 +449,21 @@ export const useFocusStore = create<FocusState>((set, get) => ({
     });
   },
 
-  setPlaying: (playing) =>
+  setPlaying: (playing) => {
+    // Stopping closes the run. Not for tidiness: the table is what survives the
+    // tab, and a reader who reads for an hour and closes the window should not
+    // find the voice uncalibrated tomorrow.
+    if (!playing) get().settlePace();
     set((s) => ({
       isPlaying: playing && !s.intercept.open && s.check.kind === null,
       lastTickAt: playing ? Date.now() : null,
-    })),
+    }));
+  },
 
   togglePlaying: () => {
     const { isPlaying, intercept, check, doc, vigilance } = get();
     if (!doc || intercept.open || check.kind !== null) return;
+    if (isPlaying) get().settlePace();
     set({
       isPlaying: !isPlaying,
       lastTickAt: isPlaying ? null : Date.now(),
@@ -398,9 +471,65 @@ export const useFocusStore = create<FocusState>((set, get) => ({
     });
   },
 
-  setRate: (rate) => set({ rate: clampRate(rate) }),
+  /**
+   * Ask for a reading speed, and solve for the rate that delivers it.
+   *
+   * Solved rather than servoed. A controller that nudged the rate as it read
+   * would be cancelling and restarting the utterance every time it corrected —
+   * `rate` is a dependency of the speech engine's effect — so the caret would
+   * jump back to the start of the sentence at intervals nobody asked for. The
+   * rate changes only when the reader changes something: the target, or the
+   * voice.
+   */
+  setTargetWpm: (wpm) => {
+    const targetWpm = clampWpm(wpm);
+    // The open run was read at the old rate, and letting it merge into the new
+    // one would price both wrongly.
+    get().settlePace();
+    const solved = solveRate(get().pace, get().voiceURI, targetWpm, MIN_RATE, MAX_RATE);
+    set({ targetWpm, rate: solved.rate });
 
-  nudgeRate: (delta) => set((s) => ({ rate: clampRate(s.rate + delta) })),
+    try {
+      window.localStorage.setItem(TARGET_KEY, String(targetWpm));
+    } catch {
+      // Private mode: the speed lasts the session and no longer.
+    }
+  },
+
+  nudgeTargetWpm: (delta) => get().setTargetWpm(get().targetWpm + delta),
+
+  hydratePace: () => {
+    const pace = loadPace();
+    let stored: string | null = null;
+    try {
+      stored = window.localStorage.getItem(TARGET_KEY);
+    } catch {
+      // Private mode. The default stands.
+    }
+    const targetWpm = stored ? clampWpm(Number(stored)) : get().targetWpm;
+    const solved = solveRate(pace, get().voiceURI, targetWpm, MIN_RATE, MAX_RATE);
+    set({ pace, targetWpm, rate: solved.rate });
+  },
+
+  /**
+   * Fold the open run of reading into the table.
+   *
+   * A run belongs to one voice at one rate, so it has to be closed before
+   * either changes. Short runs are dropped rather than kept: a handful of words
+   * between two pauses says nothing about a pace, and the table's own sample
+   * floor would ignore them anyway — but only after they had diluted a real
+   * measurement they were averaged into.
+   */
+  settlePace: () => {
+    const { paceRun, pace } = get();
+    if (!paceRun || paceRun.words <= 0 || paceRun.ms <= 0) {
+      if (paceRun) set({ paceRun: null });
+      return;
+    }
+    const next = noteWords(pace, paceRun.voiceURI, paceRun.rate, paceRun.words, paceRun.ms);
+    set({ pace: next, paceRun: null });
+    savePace(next);
+  },
 
   setView: (view) => set({ view }),
 
@@ -411,7 +540,13 @@ export const useFocusStore = create<FocusState>((set, get) => ({
    * never during render.
    */
   setVoice: (voiceURI) => {
-    set({ voiceURI });
+    // Close the run against the voice that actually read it, then re-solve:
+    // the reader asked for a reading speed, not for a multiplier, and the
+    // multiplier that delivers it is different on the voice being switched to.
+    // Carrying the target across the switch is the point of having one.
+    get().settlePace();
+    const solved = solveRate(get().pace, voiceURI, get().targetWpm, MIN_RATE, MAX_RATE);
+    set({ voiceURI, rate: solved.rate });
     try {
       if (voiceURI) window.localStorage.setItem("focusparse:voice", voiceURI);
       else window.localStorage.removeItem("focusparse:voice");
@@ -786,13 +921,29 @@ export const useFocusStore = create<FocusState>((set, get) => ({
 
   tickWord: () => {
     const now = Date.now();
-    const { lastTickAt, wordsSpoken, activeMs } = get();
+    const { lastTickAt, wordsSpoken, activeMs, paceRun, rate, voiceURI } = get();
     const gap = lastTickAt === null ? 0 : Math.min(now - lastTickAt, MAX_TICK_GAP_MS);
-    set({ wordsSpoken: wordsSpoken + 1, activeMs: activeMs + gap, lastTickAt: now });
+
+    // The same word, counted twice: once for this document's live pace and once
+    // against the voice and rate that produced it, which outlives the document.
+    // A stall longer than MAX_TICK_GAP_MS is excluded from both — a reader who
+    // walked away did not read slowly, and a voice must not be priced as though
+    // they had.
+    const open =
+      paceRun && paceRun.rate === rate && paceRun.voiceURI === (voiceURI ?? null)
+        ? paceRun
+        : { voiceURI: voiceURI ?? null, rate, words: 0, ms: 0 };
+
+    set({
+      wordsSpoken: wordsSpoken + 1,
+      activeMs: activeMs + gap,
+      lastTickAt: now,
+      paceRun: { ...open, words: open.words + 1, ms: open.ms + gap },
+    });
   },
 
   effectiveWpm: () => {
-    const { wordsSpoken, activeMs, rate } = get();
+    const { wordsSpoken, activeMs } = get();
     // Quantized so the value is stable between words: this is read by selectors
     // in the header and the structure map, and an integer that moved on every
     // boundary event would re-render both sixty times a minute.
@@ -802,7 +953,15 @@ export const useFocusStore = create<FocusState>((set, get) => ({
     if (wordsSpoken > 25 && activeMs > 4000) {
       return quantize(wordsSpoken / (activeMs / 60000));
     }
-    return quantize(BASELINE_WPM * rate);
+    // Before that, what this voice has been heard to do at this rate — which
+    // for a voice never heard is the old `BASELINE_WPM * rate` exactly. The
+    // sidebar's "time left" is built on this, and starting a long document on a
+    // baseline that a calibrated voice already disagrees with makes every
+    // estimate in the structure map wrong for the first minute of reading.
+    return quantize(
+      solveRate(get().pace, get().voiceURI, get().targetWpm, MIN_RATE, MAX_RATE)
+        .expectedWpm
+    );
   },
 }));
 

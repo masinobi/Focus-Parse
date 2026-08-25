@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { RATE_STEP, useFocusStore } from "@/store/useFocusStore";
+import { WPM_STEP, useFocusStore } from "@/store/useFocusStore";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -52,12 +52,12 @@ export function useKeyboardControls(): void {
 
         case "ArrowUp":
           event.preventDefault();
-          state.nudgeRate(RATE_STEP);
+          state.nudgeTargetWpm(WPM_STEP);
           break;
 
         case "ArrowDown":
           event.preventDefault();
-          state.nudgeRate(-RATE_STEP);
+          state.nudgeTargetWpm(-WPM_STEP);
           break;
 
         case "ArrowRight":

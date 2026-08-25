@@ -29,7 +29,7 @@ const KEY_HINTS: [string, string][] = [
   ["Space", "play / pause"],
   ["← →", "sentence"],
   ["⇧ ← →", "section"],
-  ["↑ ↓", "speed"],
+  ["↑ ↓", "words per minute"],
   ["V", "presence check"],
 ];
 
@@ -43,11 +43,20 @@ export function Workspace() {
   const hydrated = useFocusStore((s) => s.hydrated);
 
   const refreshWeakTerms = useFocusStore((s) => s.refreshWeakTerms);
+  const hydratePace = useFocusStore((s) => s.hydratePace);
 
   const { supported, voices, estimating } = useSpeechEngine();
   const noise = useBrownNoise();
   useKeyboardControls();
   useVigilance();
+
+  // The reading speed the reader asked for, and what each installed voice has
+  // been heard to deliver. Read here rather than in the store's initial state:
+  // a "use client" store is still evaluated on the server, and a value that
+  // comes back from localStorage differs between the two renders.
+  React.useEffect(() => {
+    hydratePace();
+  }, [hydratePace]);
 
   // What the review queue has learned steers what the next spot check asks
   // about, so it has to be in hand before the first check can fire. Read once
