@@ -14,7 +14,7 @@ import {
 import { firstContentToken } from "@/lib/parse";
 import type { ClozeCheck } from "@/lib/quiz";
 import { QUALITY, summaryId, type WeakTerms } from "@/lib/review";
-import type { FlowNode, LogicTag, ParsedDoc, ViewMode } from "@/lib/types";
+import type { ClozeResult, FlowNode, LogicTag, ParsedDoc, ViewMode } from "@/lib/types";
 
 /**
  * The rate range the synthesizer is asked for. Not a control any more — the
@@ -45,13 +45,8 @@ export const WPM_STEP = 10;
  */
 export const CLOZE_INTERVAL_TOKENS = 250;
 
-/**
- * Attempts allowed on one grid before the reader is let past.
- *
- * A grid that has beaten someone twice is not going to yield on the third pass,
- * and a check with no exit is a check that ends the session.
- */
-export const MAX_GRID_ATTEMPTS = 2;
+/** Re-exported so the engine and the keyboard hook keep one import site. */
+export { MAX_GRID_ATTEMPTS } from "@/lib/quiz";
 
 /** Boundary gaps longer than this are treated as stalls, not reading time. */
 const MAX_TICK_GAP_MS = 1500;
@@ -192,6 +187,16 @@ interface FocusState {
   gridsPassed: Record<number, boolean>;
   /** Attempts spent on each grid block, which also varies the cell asked. */
   gridAttempts: Record<number, number>;
+  /**
+   * Spot checks answered, keyed by the token their window ended at.
+   *
+   * The third rung's evidence. The intercept left a summary behind and the grid
+   * left a pass, but the cheap rung — the one that fires most often and covers
+   * the most ground — was marked, shown to the reader for eight seconds and
+   * then discarded. Which meant the app could say how far the caret had got and
+   * could not say which of it anybody had been made to account for.
+   */
+  clozeChecks: Record<number, ClozeResult>;
 
   wordsSpoken: number;
   activeMs: number;
@@ -243,6 +248,8 @@ interface FocusState {
   passCheck: () => void;
   /** Grid answered wrong: rewind and play the matrix again. */
   replayGrid: () => void;
+  /** Record what a spot check established, before it is cleared. */
+  noteClozeResult: (result: ClozeResult) => void;
   abandonCheck: () => void;
   noteCheckPoint: (tokenIndex: number) => void;
   /** Re-read the queue's account of which terms are not sticking. */
@@ -359,6 +366,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   hydrated: false,
   gridsPassed: {},
   gridAttempts: {},
+  clozeChecks: {},
 
   wordsSpoken: 0,
   activeMs: 0,
@@ -385,6 +393,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       hydrated: false,
       gridsPassed: {},
       gridAttempts: {},
+      clozeChecks: {},
       wordsSpoken: 0,
       activeMs: 0,
       lastTickAt: null,
@@ -408,6 +417,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       hydrated: false,
       gridsPassed: {},
       gridAttempts: {},
+      clozeChecks: {},
     }),
 
   renameDoc: (title) => {
@@ -444,6 +454,8 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       // Absent on every session written before grid results were persisted.
       gridsPassed: session.gridsPassed ?? {},
       gridAttempts: session.gridAttempts ?? {},
+      // And on every session written before spot-check results were.
+      clozeChecks: session.clozeChecks ?? {},
       lastCheckToken: tokenIndex,
       hydrated: true,
     });
@@ -755,6 +767,18 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       vigilance: presence(s.vigilance),
     }));
   },
+
+  /**
+   * Record what a spot check established.
+   *
+   * Called from the dialog at the moment of marking rather than from
+   * `passCheck`, because the two are not the same event: a reader can mark a
+   * check and then leave with "Stop reading here", and the answers they gave
+   * are evidence whether or not they carried on. Keyed by the window's end, so
+   * re-reading a stretch replaces its evidence rather than doubling it.
+   */
+  noteClozeResult: (result) =>
+    set((s) => ({ clozeChecks: { ...s.clozeChecks, [result.to]: result } })),
 
   abandonCheck: () => {
     const { check, doc } = get();

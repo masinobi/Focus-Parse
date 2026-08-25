@@ -15,6 +15,20 @@ import type { Block, ParsedDoc, Token } from "./types";
 /** Placeholder rendered in a cloze carrier sentence. */
 export const BLANK = "____";
 
+/**
+ * Attempts allowed on one grid before the reader is let past.
+ *
+ * A grid that has beaten someone twice is not going to yield on the third pass,
+ * and a check with no exit is a check that ends the session.
+ *
+ * Lives here rather than in the store because it bounds what
+ * `buildGridQuestion` will ever be asked for, and the coverage account has to
+ * know it too — a grid the engine has stopped offering is not a debt the reader
+ * can still pay, and reporting it as one would put a permanent red mark on a
+ * table they already failed twice.
+ */
+export const MAX_GRID_ATTEMPTS = 2;
+
 /* ------------------------------------------------------------------ *
  * Grid interrogation
  * ------------------------------------------------------------------ */

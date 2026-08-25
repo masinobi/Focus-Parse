@@ -12,7 +12,8 @@
     "test": "vitest run",
     "probe": "node scripts/probe-ui.mjs",
     "scan-columns": "node scripts/scan-columns.mjs",
-    "scan-headings": "node scripts/scan-headings.mjs"
+    "scan-headings": "node scripts/scan-headings.mjs",
+    "scan-coverage": "node scripts/scan-coverage.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

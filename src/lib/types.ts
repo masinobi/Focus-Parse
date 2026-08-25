@@ -145,6 +145,25 @@ export interface FlowNode {
   links?: string[];
 }
 
+/**
+ * One cheap check, and what it established.
+ *
+ * Kept as the window rather than as a section, because that is what the check
+ * actually covered: the cadence fires every 250 tokens and a window straddles
+ * whatever section boundaries happen to fall inside it. Attributing it to a
+ * section here would be deciding which one on the reader's behalf, and losing
+ * the evidence for the other.
+ */
+export interface ClozeResult {
+  /** Token window the blanks were drawn from. */
+  from: number;
+  to: number;
+  blanks: number;
+  recalled: number;
+  /** When it was answered, so a coverage view can say how stale the evidence is. */
+  at: number;
+}
+
 export interface SessionState {
   docId: string;
   tokenIndex: number;
@@ -160,5 +179,15 @@ export interface SessionState {
    */
   gridsPassed?: Record<number, boolean>;
   gridAttempts?: Record<number, number>;
+  /**
+   * Spot checks answered, keyed by the token the window ended at.
+   *
+   * A record rather than a list, and keyed by the end of the window rather than
+   * by a timestamp, so re-reading a stretch replaces its evidence instead of
+   * accumulating a second opinion about the same words. Optional for the same
+   * reason as `gridsPassed`: sessions carry no schema version, so every session
+   * written before coverage existed reads back without it.
+   */
+  clozeChecks?: Record<number, ClozeResult>;
   updatedAt: number;
 }

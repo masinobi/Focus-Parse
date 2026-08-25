@@ -40,6 +40,7 @@ export function Workspace() {
   const summaries = useFocusStore((s) => s.summaries);
   const gridsPassed = useFocusStore((s) => s.gridsPassed);
   const gridAttempts = useFocusStore((s) => s.gridAttempts);
+  const clozeChecks = useFocusStore((s) => s.clozeChecks);
   const hydrated = useFocusStore((s) => s.hydrated);
 
   const refreshWeakTerms = useFocusStore((s) => s.refreshWeakTerms);
@@ -85,11 +86,15 @@ export function Workspace() {
         // with it.
         gridsPassed,
         gridAttempts,
+        // The third rung's evidence, and the one that covers the most ground.
+        // Without it the coverage map can only report the two rungs that fire
+        // rarely, which is most of a document unaccounted for.
+        clozeChecks,
         updatedAt: Date.now(),
       });
     }, SESSION_WRITE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [doc, hydrated, tokenIndex, nodes, summaries, gridsPassed, gridAttempts]);
+  }, [doc, hydrated, tokenIndex, nodes, summaries, gridsPassed, gridAttempts, clozeChecks]);
 
   if (!doc) {
     return (

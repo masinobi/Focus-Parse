@@ -32,6 +32,7 @@ export function ClozeDialog() {
   const abandonCheck = useFocusStore((s) => s.abandonCheck);
   const seekToken = useFocusStore((s) => s.seekToken);
   const refreshWeakTerms = useFocusStore((s) => s.refreshWeakTerms);
+  const noteClozeResult = useFocusStore((s) => s.noteClozeResult);
 
   const [drafts, setDrafts] = React.useState<string[]>([]);
   const [marked, setMarked] = React.useState<boolean[] | null>(null);
@@ -59,6 +60,17 @@ export function ClozeDialog() {
       answerMatches(drafts[i], blank.answer, blank.acronym)
     );
     setMarked(results);
+
+    // The stretch this covered, kept. Until now the marking was shown for
+    // eight seconds and thrown away, which is why the app could say how far
+    // the caret had reached and not which of it anyone had accounted for.
+    noteClozeResult({
+      from: cloze.from,
+      to: cloze.to,
+      blanks: cloze.blanks.length,
+      recalled: results.filter(Boolean).length,
+      at: Date.now(),
+    });
 
     // These answers are exactly what the weighting reads, so the next check
     // must be built from the queue as it stands after them, not before.
