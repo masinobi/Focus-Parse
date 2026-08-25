@@ -252,8 +252,10 @@ function Sparkline({ records }: { records: ExamRecord[] }) {
         ))}
       </svg>
       <p className="mt-1 text-xs text-muted-foreground">
-        Oldest first. The dashed line is 70%. Papers of different lengths are
-        plotted as equals — a 20-question set moves 5 points per question.
+        Oldest first. Papers of different lengths are plotted as equals — a
+        20-question set moves 5 points per question. The dashed line is 70%, a
+        reference to read the shape against; this app does not know the real
+        pass mark and is not claiming one.
       </p>
     </div>
   );

@@ -21,6 +21,7 @@ import { BackupControls } from "@/components/backup-controls";
 import { CorpusIndex } from "@/components/corpus-index";
 import { ExamHistory } from "@/components/exam-history";
 import { ExamSession } from "@/components/exam-session";
+import { Readiness } from "@/components/readiness";
 import { ReviewSession } from "@/components/review-session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -204,6 +205,11 @@ export function DocumentLoader() {
           markdown or text document — headings become intercept boundaries, sentences
           become the pacing unit.
         </p>
+
+        {/* The date everything here is for. It changes the review schedule —
+            an interval is capped at half the time remaining — so it belongs
+            above the queue rather than in a settings panel. */}
+        <Readiness due={due} onReview={() => setReviewing(true)} />
 
         {/* Retrieval debt comes before new material. Reading a tenth guideline
             while the first nine evaporate is motion, not progress. */}

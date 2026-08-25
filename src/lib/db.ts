@@ -7,6 +7,7 @@ import {
   type Backup,
   type ImportSummary,
 } from "./backup";
+import { horizonDays, loadDeadline } from "./deadline";
 import { buildEntityIndex, ENTITY_SCHEMA, type DocEntityIndex } from "./entities";
 import { isExamRecord, type ExamRecord } from "./history";
 import { parseDocument, SCHEMA_VERSION } from "./parse";
@@ -217,11 +218,19 @@ export const db = {
    * missed twice in two sittings advances one item's schedule instead of
    * stacking duplicates. The returned item carries the new interval, which the
    * UI reports back so the reader can see the schedule respond to the answer.
+   *
+   * The exam-date horizon is read *here* rather than passed in by each caller.
+   * There are eight call sites — every dialog, the drill, the exam, the reading
+   * engine — and a scheduling rule that has to be remembered at each of them is
+   * a rule that will be missing from the ninth. Same reasoning as invariant 17.
+   * `horizon` is still a parameter so the tests can drive it without touching
+   * `localStorage`.
    */
   async recordAnswer(
     seed: ReviewSeed,
     quality: ReviewQuality,
-    now: number = Date.now()
+    now: number = Date.now(),
+    horizon: number | null = horizonDays(loadDeadline(), now)
   ): Promise<ReviewItem | null> {
     const existing = await safe(
       tx<ReviewItem | undefined>(REVIEWS, "readonly", (s) => s.get(seed.id)).then(
@@ -247,7 +256,7 @@ export const db = {
         }
       : newReview(seed, now);
 
-    const next = scheduleReview(base, quality, now);
+    const next = scheduleReview(base, quality, now, horizon);
     await safe(
       tx<IDBValidKey>(REVIEWS, "readwrite", (s) => s.put(next)).then(
         () => undefined as void

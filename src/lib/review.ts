@@ -113,11 +113,20 @@ export function newReview(seed: ReviewSeed, now: number): ReviewItem {
  * The ease adjustment is the standard SM-2 curve rescaled from its 0–5 grade to
  * the 0–3 one used here: `good` leaves ease untouched, `easy` raises it,
  * `hard` lowers it, and `again` lowers it hardest and resets the interval.
+ *
+ * `horizonDays` is the exam date's doing — the longest interval worth granting,
+ * because an item scheduled past the paper is worth nothing and it is the items
+ * going *best* that earn the intervals that fall off the end. It only ever
+ * shortens: `undefined` (no date, or the date has passed) is exactly the
+ * original scheduler, and ease, reps and lapses are untouched by it, so a
+ * horizon that comes and goes leaves no mark on what the queue has learned.
+ * See `deadline.ts` for why it is half the remaining time and not all of it.
  */
 export function scheduleReview(
   item: ReviewItem,
   quality: ReviewQuality,
-  now: number
+  now: number,
+  horizonDays?: number | null
 ): ReviewItem {
   const delta = [-0.8, -0.15, 0, 0.15][quality];
   const ease = Math.min(MAX_EASE, Math.max(MIN_EASE, item.ease + delta));
@@ -135,8 +144,14 @@ export function scheduleReview(
   }
 
   const reps = item.reps + 1;
+  // The horizon is applied last and never below one day: the point is to bring
+  // the item back before the exam, not to schedule it into the past.
+  const cap =
+    horizonDays === undefined || horizonDays === null
+      ? MAX_INTERVAL_DAYS
+      : Math.min(MAX_INTERVAL_DAYS, Math.max(1, Math.floor(horizonDays)));
   const intervalDays = Math.min(
-    MAX_INTERVAL_DAYS,
+    cap,
     reps === 1
       ? quality === QUALITY.easy
         ? 3
