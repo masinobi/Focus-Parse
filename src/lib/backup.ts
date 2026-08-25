@@ -1,3 +1,4 @@
+import type { ExamRecord } from "./history";
 import type { ReviewItem } from "./review";
 import type { SessionState } from "./types";
 
@@ -24,8 +25,16 @@ import type { SessionState } from "./types";
  * restore that quietly destroys newer work is worse than no restore at all.
  */
 
-/** Shape version of the backup file itself. */
-export const BACKUP_FORMAT = 1;
+/**
+ * Shape version of the backup file itself.
+ *
+ * 2 added `exams`. A version-1 file simply has no such key, which is why
+ * `isBackup` accepts its absence and the importer reads `exams ?? []` — a
+ * backup taken before exam history existed is still a complete backup of
+ * everything that existed when it was taken, and refusing it would be the
+ * worst possible way to handle a format bump.
+ */
+export const BACKUP_FORMAT = 2;
 
 /** A document, reduced to what the parser needs to rebuild it. */
 export interface BackupDoc {
@@ -43,6 +52,8 @@ export interface Backup {
   documents: BackupDoc[];
   sessions: SessionState[];
   reviews: ReviewItem[];
+  /** Absent in format 1. */
+  exams?: ExamRecord[];
 }
 
 /** What a restore actually did, per store. */
@@ -57,6 +68,7 @@ export interface ImportSummary {
   documents: MergeCount;
   sessions: MergeCount;
   reviews: MergeCount;
+  exams: MergeCount;
   /** Records rejected as malformed, reported rather than silently dropped. */
   skipped: number;
 }
@@ -81,7 +93,8 @@ export function isBackup(value: unknown): value is Backup {
     typeof b.format === "number" &&
     Array.isArray(b.documents) &&
     Array.isArray(b.sessions) &&
-    Array.isArray(b.reviews)
+    Array.isArray(b.reviews) &&
+    (b.exams === undefined || Array.isArray(b.exams))
   );
 }
 
@@ -131,5 +144,7 @@ export function describeBackup(backup: Backup): string {
     `${backup.sessions.length} ${backup.sessions.length === 1 ? "session" : "sessions"}`,
     `${backup.reviews.length} review ${backup.reviews.length === 1 ? "item" : "items"}`,
   ];
+  const papers = backup.exams?.length ?? 0;
+  if (papers > 0) parts.push(`${papers} ${papers === 1 ? "paper" : "papers"}`);
   return `${parts.join(" · ")} — exported ${when}`;
 }

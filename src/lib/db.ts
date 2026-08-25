@@ -8,6 +8,7 @@ import {
   type ImportSummary,
 } from "./backup";
 import { buildEntityIndex, ENTITY_SCHEMA, type DocEntityIndex } from "./entities";
+import { isExamRecord, type ExamRecord } from "./history";
 import { parseDocument, SCHEMA_VERSION } from "./parse";
 import {
   difficulty,
@@ -22,7 +23,7 @@ import {
 import type { ParsedDoc, SessionState } from "./types";
 
 /**
- * Thin IndexedDB layer. Four stores:
+ * Thin IndexedDB layer. Five stores:
  *   documents — the parsed document, keyed by id (source is kept so a document
  *               can be re-parsed after a parser change).
  *   sessions  — per-document reading state: position, flow nodes, summaries.
@@ -34,14 +35,18 @@ import type { ParsedDoc, SessionState } from "./types";
  *               so the corpus view does not have to load nine parsed documents
  *               — several hundred thousand tokens — to answer "where else does
  *               this term come up?".
+ *   exams     — one record per mock paper sat. Kept because a single paper
+ *               cannot answer the only question worth asking of it, which is
+ *               whether the scores are moving.
  */
 
 const DB_NAME = "focusparse";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const DOCS = "documents";
 const SESSIONS = "sessions";
 const REVIEWS = "reviews";
 const ENTITIES = "entities";
+const EXAMS = "exams";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -72,6 +77,12 @@ function open(): Promise<IDBDatabase> {
       // the corpus view opens, and it holds one small record per document.
       if (!db.objectStoreNames.contains(ENTITIES)) {
         db.createObjectStore(ENTITIES, { keyPath: "docId" });
+      }
+      // Added in version 4. Indexed by `at` so the home screen can ask for the
+      // last few papers without reading every one ever sat.
+      if (!db.objectStoreNames.contains(EXAMS)) {
+        const store = db.createObjectStore(EXAMS, { keyPath: "id" });
+        store.createIndex("at", "at");
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -333,6 +344,44 @@ export const db = {
     }
   },
 
+  /* ---- Exam history ----------------------------------------------------- */
+
+  /**
+   * Keep a marked paper.
+   *
+   * Deliberately *not* removed by `deleteDoc`, unlike reviews and the entity
+   * index. Those are questions about a document and cannot outlive it — a
+   * question whose source text is gone can never be checked again. A paper is
+   * a fact about the reader on a date: it was sat, it scored what it scored,
+   * and forgetting one of the nine guidelines afterwards does not make that
+   * untrue. Each breakdown row keeps the title it was sat under, so the row
+   * still reads after the document is gone.
+   */
+  async saveExam(record: ExamRecord): Promise<void> {
+    await safe(
+      tx<IDBValidKey>(EXAMS, "readwrite", (s) => s.put(record)).then(
+        () => undefined as void
+      ),
+      undefined as void
+    );
+  },
+
+  /** Papers newest first. */
+  async listExams(limit = 30): Promise<ExamRecord[]> {
+    const all = await safe(
+      tx<ExamRecord[]>(EXAMS, "readonly", (s) => s.getAll() as IDBRequest<ExamRecord[]>),
+      []
+    );
+    return all.sort((a, b) => b.at - a.at).slice(0, limit);
+  },
+
+  async countExams(): Promise<number> {
+    return safe(
+      tx<number>(EXAMS, "readonly", (s) => s.count()),
+      0
+    );
+  },
+
   /* ---- Backup and restore ---------------------------------------------- */
 
   /**
@@ -360,6 +409,10 @@ export const db = {
       tx<ReviewItem[]>(REVIEWS, "readonly", (s) => s.getAll() as IDBRequest<ReviewItem[]>),
       []
     );
+    const exams = await safe(
+      tx<ExamRecord[]>(EXAMS, "readonly", (s) => s.getAll() as IDBRequest<ExamRecord[]>),
+      []
+    );
 
     return {
       app: "focusparse",
@@ -376,6 +429,7 @@ export const db = {
         })),
       sessions,
       reviews,
+      exams,
     };
   },
 
@@ -399,6 +453,7 @@ export const db = {
       documents: emptyCount(),
       sessions: emptyCount(),
       reviews: emptyCount(),
+      exams: emptyCount(),
       skipped: 0,
     };
 
@@ -466,6 +521,28 @@ export const db = {
       );
       if (existing) summary.reviews.updated += 1;
       else summary.reviews.added += 1;
+    }
+
+    // A paper is immutable once marked, so there is no newer-wins contest to
+    // run here — unlike a review item, whose interval genuinely changes. A
+    // record already present is the same record.
+    for (const record of backup.exams ?? []) {
+      if (!isExamRecord(record)) {
+        summary.skipped += 1;
+        continue;
+      }
+      const existing = await safe(
+        tx<ExamRecord | undefined>(EXAMS, "readonly", (s) => s.get(record.id)).then(
+          (v) => v ?? null
+        ),
+        null
+      );
+      if (existing) {
+        summary.exams.kept += 1;
+        continue;
+      }
+      await db.saveExam(record);
+      summary.exams.added += 1;
     }
 
     onProgress?.(backup.documents.length, backup.documents.length, "");

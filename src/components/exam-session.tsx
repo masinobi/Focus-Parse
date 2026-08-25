@@ -17,6 +17,7 @@ import {
   type ExamQuestion,
   type ExamResult,
 } from "@/lib/exam";
+import { recordExam, trendOf, examPercent, type ExamTrend } from "@/lib/history";
 import { answerMatches, BLANK } from "@/lib/quiz";
 import { acronymId, clozeId, gridId, QUALITY } from "@/lib/review";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,11 @@ import { cn } from "@/lib/utils";
  *
  * Misses go into the same retrieval queue everything else feeds, so sitting an
  * exam is not a detour from the study loop — it is another way into it.
+ *
+ * The marked paper is also kept. It used to live only in the `result` state
+ * below and die when this component unmounted, which meant the app's single
+ * best evidence about whether the reading is working was thrown away every
+ * time it was produced. See `history.ts`.
  */
 
 interface ExamSessionProps {
@@ -58,11 +64,23 @@ export function ExamSession({ onDone }: ExamSessionProps) {
   const [remaining, setRemaining] = React.useState(0);
   const [result, setResult] = React.useState<ExamResult | null>(null);
   const [docCount, setDocCount] = React.useState(0);
+  /**
+   * Read inside `finish`, which is memoized on the paper rather than on the
+   * document count — a stale closure here would file the paper against the
+   * wrong corpus size.
+   */
+  const docCountRef = React.useRef(0);
+  /** Papers sat, refreshed once this one is filed so "up from" has a subject. */
+  const [trend, setTrend] = React.useState<ExamTrend | null>(null);
   const startedAt = React.useRef(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    void db.listDocs().then((docs) => setDocCount(docs.length));
+    void db.listDocs().then((docs) => {
+      setDocCount(docs.length);
+      docCountRef.current = docs.length;
+    });
+    void db.listExams().then((records) => setTrend(trendOf(records)));
   }, []);
 
   /**
@@ -80,8 +98,18 @@ export function ExamSession({ onDone }: ExamSessionProps) {
     if (phaseRef.current !== "running") return;
     phaseRef.current = "marked";
     const elapsed = (Date.now() - startedAt.current) / 1000;
-    setResult(scoreExam(questions, answers, elapsed));
+    const marked = scoreExam(questions, answers, elapsed);
+    setResult(marked);
     setPhase("marked");
+
+    // Written here rather than on unmount: the reader can close the tab from
+    // the marked screen, and a paper that is only persisted on the way out is
+    // a paper that is sometimes not persisted at all. The same ref that stops
+    // the paper being scored twice stops it being written twice.
+    void db
+      .saveExam(recordExam(marked, docCountRef.current, Date.now()))
+      .then(() => db.listExams())
+      .then((records) => setTrend(trendOf(records)));
   }, [questions, answers]);
 
   // The clock. Stored as a deadline rather than a decrementing counter, so a
@@ -233,6 +261,14 @@ export function ExamSession({ onDone }: ExamSessionProps) {
             ))}
           </div>
 
+          {trend && trend.papers > 0 && trend.latest && (
+            <p className="mb-6 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              {trend.papers} {trend.papers === 1 ? "paper" : "papers"} sat · last
+              one {examPercent(trend.latest)}% on{" "}
+              {new Date(trend.latest.at).toLocaleDateString()} · best {trend.best}%
+            </p>
+          )}
+
           <p className="mb-6 text-xs text-muted-foreground">
             {docCount === 0
               ? "No documents loaded yet — an exam needs something to draw from."
@@ -278,10 +314,38 @@ export function ExamSession({ onDone }: ExamSessionProps) {
             </h2>
           </div>
 
-          <p className="mb-8 text-sm text-muted-foreground">
+          <p className="mb-2 text-sm text-muted-foreground">
             {formatClock(result.elapsed)} spent. The {missed.length}{" "}
             {missed.length === 1 ? "miss is" : "misses are"} in the review queue.
           </p>
+
+          {/* The comparison is the reason the paper is kept at all. Shown only
+              once there is something to compare against: a first paper has no
+              trend, and inventing one from a single point is exactly the kind
+              of number that reads as progress and is not. If the write failed
+              — a private-mode browser, where every store here is best-effort —
+              this stays absent rather than claiming a history that is not
+              there. */}
+          {trend && trend.papers >= 2 && (
+            <p className="mb-8 text-sm text-muted-foreground">
+              Paper {trend.papers}.{" "}
+              {trend.delta === null ? null : trend.delta === 0 ? (
+                <>Level with the one before.</>
+              ) : (
+                <>
+                  <span className={trend.delta > 0 ? "text-output" : "text-destructive"}>
+                    {trend.delta > 0 ? "Up" : "Down"} {Math.abs(trend.delta)}
+                  </span>{" "}
+                  on the one before.
+                </>
+              )}{" "}
+              {trend.papers >= 3 && trend.recentAverage !== null ? (
+                <>Last three average {trend.recentAverage}%. </>
+              ) : null}
+              Best {trend.best}%.
+            </p>
+          )}
+          {(!trend || trend.papers < 2) && <div className="mb-8" />}
 
           <Breakdown title="By document" rows={result.byDocument} />
           <Breakdown title="By question type" rows={result.byKind} />

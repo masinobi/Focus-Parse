@@ -7,6 +7,7 @@ import {
   GraduationCap,
   Layers,
   Library,
+  LineChart,
   Loader2,
   Pencil,
   Sparkles,
@@ -18,6 +19,7 @@ import {
 import { AcronymDrill } from "@/components/acronym-drill";
 import { BackupControls } from "@/components/backup-controls";
 import { CorpusIndex } from "@/components/corpus-index";
+import { ExamHistory } from "@/components/exam-history";
 import { ExamSession } from "@/components/exam-session";
 import { ReviewSession } from "@/components/review-session";
 import { Button } from "@/components/ui/button";
@@ -45,6 +47,9 @@ export function DocumentLoader() {
   const [indexing, setIndexing] = React.useState(false);
   const [examining, setExamining] = React.useState(false);
   const [drilling, setDrilling] = React.useState(false);
+  const [reviewingPapers, setReviewingPapers] = React.useState(false);
+  /** How many mock papers have been sat, for the history entry. */
+  const [papers, setPapers] = React.useState(0);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   const loadDoc = useFocusStore((s) => s.loadDoc);
@@ -54,6 +59,7 @@ export function DocumentLoader() {
   React.useEffect(() => {
     void db.listDocs().then(setRecent);
     void db.countDue().then(setDue);
+    void db.countExams().then(setPapers);
   }, []);
 
   const ingest = React.useCallback(
@@ -146,10 +152,15 @@ export function DocumentLoader() {
           // An exam feeds the queue like everything else, so both the debt
           // count and the reading engine's idea of what is weak are stale.
           void db.countDue().then(setDue);
+          void db.countExams().then(setPapers);
           void refreshWeakTerms();
         }}
       />
     );
+  }
+
+  if (reviewingPapers) {
+    return <ExamHistory onBack={() => setReviewingPapers(false)} />;
   }
 
   if (drilling) {
@@ -251,6 +262,26 @@ export function DocumentLoader() {
               <span className="block text-xs text-muted-foreground">
                 Acronyms, terms in context and table cells, drawn across
                 everything and marked at the end.
+              </span>
+            </span>
+          </button>
+        )}
+
+        {/* A single paper cannot say whether this is working. The history is
+            where the app answers that, and where terms that survive being
+            learned show up. */}
+        {papers > 0 && (
+          <button
+            type="button"
+            onClick={() => setReviewingPapers(true)}
+            className="mb-6 flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors hover:bg-accent/60"
+          >
+            <LineChart className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 text-sm">
+              <span className="font-medium">Exam history</span>
+              <span className="block text-xs text-muted-foreground">
+                {papers} {papers === 1 ? "paper" : "papers"} sat, how the scores
+                are moving, and the terms you keep missing.
               </span>
             </span>
           </button>

@@ -150,9 +150,9 @@ export function BackupControls({ onRestored }: BackupControlsProps) {
       </div>
 
       <p className="mt-2 text-xs text-muted-foreground">
-        Documents, reading sessions and the whole review schedule, as one JSON
-        file. Restoring merges — nothing is deleted, and anything newer here is
-        kept.
+        Documents, reading sessions, the whole review schedule and every mock
+        paper sat, as one JSON file. Restoring merges — nothing is deleted, and
+        anything newer here is kept.
       </p>
 
       {pending && (
@@ -189,6 +189,10 @@ export function BackupControls({ onRestored }: BackupControlsProps) {
             <li>
               Review items: {summary.reviews.added} added, {summary.reviews.updated}{" "}
               updated, {summary.reviews.kept} already newer here
+            </li>
+            <li>
+              Papers: {summary.exams.added} added, {summary.exams.kept} already
+              here
             </li>
             {summary.skipped > 0 && (
               <li className="text-destructive">
