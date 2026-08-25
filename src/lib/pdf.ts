@@ -60,6 +60,14 @@ interface Line {
   edge: boolean;
   /** Present on the synthetic line that stands in for a recovered grid. */
   grid?: GridData;
+  /**
+   * Set on a heading rejoined from a wrap. It travels with the line because
+   * classification runs again afterwards and has to apply the same looser word
+   * cap the join was accepted under — otherwise a heading is merged and then
+   * demoted by the very rule that admitted it, and the reader gets the whole
+   * text as a paragraph and nothing in the structure map.
+   */
+  joined?: boolean;
 }
 
 export interface PageItems {
@@ -114,6 +122,22 @@ const RUNNING_HEAD_SHARE = 0.35;
 
 /** Headings are short; a long line set large is prose. */
 const MAX_HEADING_CHARS = 110;
+
+/** And a heading is a label. Past this many words a large line is a sentence. */
+const MAX_HEADING_WORDS = 14;
+
+/**
+ * The same cap for a heading rejoined from two lines.
+ *
+ * Looser, because a rejoin has already had to satisfy something no ordinary
+ * line does: it wrapped. A paragraph does not reach the right edge of the
+ * measure in a heading's type, at a heading's leading, with no sentence-ending
+ * punctuation, and then continue in a shorter line of the same type. Holding a
+ * rejoin to fourteen words cut real headings — measured on the vendor-selection
+ * PDF, where "c) What to do when you have to oversee a vendor you did not
+ * select?" is fifteen and was left in the map as "did not select?".
+ */
+const MAX_JOINED_HEADING_WORDS = 18;
 
 /** Outline markers used for headings in structured guidance documents. */
 const OUTLINE_MARKER = /^(\(?[a-z]\)|\(?[ivxlcdm]{1,5}\)|\d{1,2}(\.\d{1,2}){0,3}\.?)\s+\S/i;
@@ -465,13 +489,17 @@ interface HeadingVerdict {
   strong: boolean;
 }
 
-function headingVerdict(line: Line, body: BodyStyle): HeadingVerdict | null {
+function headingVerdict(
+  line: Line,
+  body: BodyStyle,
+  maxWords: number = MAX_HEADING_WORDS
+): HeadingVerdict | null {
   const text = line.text.trim();
   if (!text || text.length > MAX_HEADING_CHARS) return null;
   if (LIST_MARKER.test(text)) return null;
   if (/[.;,:]$/.test(text) && !OUTLINE_MARKER.test(text)) return null;
   // A heading is a label, not a sentence, and not a lone symbol or dingbat.
-  if (text.split(/\s+/).length > 14) return null;
+  if (text.split(/\s+/).length > maxWords) return null;
   if (text.replace(/[^A-Za-z]/g, "").length < 3) return null;
   // Journal front matter — citations, affiliations, contact lines — is set in
   // the same contrasting style as headings but is not structure.
@@ -503,7 +531,9 @@ function headingVerdict(line: Line, body: BodyStyle): HeadingVerdict | null {
 const MAX_HEADING_RUN = 2;
 
 function classifyHeadings(lines: Line[], body: BodyStyle): (1 | 2 | null)[] {
-  const verdicts = lines.map((line) => headingVerdict(line, body));
+  const verdicts = lines.map((line) =>
+    headingVerdict(line, body, line.joined ? MAX_JOINED_HEADING_WORDS : MAX_HEADING_WORDS)
+  );
   const levels: (1 | 2 | null)[] = verdicts.map((v) => (v ? v.level : null));
 
   let runStart = 0;
@@ -533,8 +563,169 @@ function classifyHeadings(lines: Line[], body: BodyStyle): (1 | 2 | null)[] {
   return levels;
 }
 
+/**
+ * Notes an offline report can ask `assemble` to keep about what it did.
+ *
+ * The scanners exist so a parsing rule is measured against the real corpus
+ * rather than argued about, and a rule that silently rewrites the text needs
+ * this more than most: both the joins it makes and the ones it abandons are
+ * things a reader would otherwise have to notice by ear.
+ */
+export interface AssembleNotes {
+  /**
+   * Headings rejoined from more than one line. `parts` are the lines as the
+   * page set them and `text` is what came out — kept separately rather than
+   * recoverable from each other, because a hyphenated wrap loses a character at
+   * the seam and a report that reconstructed one from the other would
+   * mis-attribute that as text the join had eaten.
+   */
+  wrapped: { parts: string[]; text: string }[];
+  /** Pairs that looked wrapped but whose join stopped reading as a heading. */
+  declined: string[];
+}
+
+/** Leading, in multiples of the line's own size, that still reads as one wrap. */
+const WRAP_LEADING_RATIO = 1.7;
+
+/** How near the band's right edge the first half must reach, in body sizes. */
+const WRAP_FILL_SLACK = 3;
+
+/** Most lines one heading may be rejoined from. */
+const MAX_WRAP_LINES = 3;
+
+/** Share of lines allowed to overhang the right edge before it is the edge. */
+const EDGE_PERCENTILE = 0.9;
+
+/**
+ * Where a band's text block actually ends.
+ *
+ * The maximum would do if every page were tidy, but one overhanging run — a
+ * stray footnote marker, a rule, an undetected table cell — would put the edge
+ * where no prose ever reaches and switch the wrap test off for the whole page.
+ * A high percentile ignores a few such lines and still lands on the measure.
+ */
+function rightEdgeOf(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * EDGE_PERCENTILE))];
+}
+
+/** Same type, to within the rounding pdf.js does on a transform. */
+function sameType(a: Line, b: Line): boolean {
+  return Math.abs(a.size - b.size) < 0.6 && a.family === b.family && a.bold === b.bold;
+}
+
+/**
+ * Rejoin a heading the measure broke across two lines.
+ *
+ * Both halves reach `classifyHeadings` as heading-styled lines, and the rule
+ * that a weak heading must introduce prose then deletes *the first half* — it
+ * is followed by a heading rather than by text. So the structure map is handed
+ * "Within an EDC System", and "6) What it Means to Design a Study Application"
+ * is not merely missing from the map, it is glued to the end of the paragraph
+ * above and read aloud there. Both halves are damaged; only one of them shows.
+ *
+ * The join has to be narrow, because two heading-styled lines in a row are also
+ * what a section header immediately followed by its first sub-header looks
+ * like, and merging those would assert a heading neither line claims. What
+ * separates the two cases is physical rather than textual: a heading wraps
+ * because it **ran out of measure**, so its first line reaches the right edge
+ * of the text block and its continuation does not. Two consecutive headings are
+ * two short lines, both well inside it.
+ *
+ * Everything else here corroborates that one signal — identical type, single
+ * line of leading, no sentence-ending punctuation, no second outline marker —
+ * and the join is abandoned outright if what comes out no longer reads as a
+ * heading. Half a heading in the structure map is a defect; a paragraph
+ * promoted to a heading is a worse one.
+ */
+function mergeWrappedHeadings(
+  lines: Line[],
+  body: BodyStyle,
+  notes?: AssembleNotes
+): Line[] {
+  const edges = new Map<number, number[]>();
+  for (const line of lines) {
+    // A grid rides through as a stand-in line spanning the page. It ends where
+    // no prose does, so it must not be allowed to define where prose ends.
+    if (line.grid) continue;
+    edges.set(line.band, [...(edges.get(line.band) ?? []), line.xEnd]);
+  }
+  const rightEdge = new Map<number, number>();
+  edges.forEach((values, band) => rightEdge.set(band, rightEdgeOf(values)));
+
+  const out: Line[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    let head = lines[i];
+    let verdict = head.grid ? null : headingVerdict(head, body);
+    const parts = [head.text.trim()];
+    let taken = 1;
+
+    while (verdict && taken < MAX_WRAP_LINES) {
+      const next = lines[i + taken];
+      if (!next || next.grid) break;
+      if (next.band !== head.band || next.page !== head.page) break;
+      if (!sameType(head, next)) break;
+
+      // A wrap is one heading, so both halves are set as the same level. An H1
+      // followed by its first H2 differs here and is left alone.
+      const continuing = headingVerdict(next, body);
+      if (!continuing || continuing.level !== verdict.level) break;
+
+      // One line of leading. Anything more is space between two things.
+      const gap = head.y - next.y;
+      if (gap <= 0 || gap > head.size * WRAP_LEADING_RATIO) break;
+
+      // The signal itself: this line ran out of room and the next one did not.
+      const edge = rightEdge.get(head.band) ?? head.xEnd;
+      if (head.xEnd < edge - body.size * WRAP_FILL_SLACK) break;
+      if (next.xEnd >= head.xEnd) break;
+
+      // A sentence does not wrap into a heading, and a second marker or bullet
+      // is a second heading rather than the rest of this one.
+      const tail = next.text.trim();
+      if (/[.!?:;]$/.test(head.text.trim())) break;
+      if (OUTLINE_MARKER.test(tail) || LIST_MARKER.test(tail) || NUMBERED.test(tail)) break;
+
+      const stem = head.text.trim();
+      const text =
+        stem.endsWith("-") && /^[a-z]/.test(tail)
+          ? stem.slice(0, -1) + tail
+          : `${stem} ${tail}`;
+
+      const candidate: Line = {
+        ...head,
+        text,
+        xEnd: Math.max(head.xEnd, next.xEnd),
+        joined: true,
+      };
+      const merged = headingVerdict(candidate, body, MAX_JOINED_HEADING_WORDS);
+      // The join still lives by a heading's rules, and is abandoned where it
+      // stops satisfying them. Half a heading in the structure map is a defect;
+      // a paragraph promoted to a heading is a worse one.
+      if (!merged || merged.level !== verdict.level) {
+        notes?.declined.push(`${stem} / ${tail}`);
+        break;
+      }
+
+      head = candidate;
+      verdict = merged;
+      parts.push(tail);
+      taken += 1;
+    }
+
+    if (taken > 1) notes?.wrapped.push({ parts, text: head.text.trim() });
+    out.push(head);
+    i += taken;
+  }
+
+  return out;
+}
+
 /** Join wrapped lines into paragraphs and emit markdown. */
-function toMarkdown(pages: Line[][], body: BodyStyle): string {
+function toMarkdown(pages: Line[][], body: BodyStyle, notes?: AssembleNotes): string {
   const out: string[] = [];
   let paragraph = "";
   let previous: Line | null = null;
@@ -545,7 +736,11 @@ function toMarkdown(pages: Line[][], body: BodyStyle): string {
     paragraph = "";
   };
 
-  for (const lines of pages) {
+  for (const page of pages) {
+    // Before classification, not after: the rule that demotes a heading
+    // followed by another heading is exactly what destroys a wrapped one, so
+    // the halves have to be one line by the time it runs.
+    const lines = mergeWrappedHeadings(page, body, notes);
     const levels = classifyHeadings(lines, body);
 
     lines.forEach((line, index) => {
@@ -604,8 +799,14 @@ function toMarkdown(pages: Line[][], body: BodyStyle): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-/** Turn extracted pages into markdown. */
-export function assemble(pages: PageItems[]): string {
+/**
+ * Turn extracted pages into markdown.
+ *
+ * `notes` is for the offline scanners, which drive this same function over the
+ * real corpus so a report and the parser can never disagree about what the
+ * parser does.
+ */
+export function assemble(pages: PageItems[], notes?: AssembleNotes): string {
   const allItems = pages.flatMap((p) => p.items);
   if (!allItems.length) return "";
 
@@ -666,7 +867,7 @@ export function assemble(pages: PageItems[]): string {
   const flat = cleaned.flat();
   if (!flat.length) return "";
 
-  return toMarkdown(cleaned, bodyStyle(flat));
+  return toMarkdown(cleaned, bodyStyle(flat), notes);
 }
 
 /**

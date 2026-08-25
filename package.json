@@ -11,7 +11,8 @@
     "postinstall": "node scripts/copy-pdf-worker.mjs",
     "test": "vitest run",
     "probe": "node scripts/probe-ui.mjs",
-    "scan-columns": "node scripts/scan-columns.mjs"
+    "scan-columns": "node scripts/scan-columns.mjs",
+    "scan-headings": "node scripts/scan-headings.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
