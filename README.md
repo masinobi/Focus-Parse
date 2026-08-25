@@ -93,6 +93,27 @@ Three things make real documents hard:
   that signal is weak, style-based headings must also be isolated (not inside a run
   of three or more) and followed by prose, which filters author lists, affiliation
   blocks and captions.
+
+  That last rule is also what breaks a heading the measure wrapped across two lines.
+  Both halves are heading-styled, so the first is followed by a heading rather than by
+  prose and gets demoted — which does not merely lose it from the structure map, it
+  turns it into prose glued onto the end of the paragraph above and reads it out
+  there. The chapter heading "6) What it Means to Design a Study Application Within an
+  EDC System" arrived as "Within an EDC System", and elsewhere "a) Sponsor (or
+  designee such as a CRO or EDC Vendor) SOPs" was being spoken in the middle of the
+  sentence that followed it.
+
+  The two halves are therefore rejoined before classification runs. The join has to be
+  narrow, because two heading lines in a row are also what a section header followed
+  by its first sub-header looks like, and merging those would assert a heading neither
+  line claims. What separates the cases is physical rather than textual: **a heading
+  wraps because it ran out of measure**, so its first line reaches the right edge of
+  the text block and its continuation does not. Identical type, one line of leading, no
+  sentence-ending punctuation and no second outline marker are corroboration for that
+  one signal, and the join is abandoned outright if what comes out no longer reads as a
+  heading — half a heading in the map is a defect, a paragraph promoted to a heading is
+  a worse one. `npm run scan-headings` measures it: 24 rejoins across the corpus, one
+  declined, none that lost text, and ICH E6 byte-identical.
 - **Furniture.** Running heads and folios are dropped by repetition across pages
   within the margin strip.
 - **Reference markers.** Superscript citations are removed. Size alone is unreliable —
@@ -453,6 +474,151 @@ The report asserts the ways a paper can be quietly unfair — an answer missing 
 options cannot be answered at all, and a duplicate asks one fact twice while a document
 goes unexamined — and scores a perfect paper and a blank one to prove the marker moves.
 
+## The coverage map
+
+Every progress indicator here reports the caret, and the caret is a claim about the
+audio rather than about the reader. It advances at the same rate whether somebody is
+following or the tab is minimised — which is the entire reason the enforcement ladder
+exists, and it means "43% read" is the one number the ladder was built not to trust.
+
+The ladder was already producing the answer to the harder question and throwing most
+of it away. An intercept left a summary behind and a grid left a pass, but the cheap
+rung — the one that fires most often and covers the most ground — was marked, shown
+for eight seconds and discarded. So the app could say how far the caret had reached
+and could not say which of it anyone had been made to account for.
+
+Spot-check results are now kept, keyed by the token their window ended at, so
+re-reading a stretch replaces its evidence rather than banking a second opinion about
+the same words. From those three rungs the structure map reports four states per
+section, and the useful one is the third:
+
+| | |
+|---|---|
+| **verified** | Every rung that applies has been answered. |
+| **partly** | One rung answered, another still owed. |
+| **read but unchecked** | The caret went through it and nothing was ever asked. |
+| **unread** | Not reached yet. |
+
+**Four states rather than a percentage, on purpose.** Blending the rungs into one
+score would invent a weighting nobody measured, and it would hide the distinction the
+reader acts on: a section owing a summary and a section whose table was never answered
+need different amounts of time, and a single number says neither.
+
+**The bar is segmented by words, not by sections.** Sections in this corpus run from
+forty words to nearly four thousand. "12 of 47 sections" lets a document be
+four-fifths verified by section count and a third verified by anything that will be
+examined.
+
+**A rung is only owed if the ladder will actually raise it.** This is the constraint
+the whole thing lives or dies by — a debt the reader cannot discharge never clears,
+keeps the number off the top, and after a week of that nobody reads the panel. Three
+of them were in the first version:
+
+- The summary belongs to the section being *left*. `finishChunk` raises the intercept
+  on crossing *into* a section that arms one and asks about the one just finished, so
+  keying it off `section.intercept` permanently billed the last section of every
+  document, plus every section followed by one that arms nothing.
+- A grid with no answerable cell is never armed at all — a check that cannot be
+  answered is a dialog with no exit — so it cannot be owed either.
+- A grid already failed twice is never offered again. The app has given up on it; the
+  map must stop billing for it.
+
+**Answering a check and answering it correctly are different claims.** Getting through
+a spot check is what proves the reader was there, so it counts toward coverage however
+it was marked. Recall is reported alongside it, per section and per document, and goes
+red below half. Folding the two together would let a section the reader has been held
+to three times read as never checked.
+
+Below the counts sits the one action the panel exists for: **the next section worth
+your time**. Read-but-unchecked first, then partly done, then unread — cheapest
+evidence first, since a section already read needs one check and a section not yet
+read needs reading — and within a band the longest, where the most unaccounted-for
+material is.
+
+```bash
+node scripts/scan-coverage.mjs "path/to/pdfs"
+```
+
+That report asks the question the unit tests cannot: can a real document ever reach
+100%? It drives a perfect reader over each one and asserts nothing is left owing, and
+scores the same documents with an empty session as a control — a model that called
+everything verified would pass the first test on its own. On the nine documents:
+1,102 sections, zero still owing after a perfect reading, zero verified after doing
+nothing at all.
+
+## Reading speed
+
+The control used to be the `rate` a `SpeechSynthesisUtterance` takes, and it claimed a
+number no voice has ever produced. Measured across every voice in `/voice-check`: 2.0x
+delivers about 1.4x on the local voices and about 1.9x on the network ones, and the
+control offered up to 3.0x. Two readers sitting at "2.0x" on two different voices are
+reading at speeds a third apart, and neither is reading twice as fast as anything.
+
+`rate` is not a lie the app can fix — the platform owns what it means. What it can stop
+doing is *reporting* it as the speed. So the control asks for words per minute, and the
+rate is solved for: "what rate gets this voice to 260 wpm?" is a question about that
+voice, answered from what that voice has already been observed to do.
+
+**Learned per voice, not modelled.** Words spoken and time elapsed are accumulated per
+voice per rate as you read, and kept in `localStorage` beside the remembered voice —
+rate is honoured differently by local and network synthesis, so a local voice's timings
+say nothing about a networked one's. Two real observations beat any curve fitted here
+over engines this app cannot see.
+
+**A straight line, and the intercept is the point.** `wpm = intercept + slope × rate`,
+because the measured relationship saturates: a voice at 2.0 is not twice the voice at
+1.0, and a line with a positive intercept and a shallow slope is what saturation looks
+like across the range a reader uses. Fitting a curve to two or three points would be
+inventing precision that is not in the data.
+
+**Solved, never servoed.** `rate` is a dependency of the speech engine's effect, so a
+controller that corrected itself as it read would cancel and restart the utterance at
+intervals nobody asked for — the caret jumping back to the start of a sentence for no
+visible reason. The rate is re-solved only when the reader moves something: the target,
+or the voice.
+
+**It says when it cannot reach a target.** Past what the current voice has been
+measured to do, the asked-for number is struck through and what will actually be read
+is shown beside it. The header reports the measured pace separately, so the target and
+the delivery are always both visible and are allowed to disagree.
+
+**Uncalibrated, it is exactly the old behaviour**: `target / 185`, which is the
+multiplier the control used to be, marked "est." so nobody mistakes it for a
+measurement. Nobody's reading speed changes on upgrade.
+
+Measured end to end in the running app: at the default 260 wpm target, Microsoft David
+delivered 140 wpm — the old control overstated it by 46%. After one 26-second run the
+app had learned it, asked 2.6x for the same target, and reported David's real range as
+100–300 wpm.
+
+## The acronym drill
+
+The vocabulary the material is written in, and the cheapest thing to be caught out by.
+The mock exam already asked acronym definitions, marked them and filed them in the
+retrieval queue under an id keyed by the term rather than the document — but a handful
+at a time, mixed into a forty-question paper with a clock on it. There was no way to
+sit down and go through the vocabulary, which is the one part of this corpus that
+rewards exactly that.
+
+Three differences from the exam, and they are the whole design:
+
+- **Marked as you go.** An exam withholds feedback because it is predicting a result.
+  A drill exists to close the loop, and a wrong answer is worth nothing until the right
+  one lands beside it.
+- **No clock.** Recall under time pressure is what the exam measures. This measures
+  whether the association is there at all.
+- **Worst first.** The same `weakTerms` map the reading spot checks consult orders the
+  set, so it opens on the terms that are not sticking rather than on the eight already
+  known. Inside a weakness band the order is seeded, so a drill can be sat twice and be
+  the same drill.
+
+**The exam's per-document cap does not apply.** `PER_DOC_PER_KIND` exists so a paper is
+not dominated by whichever document happens to be longest; a drill has the opposite
+requirement, because a term left out of it is the term you meet on the day. Measured
+from the token stream rather than from the question pools — a count taken from the same
+capped source would be a check that cannot fail — the corpus uses 50 acronyms and the
+capped drill was offering 30.
+
 ## The corpus index
 
 Nine guidelines on one subject were nine separate reading sessions with no thread
@@ -557,9 +723,10 @@ estimates once ~25 words have been read.
 
 ## Features
 
-**Dual-channel pacing** — 1.0x–3.0x, with Standard, Bionic (bolded leading fragment,
-~45% of each word's letters) and RSVP (single word at a fixed optimal-recognition
-point) views. Click any word to seek there.
+**Dual-channel pacing** — a words-per-minute target rather than a rate multiplier
+(see *Reading speed* below), with Standard, Bionic (bolded leading fragment, ~45% of
+each word's letters) and RSVP (single word at a fixed optimal-recognition point)
+views. Click any word to seek there.
 
 **Kinetic scratchpad** — type an idea and end it with `/e`, `/m` or `/o` to commit it
 instantly as an Entity / Mechanism / Output node. No Enter, no mouse; the audio never
@@ -584,10 +751,17 @@ disabled; the only ways out are submitting or ending the session. Your own captu
 for that section are hidden behind a toggle so recall comes first.
 
 **Pre-scan structure map** — generated at load from the header hierarchy, with live
-per-section time estimates, progress, and intercept status. Pacing checkpoints are
-folded back into the heading they were cut from: a 3,738-word section shows once,
-as "6 checkpoints", rather than as six consecutive rows carrying the same title —
-which was itself a reason a long document read as repetitive.
+per-section time estimates, progress, and what each section has actually been asked
+about (see *The coverage map* below). Pacing checkpoints are folded back into the
+heading they were cut from: a 3,738-word section shows once, as "6 checkpoints",
+rather than as six consecutive rows carrying the same title — which was itself a
+reason a long document read as repetitive.
+
+**Coverage** — the structure map reports what each section has been *asked about*, not
+just how far the caret got, and points at the next section worth your time. See above.
+
+**Acronym drill** — every acronym your documents use, marked as you go, hardest first,
+no clock. See above.
 
 **Sensory masking** — brown noise under the audio, from a toggle and volume slider in
 the top bar. See below.
@@ -671,6 +845,17 @@ Three things the browser forces:
   repair damaged extraction.
 - At most one check fires per sentence boundary. A grid that ends exactly where a
   section does yields its question to the intercept, and is not asked about.
+- A rejoined heading loses the hyphen at its seam — "Mid-" / "study Protocol Updates"
+  comes out as "Midstudy Protocol Updates". The paragraph assembler has always done
+  this to a word broken across a line break, and the join follows it rather than
+  inventing a second rule; from the glyphs alone a soft hyphen and a real hyphenated
+  compound are the same thing.
+- A voice reads at the 185 wpm baseline until it has been *heard*. The speed control
+  says "est." until roughly forty words at one rate have gone by, and a reader who
+  switches voice often enough never to accumulate a sample stays there.
+- A section counts as verified on a spot check every blank of which was answered wrong.
+  Getting through the check is what proves someone was there; recall is reported
+  separately and turns red below half.
 
 ## Keyboard
 
@@ -679,7 +864,7 @@ Three things the browser forces:
 | `Space` | Play / pause |
 | `←` `→` | Previous / next sentence |
 | `⇧←` `⇧→` | Previous / next section |
-| `↑` `↓` | Speed ±0.1x |
+| `↑` `↓` | Reading speed ±10 wpm |
 | `Home` | Back to the start |
 | `Esc` | Stop |
 | `V` | Answer the presence check |
@@ -713,7 +898,8 @@ skipped instead of discarding a whole backup over one bad row.
 
 IndexedDB ([src/lib/db.ts](src/lib/db.ts)), four stores: `documents` (parsed document
 plus its source), `sessions` (reading position, flow nodes and their links,
-summaries, and which grids have been answered) written debounced at 700 ms, `reviews` (the spaced-retrieval queue) and `entities` (one
+summaries, which grids have been answered, and what each spot check established)
+written debounced at 700 ms, `reviews` (the spaced-retrieval queue) and `entities` (one
 compact index per document). Every write is best-effort — a browser in private mode
 loses persistence, not the reading session.
 
@@ -736,6 +922,16 @@ makes that lossless — for PDFs the source is the extracted markdown, so migrat
 not need the original file. The engine additionally falls back to display text when a
 chunk has no speech string, so a stale shape degrades to reading without acronym
 expansion rather than failing to play.
+
+Two things are deliberately **not** in IndexedDB. The chosen voice and the reading
+speed live in `localStorage`, along with what each voice has been measured to deliver
+at each rate: none of it belongs to a document, and all of it is a property of the
+voices this particular machine happens to have installed.
+
+And `sessions` carries no `schema` number of its own, which is a constraint rather
+than an oversight — there is no migration path, so every field added to a session since
+must read as `undefined` on the sessions already on disk. Node links, grid results and
+spot-check results all arrived this way, and every consumer treats absent as empty.
 
 ## Choosing a voice
 

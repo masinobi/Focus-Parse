@@ -292,11 +292,42 @@ that survives a parser change — which is the same reason `getDoc` rebuilds fro
 carries an older interval, and applying it over a newer one silently undoes
 weeks of scheduling.
 
+**20. Coverage may never demand what the ladder will not raise.** A coverage
+map is a list of debts, and a debt the reader cannot discharge is worse than no
+map — it never clears, the number never reaches the top, and after a week of
+that nobody reads the panel. So every rung in `coverage.ts` mirrors a condition
+in `finishChunk` rather than a property that merely looks equivalent: the
+summary is owed by the section being *left* (the intercept fires on crossing
+*into* one that arms it), a grid is owed only while it is still askable
+(`buildGridQuestion` non-null, invariant 7) and still offered (`gridAttempts`
+under `MAX_GRID_ATTEMPTS`). Three separate permanent debts came out of getting
+this wrong, and none of them was visible in the unit tests that were written
+first.
+
+**21. The speed control's number is a claim the app then checks.** `rate` means
+something different on every voice — 2.0x is about 1.4x on a local voice and
+1.9x on a network one — so the control asks for words per minute and `pace.ts`
+solves for the rate. Two consequences that must survive any change here: a
+target the current voice cannot reach has to be *shown* as unreachable rather
+than accepted, and the rate must only be re-solved when the reader moves
+something (the target, or the voice). `rate` is a dependency of the speech
+engine's effect, so a controller that corrected as it read would cancel and
+restart the utterance at intervals nobody asked for.
+
 **19. `source` is a complete record.** Everything rides through the markdown
 intermediate rather than a side channel, so `db.getDoc` can rebuild a document
-with the current parser when `schema` is stale. Schema is currently **3**; bump
+with the current parser when `schema` is stale. Schema is currently **4**; bump
 `SCHEMA_VERSION` in `src/lib/parse.ts` whenever the Token/Chunk shape changes, or
 old stored documents crash playback with missing fields.
+
+**But `source` is the *assembled* markdown, not the PDF.** Rebuilding from it
+picks up every change to `parse.ts` and nothing at all from `pdf.ts` — the
+extraction has already happened by the time `source` exists. A fix to heading
+recovery, column detection or table flattening therefore reaches a document
+already in a browser only if the PDF is ingested again. This is not a defect
+(keeping 800KB of PDF per document to re-extract on every parser change is the
+worse trade), but it is the difference between a fix that propagates silently
+and one that has to be asked for.
 
 ## How to verify work here
 
@@ -358,6 +389,25 @@ indexed — 126 of those entities were author names out of bibliographies.) Both
 absorbed into a name, single words needing to out-number their own lowercase form
 — exist because the first run over the corpus led with "Department", "Health",
 "Human Services", "Data" and "Management".
+
+`node scripts/scan-headings.mjs "<folder>" --verbose` reports heading recovery
+and the wrapped-heading join. Current state on the real nine: 1,032 headings,
+24 rejoined from two lines, 1 join declined (a RACI table row, correctly
+refused), 0 that lost text, 0 that did nothing. ICH E6 and the exam study guide
+are byte-identical before and after the join. Read *declined* as the number to
+watch: a join is abandoned when the rejoined text stops satisfying the caps that
+keep prose from being promoted, and a decline count climbing far above the joins
+made would mean the caps are cutting real headings.
+
+`node scripts/scan-coverage.mjs "<folder>" --verbose` asks the one question
+`coverage.test.ts` cannot: **can a real document ever reach 100%?** It drives a
+perfect reader over every document and asserts nothing is left owing, and
+scores the same documents with an empty session as the control — a model that
+called everything verified would pass the first test on its own. Current state:
+1,102 sections, 0 still owing after a perfect reading, 0 verified after doing
+nothing. It also reports that 0 of 16 tables are ones no question can be built
+from, which means the guard keeping an unaskable grid out of the account is
+*not exercised* by this corpus and a green there is not evidence.
 
 `node scripts/scan-checks.mjs "<folder>" --verbose` does the same for `quiz.ts`,
 and asserts the invariants that fail silently: an answer duplicated among its own
@@ -483,11 +533,21 @@ Three things it took to make that reliable, each of which will bite again:
 
 **`npm test` covers what no corpus scan can reach.** The scanners measure
 everything that depends on real documents, which is most of this project — but
-SM-2 interval arithmetic, backup validation, and the exam assembler's behaviour
-when a corpus has no tables at all have no corpus dependency and were
-completely uncovered. A wrong interval is invisible: the queue still works,
-items still come back, and nobody notices they come back at the wrong time.
-27 tests, in `src/lib/*.test.ts`, next to the code they pin.
+SM-2 interval arithmetic, backup validation, the words-per-minute solver and the
+coverage rules have no corpus dependency and would otherwise be uncovered. Each
+of them fails silently rather than loudly: a wrong interval still returns items,
+just at the wrong time; a wrong rate still reads aloud, just not at the speed on
+the control; a wrong coverage rule still draws a map, one that says a section
+was verified when nothing was ever asked about it. 81 tests, in
+`src/lib/*.test.ts`, next to the code they pin.
+
+Every assertion in `pace.test.ts` and `coverage.test.ts` was proved able to go
+red before being trusted — dropping the fitted intercept fails five, `clamped`
+stuck true and stuck false each fail two *in opposite directions*, and four
+separate breaks of the coverage rules each name the tests that catch them. This
+is not ceremony. `scan-checks.mjs` once shipped a counter that was declared,
+printed and never incremented, and a green that cannot go red reads as
+verification while being the absence of it.
 
 **Look at it in a real browser before believing a layout.** `claude --chrome`
 drives the user's own Chrome, which is the only way anything here has been seen
@@ -511,7 +571,8 @@ evidence grade fused as `patient.[III]` that an anchored pattern missed.
 
 ## Feature inventory
 
-Dual-channel pacing (1.0–3.0x, Standard/Bionic/RSVP) · kinetic scratchpad with
+Dual-channel pacing (a **words-per-minute** target, solved per voice;
+Standard/Bionic/RSVP) · kinetic scratchpad with
 `/e` `/m` `/o` tags · cognitive intercepts at section boundaries · pacing
 checkpoints every 700 words so intercepts never depend on heading recovery ·
 pre-scan structure map · PDF ingestion with column/heading/furniture recovery ·
@@ -524,7 +585,9 @@ check that stops the audio when nobody answers** · **a spaced-retrieval queue
 that outlives the session** · **a cross-document entity index** · **linked flow
 nodes with a lane graph** · **cloze weighting by what the queue says is not
 sticking** · **JSON export and merge-import of everything** · **a timed mock
-exam across the whole corpus**.
+exam across the whole corpus** · **an acronym drill over the whole
+vocabulary** · **a coverage map that reports what has been verified rather than
+how far the caret got**.
 
 Four of those are one idea, and reading them separately misses the point: grid
 interrogation, cloze spot checks, the presence check and the retrieval queue.
@@ -539,6 +602,13 @@ than nine separate reading sessions. The exam draws across all of them, the
 index reports what they share, and difficulty is keyed by term so a word lost in
 one guideline is preferred as a blank in another.
 
+The coverage map is the fourth thing that belongs to the enforcement-ladder
+idea above, and arguably the point of it. The ladder was already producing
+per-section evidence — a summary, a grid pass, a marked spot check — and
+discarding two thirds of it. Recording the third rung and rendering all three
+against the structure map is what turns "43% read" into "these four sections
+were read and nothing was ever asked about them".
+
 **AI grading** is optional and provider-agnostic: `GEMINI_API_KEY` or
 `ANTHROPIC_API_KEY` in `.env.local` (Gemini wins if both). The Gemini path is
 verified end to end; the Claude path typechecks but has never run. Model is
@@ -548,12 +618,12 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed and pushed; `main` tracks `origin/main` with no
-divergence.
+Everything here is committed on `main`. The fourth round's four commits are
+**local and not yet pushed** — pushing is outward-facing and was not asked for.
 
-**Where the last session left it.** Three rounds of work landed, in this order:
-the feature trio (entity index, node linking, adaptive difficulty), then the
-"other trio" (two defects, backup/restore, mock exam), then two fixes that came
+**Where the last session left it.** Four rounds have landed. The first three
+were the feature trio (entity index, node linking, adaptive difficulty), the
+"other trio" (two defects, backup/restore, mock exam), and two fixes that came
 out of the reader actually using it — journal furniture, and column recovery.
 That last one matters most: about a fifth of the corpus's two-column pages were
 being read with the columns *interleaved*, ~25,000 words, and it was found only
@@ -561,48 +631,29 @@ because the reader said one chapter felt "long and repetitive" and two headings
 looked missing. **Take that kind of report seriously and measure it** — twice now
 a vague complaint about the reading has turned out to be a real parser defect.
 
+The fourth round cleared the top four of this backlog: the coverage map, the
+true-WPM control, the acronym drill, and wrapped headings. What each cost is in
+its own commit message; what is worth knowing here is that **three of the four
+turned out to have a second problem underneath the stated one**, and in every
+case the second problem was found by running the thing rather than by reasoning
+about it. The drill was silently bounded by the exam's per-document cap (30
+acronyms offered where the corpus uses 50). The coverage map demanded three
+different debts the enforcement ladder will never raise. The wrapped-heading
+join needed its looser word cap to travel with the line, or it merged a heading
+and then demoted it. Assume the fifth item has one too.
+
 The reader is currently working through *Electronic Data Capture — Study
 Implementation and Start-up*. Documents already in their browser rebuild
-themselves from `source` when opened, because `SCHEMA_VERSION` moved to 4, so
-they pick up the furniture and column fixes without re-importing anything.
+themselves from `source` when opened, so they pick up anything that changes in
+`parse.ts` — **but not the heading fix**, which lives in `pdf.ts` and runs before
+`source` exists. Those PDFs have to be dropped in again to gain it. See
+invariant 19.
 
 Done and not to be redone: the five-item feature list's items 1 and 2 (backup,
 mock exam), the entity index / node linking / adaptive difficulty trio, the two
 defects (grid results surviving a reload, voice persistence), journal furniture,
-and column recovery. The backlog below is what is left, in the order it is worth
-doing.
-
-**Coverage map — the one to do next.** Progress bars report how far the caret
-got. They do not report which sections were *verified*: summary submitted at the
-intercept, grid answered, spot checks passed. Across nine PDFs that distinction
-is the entire point of the enforcement ladder, and the evidence is currently
-collected and then discarded. Most of the data now exists — `summaries` and
-`gridsPassed` persist per session as of this round — so this is mostly a matter
-of recording which cloze windows were cleared and rendering it against the
-structure map. With a dated exam it is the only outstanding item that tells the
-reader where the remaining time should go.
-
-**True-WPM rate control.** Measured: 2.0x delivers about 1.4x on local voices
-and 1.9x on network ones, and the control offers up to 3.0x, which no voice has
-ever produced. `effectiveWpm()` already computes real words per minute from
-boundary telemetry, so the control could take a *target* WPM and solve for the
-rate that achieves it on the current voice — and carry that across a voice
-switch. Either that or relabel the control honestly; what it must not keep doing
-is claim a number it does not deliver. (The sibling complaint, that every
-session started on the slowest voice installed, is fixed.)
-
-**Acronym drill — now partly subsumed, check before building.** The mock exam
-already asks acronym definitions, marks them, and files them in the retrieval
-queue under their own `acronym` item kind, so the machinery and the review path
-both exist. What does not exist is a way to drill them directly without sitting
-a mixed paper. That is a thin UI over `collectQuestions`, not a feature.
-
-**Wrapped headings.** A heading broken across two lines in the PDF reaches the
-structure map as its second line only: "6) What it Means to Design a Study
-Application Within an EDC System" shows as "Within an EDC System". Small, and
-visible in exactly one place, but it is the last remnant of the missing-headings
-report and the fix is contained — merge consecutive heading-styled lines during
-assembly. The text itself already reads in the right order.
+column recovery, the coverage map, the words-per-minute control, the acronym
+drill, and wrapped headings. The backlog below is what is left.
 
 **T-SQL logical stepper** — the last item from the user's original feature list.
 Code blocks are never spoken by design; this would reverse that for SQL: split on
@@ -635,6 +686,12 @@ marked *candidate* are things that could actually be fixed.
   have none — only 4 of 9 offer any. The 20% target share for tables is
   therefore aspirational on this corpus; the shortfall redistributes to the
   other two kinds by design.
+- A section can be marked verified on a spot check every blank of which was
+  answered wrong. Deliberate: answering the check is what proves the reader was
+  there, and answering it *correctly* is a different claim — folding the two
+  together would let a section the reader has been held to three times read as
+  unchecked. Recall is reported alongside, per section and per document, and
+  turns red below 50%.
 - *(candidate)* The reading spot check still allows "Section ____ states"
   blanks. The filter lives in `quiz.ts` and is applied only by `exam.ts`,
   because a spot check exists to prove the reader is present rather than to
@@ -656,11 +713,17 @@ marked *candidate* are things that could actually be fixed.
 - *(candidate)* Acronym expansion inside grid steps reads clumsily: "CRF
   Creation" becomes "case report form Creation". Could suppress expansion
   inside steps.
-- Heading recovery still misses a heading that *wraps* across two lines: "6) What
-  it Means to Design a Study Application Within an EDC System" reaches the
-  structure map as "Within an EDC System", because only the second line is
-  promoted. Separate from the column problem below it and not attempted — the
-  text now reads in the right order, which was the damaging part.
+- A rejoined heading loses the hyphen at the seam: the EDC conduct chapter's
+  "Mid-" / "study Protocol Updates" comes out as "Midstudy Protocol Updates".
+  The paragraph assembler has always done this to a word broken across a line
+  break, and the join follows it rather than inventing a second rule; a
+  soft-hyphen and a real hyphenated compound are not distinguishable from the
+  glyphs. One heading in the corpus.
+- One rejoined heading is merged and then demoted again by the run rules —
+  three or more contrasting lines in a row are a caption or an author block, not
+  a section. It reads whole and in order as prose, which is the repair working
+  even where it does not reach the map. `scan-headings` counts these separately
+  from the joins it declined.
 - A cloze carrier is only as good as the sentence the parser produced. Where PDF
   column recovery fused two lines in a document's front matter, the blank is
   presented inside that fused sentence. The builder reproduces the chunk exactly
@@ -670,9 +733,16 @@ marked *candidate* are things that could actually be fixed.
 - The grid check yields to the intercept when a table ends exactly on a section
   boundary, so that grid is never questioned. At most one check fires per
   boundary by design; a queue would fix it and was judged not worth the coupling.
-- `rate` still claims what it does not deliver — see the backlog above, where
-  this is a feature rather than an edge. The sibling complaint, that every
-  session started on the slowest voice installed, is fixed.
+- A voice reads at the baseline until it has been *heard* — the words-per-minute
+  control shows "est." and solves `target / 185` until roughly forty words at
+  one rate have gone by, which is the old behaviour and is marked as such rather
+  than hidden. Switching voice often enough never to accumulate a sample would
+  keep it there.
+- The measured range a voice reports comes from a straight line through as
+  few as two observations, so a voice read at only one rate extrapolates
+  proportionally and will be wrong at the far end until a second rate is used.
+  Reported honestly — the range is shown, and a target outside it is struck
+  through — but it is an estimate, not a measurement, until then.
 - *(candidate)* The matrix flattener was verified on the vendor-management PDF
   (2 grids, 24 steps). The 524-page GCDMP holds most of the 22 detected grids
   and has not had a full in-browser pass.
