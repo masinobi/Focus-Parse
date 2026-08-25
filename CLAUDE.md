@@ -37,7 +37,7 @@ change for different reasons:
 | Constant | Where | Now | Bump when |
 |---|---|---|---|
 | `DB_VERSION` | `db.ts` | 3 | An object store or index is added. Every store creation is guarded by `contains`, so a fresh database and an upgraded one take the identical path. |
-| `SCHEMA_VERSION` | `parse.ts` | 3 | The Token/Chunk/Block shape changes. A stored document whose `schema` differs is rebuilt from `source` on read. |
+| `SCHEMA_VERSION` | `parse.ts` | **4** | The Token/Chunk/**Section** shape changes. A stored document whose `schema` differs is rebuilt from `source` on read — which is how documents already in a reader's browser pick up parser fixes. Version 4 added `Section.furniture` and the pacing-checkpoint metadata. |
 | `ENTITY_SCHEMA` | `entities.ts` | 1 | Entity extraction rules change. A stale index rebuilds itself rather than reporting yesterday's rules. |
 | `BACKUP_FORMAT` | `backup.ts` | 1 | The backup envelope changes. Import validates per record, so a bump need not invalidate old files. |
 
@@ -334,6 +334,12 @@ compiles `src/lib/tables.ts` and runs that same module over every PDF, so the
 report and the app cannot drift. Every threshold in `pdf.ts` and `tables.ts` came
 from measuring this corpus.
 
+`node scripts/scan-columns.mjs "<folder>"` reports column recovery. Read
+*rescued* as the result (~11,500 words corpus-wide); "not rescued" is an upper
+bound, not a defect count — the report's two-column test is deliberately looser
+than the parser's, so it also flags single-column pages with indented numbered
+clauses. See invariant 15.
+
 `node scripts/scan-exam.mjs "<folder>" --verbose` builds a real 40-question
 paper from `exam.ts` over the corpus and asserts the ways one can be quietly
 unfair: an answer missing from its own options, one fact asked twice, a blank
@@ -346,8 +352,9 @@ grid, 0 on every must-be-zero line.
 `entities.ts`, across PDFs *and* markdown: it drives the same `assemble` the app
 uses (exported from `pdf.ts` for exactly this — `extractPdf` itself is
 browser-only, it loads the pdf.js worker from a URL). Current state on the real
-nine: 613 entities, 142 in two or more documents, 67 in three or more, 0 on every
-must-be-zero line. Both extraction rules that are not obvious — connectors
+nine: 524 entities, 117 in two or more documents, 52 in three or more, 0 on every
+must-be-zero line. (It was 613/142 before journal furniture stopped being
+indexed — 126 of those entities were author names out of bibliographies.) Both extraction rules that are not obvious — connectors
 absorbed into a name, single words needing to out-number their own lowercase form
 — exist because the first run over the corpus led with "Department", "Health",
 "Human Services", "Data" and "Management".
@@ -542,10 +549,28 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 ## Outstanding
 
 Everything here is committed and pushed; `main` tracks `origin/main` with no
-divergence. The backlog below is what a five-item feature list from an earlier
-session still holds, in the order it is worth doing. Items 1 and 2 of that list
-(backup, mock exam), the entity index / node linking / adaptive difficulty trio,
-and two defects are all done — do not redo them.
+divergence.
+
+**Where the last session left it.** Three rounds of work landed, in this order:
+the feature trio (entity index, node linking, adaptive difficulty), then the
+"other trio" (two defects, backup/restore, mock exam), then two fixes that came
+out of the reader actually using it — journal furniture, and column recovery.
+That last one matters most: about a fifth of the corpus's two-column pages were
+being read with the columns *interleaved*, ~25,000 words, and it was found only
+because the reader said one chapter felt "long and repetitive" and two headings
+looked missing. **Take that kind of report seriously and measure it** — twice now
+a vague complaint about the reading has turned out to be a real parser defect.
+
+The reader is currently working through *Electronic Data Capture — Study
+Implementation and Start-up*. Documents already in their browser rebuild
+themselves from `source` when opened, because `SCHEMA_VERSION` moved to 4, so
+they pick up the furniture and column fixes without re-importing anything.
+
+Done and not to be redone: the five-item feature list's items 1 and 2 (backup,
+mock exam), the entity index / node linking / adaptive difficulty trio, the two
+defects (grid results surviving a reload, voice persistence), journal furniture,
+and column recovery. The backlog below is what is left, in the order it is worth
+doing.
 
 **Coverage map — the one to do next.** Progress bars report how far the caret
 got. They do not report which sections were *verified*: summary submitted at the
@@ -571,6 +596,13 @@ already asks acronym definitions, marks them, and files them in the retrieval
 queue under their own `acronym` item kind, so the machinery and the review path
 both exist. What does not exist is a way to drill them directly without sitting
 a mixed paper. That is a thin UI over `collectQuestions`, not a feature.
+
+**Wrapped headings.** A heading broken across two lines in the PDF reaches the
+structure map as its second line only: "6) What it Means to Design a Study
+Application Within an EDC System" shows as "Within an EDC System". Small, and
+visible in exactly one place, but it is the last remnant of the missing-headings
+report and the fix is contained — merge consecutive heading-styled lines during
+assembly. The text itself already reads in the right order.
 
 **T-SQL logical stepper** — the last item from the user's original feature list.
 Code blocks are never spoken by design; this would reverse that for SQL: split on
