@@ -65,6 +65,7 @@ export function Scratchpad() {
   const removeNode = useFocusStore((s) => s.removeNode);
   const retagNode = useFocusStore((s) => s.retagNode);
   const seekToken = useFocusStore((s) => s.seekToken);
+  const tokenIndex = useFocusStore((s) => s.tokenIndex);
   const notePresence = useFocusStore((s) => s.notePresence);
   const setChainHead = useFocusStore((s) => s.setChainHead);
   const linkNodes = useFocusStore((s) => s.linkNodes);
@@ -117,6 +118,28 @@ export function Scratchpad() {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [nodes.length]);
+
+  /**
+   * Hand the parked thoughts back when the document runs out.
+   *
+   * The drawer is openable at any moment, which is right — a thought parked at
+   * minute three is often wanted at minute ten, not only at the end. What it
+   * lacked was a moment where the app offers them without being asked, and the
+   * end of a document is the only such moment that already exists: playback
+   * stops there and nothing else happens. Anything more ceremonial would mean
+   * inventing a "session close" the app has no concept of.
+   *
+   * Opened once per document. Re-opening it every time the caret sits on the
+   * last token would fight a reader who has just closed it.
+   */
+  const offeredRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!doc || !parked.length) return;
+    if (tokenIndex < doc.tokens.length - 1) return;
+    if (offeredRef.current === doc.id) return;
+    offeredRef.current = doc.id;
+    setShowParked(true);
+  }, [doc, parked.length, tokenIndex]);
 
   const headNode = React.useMemo(
     () => nodes.find((n) => n.id === chainHead) ?? null,
@@ -219,6 +242,9 @@ export function Scratchpad() {
         <div className="fp-scroll max-h-48 shrink-0 overflow-y-auto border-b bg-background/40 px-4 py-3">
           <p className="mb-2 text-[11px] text-muted-foreground">
             Parked while reading. Not part of the map.
+            {doc && tokenIndex >= doc.tokens.length - 1 && (
+              <span className="ml-1">That is the end of the document.</span>
+            )}
           </p>
           <ul className="space-y-1.5">
             {parked.map((node) => (

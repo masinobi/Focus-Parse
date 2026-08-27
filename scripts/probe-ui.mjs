@@ -513,7 +513,36 @@ await page.screenshot({ path: "scripts/.probe-sql.png" });
 console.log(`
 === parking lot ===`);
 
+// Its own fixture rather than whatever the previous path left loaded.
+//
+// This ran against the SQL document the stepper path had ingested, which was
+// fine until the end-of-document check needed the *last token* to be clickable:
+// a SQL block renders its tokens inside a `<pre>` and the last `span[data-token]`
+// on the page is not the last token of the document. The path was depending on
+// a neighbour's state for no reason.
 await page.setViewportSize({ width: 1280, height: 900 });
+await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+await page.waitForTimeout(1500);
+await page.setInputFiles('input[type="file"][accept*="pdf"]', {
+  name: "Parking probe.md",
+  mimeType: "text/markdown",
+  buffer: Buffer.from(
+    [
+      "# Records",
+      "",
+      "Records must be attributable and legible. The sponsor keeps the audit",
+      "trail for every change made after entry, and the CRF is completed by the",
+      "site before review.",
+      "",
+      "# Coding",
+      "",
+      "MedDRA codes adverse events and the version in force is recorded.",
+      "",
+    ].join("\n"),
+    "utf8"
+  ),
+});
+await page.getByRole("button", { name: "Play", exact: true }).waitFor({ timeout: 120_000 });
 await page.locator("button[aria-pressed]", { hasText: "List" }).click();
 await page.waitForTimeout(300);
 
@@ -584,6 +613,36 @@ await page.waitForTimeout(400);
 const graphText = await page.evaluate(
   () => document.querySelector(".fp-scroll.h-full.overflow-auto")?.textContent ?? ""
 );
+// The end of a document is the only moment the app already has that could
+// offer the parked thoughts back without being asked. Seeking to the last token
+// is how the reader gets there without waiting out the whole document.
+await page.locator("button[aria-pressed]", { hasText: "List" }).click();
+await page.waitForTimeout(250);
+// Close it first, so an already-open drawer cannot pass this by standing still.
+if (await page.locator("button", { hasText: /\d+ parked/ }).first().getAttribute("aria-pressed") === "true") {
+  await page.locator("button", { hasText: /\d+ parked/ }).first().click();
+  await page.waitForTimeout(200);
+}
+const hiddenBefore = !/Renew the car insurance/.test(
+  await page.evaluate(() => document.body.innerText)
+);
+
+// There is no End binding — the transport keys stop at Home. The last rendered
+// token is the last token, because the reader pane is not virtualized.
+await page.locator("span[data-token]").last().click();
+await page.waitForTimeout(700);
+const offered = await page.evaluate(() => document.body.innerText);
+check(
+  "the drawer was shut before the document ended",
+  hiddenBefore,
+  hiddenBefore ? "shut" : "it was already open, so the next check proves nothing"
+);
+check(
+  "reaching the end offers the parked thoughts back",
+  /Renew the car insurance/.test(offered) && /end of the document/.test(offered),
+  /Renew the car insurance/.test(offered) ? "offered" : "nothing was offered"
+);
+
 check(
   "a parked thought never draws in the graph",
   !/Renew the car insurance/.test(graphText) && /attributable/.test(graphText),
