@@ -40,6 +40,7 @@ execFileSync(
     resolve("node_modules/typescript/bin/tsc"),
     "src/lib/quiz.ts",
     "src/lib/parse.ts",
+    "src/lib/pdf.ts",
     "src/lib/tables.ts",
     "src/lib/review.ts",
     "--outDir", out,
@@ -55,13 +56,57 @@ execFileSync(
 
 // tsc infers src/lib as the root, so the emitted files sit flat in outDir.
 const load = createRequire(import.meta.url);
-const { buildGridQuestion, buildCloze, answerMatches, BLANK } = load(join(out, "quiz.js"));
+const { buildGridQuestion, buildCloze, answerMatches, BLANK, isStructuralReference } =
+  load(join(out, "quiz.js"));
 const { termKey } = load(join(out, "review.js"));
 const { parseDocument } = load(join(out, "parse.js"));
 const { detectTablesOnPage, toGrid, flattenGrid } = load(join(out, "tables.js"));
+const { assemble, isBoldFont } = load(join(out, "pdf.js"));
 
 const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
 const files = readdirSync(dir);
+
+/**
+ * The same page assembly the app performs, for the cloze walk below.
+ *
+ * The grid section further down reads pages directly because it is testing
+ * table detection page by page; the cloze walk needs whole parsed documents.
+ */
+async function assembledSource(path) {
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(readFileSync(path)),
+    isEvalSupported: false,
+    useSystemFonts: true,
+  }).promise;
+
+  const pages = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    const viewport = page.getViewport({ scale: 1 });
+    const content = await page.getTextContent();
+    const styles = content.styles ?? {};
+    const items = [];
+    for (const raw of content.items) {
+      if (!("str" in raw) || !raw.str.trim()) continue;
+      const size = Math.abs(raw.transform[3]) || Math.abs(raw.transform[0]) || 10;
+      const x = raw.transform[4];
+      const family = styles[raw.fontName]?.fontFamily ?? "unknown";
+      items.push({
+        str: raw.str,
+        x,
+        xEnd: x + (raw.width ?? 0),
+        y: raw.transform[5],
+        size,
+        family,
+        bold: isBoldFont(family),
+      });
+    }
+    pages.push({ items, width: viewport.width, height: viewport.height });
+    page.cleanup();
+  }
+  await doc.destroy();
+  return assemble(pages);
+}
 
 /* ---- Grids -------------------------------------------------------- */
 
@@ -167,10 +212,24 @@ let selfReject = 0;
 let sharedCarrier = 0;
 const byKind = { acronym: 0, numeric: 0, capitalized: 0 };
 /** Parsed prose, kept so the adaptive pass can re-walk the same windows. */
+/** Reading-cadence blanks that ask for a cross-reference. */
+let structural = 0;
+
 const prose = [];
 
-for (const file of files.filter((f) => f.toLowerCase().endsWith(".md"))) {
-  const source = readFileSync(join(dir, file), "utf8");
+// Every document, not just the markdown one.
+//
+// This walked `.md` only, which on this corpus is a single 1,467-word guide —
+// five windows. Every must-be-zero line about cloze quality was therefore
+// resting on five checks, and the cross-reference count below reads 0 over that
+// sample whether the rule exists or not. Across all eleven documents it is 964
+// checks and 2,774 blanks, and the rule matters: 72 of those blanks asked for a
+// cross-reference before it was ported into `carrierFor`.
+for (const file of files.filter((f) => /\.(pdf|md)$/i.test(f))) {
+  const source = /\.pdf$/i.test(file)
+    ? await assembledSource(join(dir, file))
+    : readFileSync(join(dir, file), "utf8");
+  if (!source.trim()) continue;
   const doc = parseDocument(source, file);
   prose.push({ file, doc });
 
@@ -192,6 +251,11 @@ for (const file of files.filter((f) => f.toLowerCase().endsWith(".md"))) {
     if (carriers.size !== cloze.blanks.length) sharedCarrier += 1;
 
     for (const blank of cloze.blanks) {
+      // A blank asking where something is, not what it says. The mock exam has
+      // refused these since it was written; the reading cadence never did, so
+      // the check that fires every 250 words was free to ask "Section ____
+      // states" while the paper built from the same corpus would not.
+      if (isStructuralReference(blank.carrier, blank.answer)) structural += 1;
       // The blank must not be readable off its own carrier.
       if (blank.carrier.includes(blank.answer)) leaked += 1;
       // And the carrier must actually carry a blank.
@@ -322,6 +386,7 @@ console.log(
     (windows ? `  (${Math.round((checks / windows) * 100)}%)` : "")
 );
 console.log(`  blanks per check: ${checks ? (blanksTotal / checks).toFixed(2) : "—"}`);
+console.log(`  blanks asking for a cross-reference: ${structural}   (must be 0)`);
 console.log(
   `  by kind — acronym ${byKind.acronym}, numeric ${byKind.numeric}, capitalized ${byKind.capitalized}`
 );

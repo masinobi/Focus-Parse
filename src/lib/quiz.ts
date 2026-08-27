@@ -405,6 +405,21 @@ function carrierFor(
     // Given away by another occurrence in the same sentence.
     if (carrier.includes(shell.core)) continue;
 
+    // A blank that asks where something is rather than what it says.
+    //
+    // The mock exam has refused these since it was written, one level up in
+    // `exam.ts`. The reading cadence never did — so the check that fires every
+    // 250 words was free to ask "Section ____ Qualification and Training
+    // highlights…" and want "3.4", while a paper built from the same corpus
+    // would have thrown it out. Measured before the fix: 72 of 2,774 blanks
+    // across the eleven documents, about one every thirteen checks.
+    //
+    // Skipped rather than abandoning the candidate, because the same answer in
+    // a different sentence is often a perfectly good blank: "an average of
+    // ____ days" survives where "Section ____" does not, and the loop simply
+    // tries the term’s next occurrence.
+    if (isStructuralReference(carrier, shell.core)) continue;
+
     return { carrier, answer: shell.core, acronym: token.acronym, tokenIndex };
   }
 
