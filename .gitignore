@@ -20,7 +20,8 @@ Thumbs.db
 .idea
 .vscode
 
-# probe artifacts
-scripts/.probe-*.png
-# scratch measurement scripts, named so they never ship
-scripts/.*.mjs
+# Scratch beside the scanners: probe screenshots, measurement scripts, the
+# throwaway edit scripts, the backups taken before deliberately breaking
+# something. Every dot-prefixed file in here, because listing the extensions
+# one at a time has now let .py and .bak through twice.
+scripts/.*

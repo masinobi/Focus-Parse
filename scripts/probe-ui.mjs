@@ -1059,6 +1059,105 @@ if (opened) {
   await page.screenshot({ path: "scripts/.probe-intercept.png", fullPage: true });
 }
 
+/* ---- Reading highlight ---------------------------------------------- *
+ *
+ * The flow hands React the *same element object* for every block whose
+ * relationship to the caret has not changed, which is what stops a 5,404-block
+ * document rebuilding its whole list on every spoken word. The failure mode of
+ * that cache is not a crash: it is a highlight that is quietly out of date, and
+ * every DOM-level fact about the pane would still hold — the spans exist, one
+ * of them is active, the classes are applied.
+ *
+ * So the check has to be a seek *backwards*. Going forward, "read" only ever
+ * spreads, and a cache that never invalidated anything would still look right.
+ * Coming back, every block between the two positions has to give up its read
+ * state, and a stale element cannot.
+ */
+console.log(`
+=== reading highlight ===`);
+
+const HIGHLIGHT_FIXTURE = `# Query Management
+
+A query is raised when data on the form contradicts the protocol, the
+source, or itself. The site answers it and the answer is recorded against
+the original value rather than replacing it.
+
+# Database Lock
+
+Lock is the point after which no value changes without a documented
+authorization. Everything owed to the study must be closed before it.
+
+# Audit Trail
+
+The audit trail records who changed what, when, and why, and it is the
+evidence that the rest of the account can be believed at all.
+`;
+
+await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+await page.waitForTimeout(2000);
+await page.setInputFiles('input[type="file"][accept*="pdf"]', {
+  name: "Highlight probe.md",
+  mimeType: "text/markdown",
+  buffer: Buffer.from(HIGHLIGHT_FIXTURE, "utf8"),
+});
+await page.getByRole("button", { name: "Play", exact: true }).waitFor({ timeout: 120_000 });
+
+/** What the pane says about the reading position, read from the DOM alone. */
+const highlightState = () =>
+  page.evaluate(() => {
+    const words = [...document.querySelectorAll("span[data-token]")];
+    const active = words.filter((w) => w.classList.contains("fp-word-active"));
+    const read = words.filter((w) => w.classList.contains("fp-word-read"));
+    const at = active.length === 1 ? Number(active[0].dataset.token) : -1;
+    return {
+      actives: active.length,
+      at,
+      // The two numbers a stale element gets wrong: something marked read that
+      // the caret has not reached, and something ahead of it left unmarked.
+      readAhead: read.filter((w) => Number(w.dataset.token) > at).length,
+      unreadBehind: words.filter(
+        (w) =>
+          Number(w.dataset.token) < at && !w.classList.contains("fp-word-read")
+      ).length,
+    };
+  });
+
+const wordCount = await page.locator("span[data-token]").count();
+const deep = Math.floor(wordCount * 0.8);
+const shallow = Math.floor(wordCount * 0.1);
+
+await page.locator("span[data-token]").nth(deep).click();
+await page.waitForTimeout(400);
+const forward = await highlightState();
+
+check(
+  "seeking forward leaves exactly one active word, where it was clicked",
+  forward.actives === 1 && forward.at === deep,
+  `${forward.actives} active, at token ${forward.at} (clicked ${deep})`
+);
+check(
+  "everything before it is marked read, and nothing after it is",
+  forward.unreadBehind === 0 && forward.readAhead === 0,
+  `${forward.unreadBehind} unread behind, ${forward.readAhead} read ahead`
+);
+
+await page.locator("span[data-token]").nth(shallow).click();
+await page.waitForTimeout(400);
+const back = await highlightState();
+
+check(
+  "seeking backwards moves the active word back",
+  back.actives === 1 && back.at === shallow,
+  `${back.actives} active, at token ${back.at} (clicked ${shallow})`
+);
+check(
+  "and the blocks it left take their read marks off again",
+  back.readAhead === 0,
+  back.readAhead === 0
+    ? `${deep - shallow} tokens released`
+    : `${back.readAhead} words still marked read ahead of the caret`
+);
+
 /* ---- Report -------------------------------------------------------- */
 
 check("no console errors", consoleErrors.length === 0, consoleErrors[0] ?? "");

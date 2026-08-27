@@ -5,6 +5,8 @@ import * as React from "react";
 import { BlockView } from "@/components/reader/block-view";
 import { GridCards } from "@/components/reader/grid-cards";
 import { RsvpView } from "@/components/reader/rsvp-view";
+import { activeClauseIn, activeTokenIn, blockRanges } from "@/lib/flow";
+import type { ParsedDoc } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useFocusStore } from "@/store/useFocusStore";
 
@@ -20,6 +22,24 @@ const BAND_BOTTOM = 0.7;
  */
 const DEFER_THRESHOLD_TOKENS = 3000;
 
+/**
+ * The flow, as React elements, and what each one was rendered from.
+ *
+ * `nodes[i]` is the element for block `i`; `active[i]` and `clause[i]` are the
+ * clamped values it was built with. Nothing is compared structurally — the
+ * cache is only ever consulted by asking whether those two numbers still hold.
+ */
+interface FlowCache {
+  doc: ParsedDoc;
+  bionic: boolean;
+  badges: boolean;
+  onSeek: (tokenIndex: number) => void;
+  estimates: number[] | null;
+  active: Int32Array;
+  clause: Int32Array;
+  nodes: React.ReactNode[];
+}
+
 export function ReaderPane() {
   const doc = useFocusStore((s) => s.doc);
   const view = useFocusStore((s) => s.view);
@@ -29,6 +49,7 @@ export function ReaderPane() {
   const wpm = useFocusStore((s) => s.effectiveWpm());
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const cacheRef = React.useRef<FlowCache | null>(null);
 
   const deferred = Boolean(doc && doc.tokens.length > DEFER_THRESHOLD_TOKENS);
   const activeClause = doc?.tokens[tokenIndex]?.clause ?? -1;
@@ -41,15 +62,7 @@ export function ReaderPane() {
   const pulseMs = Math.max(90, Math.min(420, Math.round((60000 / wpm) * 0.8)));
 
   /** First and last token index owned by each block, for memo clamping. */
-  const blockRanges = React.useMemo(() => {
-    if (!doc) return [];
-    return doc.blocks.map((block) => {
-      if (!block.chunks.length) return { start: -1, end: -1 };
-      const first = doc.chunks[block.chunks[0]];
-      const last = doc.chunks[block.chunks[block.chunks.length - 1]];
-      return { start: first.tokenStart, end: last.tokenEnd };
-    });
-  }, [doc]);
+  const ranges = React.useMemo(() => (doc ? blockRanges(doc) : []), [doc]);
 
   /**
    * Height estimates for `contain-intrinsic-size`, so the scrollbar is roughly
@@ -102,6 +115,76 @@ export function ReaderPane() {
     return <RsvpView doc={doc} tokenIndex={tokenIndex} />;
   }
 
+  /**
+   * The flow, rebuilt only where it changed.
+   *
+   * Mapping over `doc.blocks` here allocated one React element per block per
+   * spoken word, and React then reconciled all of them to conclude that all but
+   * one was unchanged. `BlockView` is memoized, so nothing *re-rendered* — the
+   * cost was entirely in producing and comparing the list. On the full GCDMP,
+   * 5,404 blocks: 19% of the wall clock went into tasks over 50ms, with spikes
+   * to 242ms, and the audio stuttered against them. RSVP, which plays the same
+   * document with no flow at all, spent 1%.
+   *
+   * React skips an element that is *identical by reference* before it reaches
+   * the memo comparison, so handing back the previous render's element for
+   * every unchanged block removes both costs at once. `flow.test.ts` pins the
+   * property this relies on: advancing one word changes the clamped values of
+   * at most two blocks — the one being finished and the one being entered.
+   *
+   * What remains per word is a numeric loop over the blocks and three array
+   * copies. The copies are not thrift: the cache is only sound while `nodes[i]`
+   * and `active[i]` describe the same render, and a render React discards after
+   * this ran must not leave the two disagreeing.
+   */
+  const cache = cacheRef.current;
+  const reusable =
+    cache !== null &&
+    cache.doc === doc &&
+    cache.bionic === (view === "bionic") &&
+    cache.badges === anchors.badges &&
+    cache.onSeek === seekToken &&
+    cache.estimates === estimates;
+
+  const nodes = reusable ? cache.nodes.slice() : new Array<React.ReactNode>(doc.blocks.length);
+  const active = reusable ? Int32Array.from(cache.active) : new Int32Array(doc.blocks.length).fill(-2);
+  const clause = reusable ? Int32Array.from(cache.clause) : new Int32Array(doc.blocks.length).fill(-2);
+
+  for (let i = 0; i < doc.blocks.length; i++) {
+    const range = ranges[i];
+    const at = activeTokenIn(range, tokenIndex);
+    const cl = activeClauseIn(range, tokenIndex, activeClause);
+    if (active[i] === at && clause[i] === cl) continue;
+
+    active[i] = at;
+    clause[i] = cl;
+    nodes[i] = (
+      <BlockView
+        key={doc.blocks[i].i}
+        doc={doc}
+        block={doc.blocks[i]}
+        activeToken={at}
+        activeClause={cl}
+        bionic={view === "bionic"}
+        badges={anchors.badges}
+        onSeek={seekToken}
+        deferHeight={estimates ? estimates[i] : undefined}
+      />
+    );
+  }
+
+  cacheRef.current = {
+    doc,
+    bionic: view === "bionic",
+    badges: anchors.badges,
+    onSeek: seekToken,
+    estimates,
+    active,
+    clause,
+    nodes,
+  };
+  const flow = nodes;
+
   return (
     <div ref={scrollRef} className="fp-scroll h-full overflow-y-auto px-8 py-10">
       <article
@@ -113,37 +196,7 @@ export function ReaderPane() {
           anchors.spotlight && "fp-anchor-spotlight"
         )}
       >
-        {doc.blocks.map((block, i) => {
-          const range = blockRanges[i];
-          const clamped =
-            range.start === -1
-              ? -1
-              : tokenIndex >= range.end
-                ? range.end
-                : tokenIndex < range.start
-                  ? -1
-                  : tokenIndex;
-
-          return (
-            <BlockView
-              key={block.i}
-              doc={doc}
-              block={block}
-              activeToken={clamped}
-              activeClause={
-                range.start === -1 ||
-                tokenIndex < range.start ||
-                tokenIndex >= range.end
-                  ? -1
-                  : activeClause
-              }
-              bionic={view === "bionic"}
-              badges={anchors.badges}
-              onSeek={seekToken}
-              deferHeight={estimates ? estimates[i] : undefined}
-            />
-          );
-        })}
+        {flow}
         <div className="h-[40vh]" aria-hidden />
       </article>
     </div>
