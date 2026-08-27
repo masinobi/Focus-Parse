@@ -27,9 +27,21 @@ const RESPONSE_SCHEMA = {
     feedback: { type: Type.STRING },
     missed: { type: Type.ARRAY, items: { type: Type.STRING } },
     contradictions: { type: Type.ARRAY, items: { type: Type.STRING } },
+    rationale: {
+      type: Type.STRING,
+      enum: ["captured", "missed", "not_stated"],
+    },
+    why: { type: Type.STRING },
   },
-  required: ["verdict", "feedback", "missed", "contradictions"],
-  propertyOrdering: ["verdict", "feedback", "missed", "contradictions"],
+  required: ["verdict", "feedback", "missed", "contradictions", "rationale", "why"],
+  propertyOrdering: [
+    "verdict",
+    "feedback",
+    "missed",
+    "contradictions",
+    "rationale",
+    "why",
+  ],
 } as const;
 
 export async function gradeWithGemini(request: GradeRequest): Promise<Verdict> {

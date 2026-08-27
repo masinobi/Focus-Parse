@@ -435,6 +435,36 @@ export function InterceptDialog() {
 
               <p className="mt-2 text-sm leading-relaxed">{verdict.feedback}</p>
 
+              {/* The reason, reported apart from the verdict.
+                  A summary can capture a section's central point perfectly and
+                  never say what the rule is *for*, and the exam asks why. Shown
+                  only when the section actually gives one — a great deal of the
+                  GCDMP is lists of minimum standards with no reasoning
+                  attached, and nagging for a rationale that was never stated is
+                  how a reader learns to stop believing the check. */}
+              {verdict.rationale !== "not_stated" && (
+                <div className="mt-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {verdict.rationale === "captured"
+                      ? "You got the why"
+                      : "The why"}
+                  </p>
+                  <p
+                    className={cn(
+                      "mt-1 text-sm",
+                      verdict.rationale === "captured"
+                        ? "text-muted-foreground"
+                        : "text-foreground"
+                    )}
+                  >
+                    {verdict.why ||
+                      (verdict.rationale === "captured"
+                        ? "You said what the rule is for, not only what it requires."
+                        : "The section gives a reason and your summary stopped at the requirement.")}
+                  </p>
+                </div>
+              )}
+
               {verdict.missed.length > 0 && (
                 <div className="mt-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">

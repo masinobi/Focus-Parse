@@ -15,6 +15,8 @@ const VerdictSchema = z.object({
   feedback: z.string(),
   missed: z.array(z.string()),
   contradictions: z.array(z.string()),
+  rationale: z.enum(["captured", "missed", "not_stated"]),
+  why: z.string(),
 });
 
 export async function gradeWithClaude(request: GradeRequest): Promise<Verdict> {
