@@ -7,6 +7,8 @@ import {
   type Backup,
   type ImportSummary,
 } from "./backup";
+import type { CoverageUnit } from "./blueprint-coverage";
+import { buildCoverage } from "./coverage";
 import { horizonDays, loadDeadline } from "./deadline";
 import { buildEntityIndex, ENTITY_SCHEMA, type DocEntityIndex } from "./entities";
 import { isExamRecord, type ExamRecord } from "./history";
@@ -389,6 +391,71 @@ export const db = {
       tx<number>(EXAMS, "readonly", (s) => s.count()),
       0
     );
+  },
+
+  /**
+   * Every section of every document, with what the reader has verified of it.
+   *
+   * The unit of blueprint matching, gathered in one pass. This looks like an
+   * expensive call and is not: `listDocs` already does `getAll()` over the
+   * whole document store and throws away everything but four fields, so the
+   * parsed corpus is being loaded and discarded on the home screen already.
+   *
+   * The document itself is emitted as a unit alongside its sections because a
+   * standalone chapter PDF *is* the chapter — its title is the only place the
+   * chapter name appears. `buildBlueprintCoverage` resolves the overlap.
+   */
+  async blueprintUnits(): Promise<CoverageUnit[]> {
+    const docs = await safe(
+      tx<ParsedDoc[]>(DOCS, "readonly", (s) => s.getAll() as IDBRequest<ParsedDoc[]>),
+      []
+    );
+    const sessions = await safe(
+      tx<SessionState[]>(SESSIONS, "readonly", (s) => s.getAll() as IDBRequest<SessionState[]>),
+      []
+    );
+    const byDoc = new Map(sessions.map((x) => [x.docId, x]));
+
+    const units: CoverageUnit[] = [];
+    for (const doc of docs) {
+      // A document stored by an older parser has the wrong section shape, and
+      // rebuilding it here would reparse the whole corpus on a panel open.
+      // Skipping is right: it comes back the next time the reader opens it.
+      if (doc.schema !== SCHEMA_VERSION) continue;
+
+      const session = byDoc.get(doc.id);
+      const coverage = buildCoverage(doc, {
+        tokenIndex: session?.tokenIndex ?? 0,
+        summaries: session?.summaries ?? {},
+        gridsPassed: session?.gridsPassed ?? {},
+        gridAttempts: session?.gridAttempts ?? {},
+        clozeChecks: session?.clozeChecks ?? {},
+      });
+
+      for (const s of coverage.sections) {
+        if (s.words <= 0) continue;
+        units.push({
+          docId: doc.id,
+          docTitle: doc.title,
+          section: s.section,
+          title: s.title,
+          words: s.words,
+          readWords: s.read,
+          verifiedWords: s.state === "verified" ? s.words : 0,
+        });
+      }
+
+      units.push({
+        docId: doc.id,
+        docTitle: doc.title,
+        section: null,
+        title: doc.title,
+        words: coverage.totalWords,
+        readWords: coverage.readWords,
+        verifiedWords: coverage.verifiedWords,
+      });
+    }
+    return units;
   },
 
   /* ---- Backup and restore ---------------------------------------------- */

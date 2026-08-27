@@ -12,12 +12,14 @@ import {
   Pencil,
   Sparkles,
   Tags,
+  Target,
   Upload,
   X,
 } from "lucide-react";
 
 import { AcronymDrill } from "@/components/acronym-drill";
 import { BackupControls } from "@/components/backup-controls";
+import { BlueprintPanel } from "@/components/blueprint-panel";
 import { CorpusIndex } from "@/components/corpus-index";
 import { ExamHistory } from "@/components/exam-history";
 import { ExamSession } from "@/components/exam-session";
@@ -50,6 +52,7 @@ export function DocumentLoader() {
   const [examining, setExamining] = React.useState(false);
   const [drilling, setDrilling] = React.useState(false);
   const [reviewingPapers, setReviewingPapers] = React.useState(false);
+  const [blueprint, setBlueprint] = React.useState(false);
   /** How many mock papers have been sat, for the history entry. */
   const [papers, setPapers] = React.useState(0);
   const fileRef = React.useRef<HTMLInputElement>(null);
@@ -166,6 +169,10 @@ export function DocumentLoader() {
     );
   }
 
+  if (blueprint) {
+    return <BlueprintPanel onBack={() => setBlueprint(false)} />;
+  }
+
   if (reviewingPapers) {
     return <ExamHistory onBack={() => setReviewingPapers(false)} />;
   }
@@ -274,6 +281,26 @@ export function DocumentLoader() {
               <span className="block text-xs text-muted-foreground">
                 Acronyms, terms in context and table cells, drawn across
                 everything and marked at the end.
+              </span>
+            </span>
+          </button>
+        )}
+
+        {/* Every other account here measures the corpus against itself, so the
+            one thing none of them can report is a chapter that is not in the
+            corpus at all. That is what this is for. */}
+        {recent.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setBlueprint(true)}
+            className="mb-6 flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors hover:bg-accent/60"
+          >
+            <Target className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 text-sm">
+              <span className="font-medium">Blueprint coverage</span>
+              <span className="block text-xs text-muted-foreground">
+                The exam&apos;s six domains against what you actually have —
+                including the chapters it names that your library is missing.
               </span>
             </span>
           </button>
