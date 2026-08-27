@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCoverage, nextToVerify, type CoverageInput } from "./coverage";
+import {
+  buildCoverage,
+  nextStop,
+  nextToVerify,
+  type CoverageInput,
+} from "./coverage";
 import { MAX_GRID_ATTEMPTS } from "./quiz";
 import type { Block, ClozeResult, ParsedDoc, Section } from "./types";
 
@@ -476,5 +481,81 @@ describe("a session written before coverage existed", () => {
     expect(c.sections[0].summary).toBe("done");
     expect(c.sections[0].state).toBe("partial");
     expect(c.cloze).toEqual({ windows: 0, blanks: 0, recalled: 0 });
+  });
+});
+
+/**
+ * The distance to the next stop.
+ *
+ * Two ways this goes quietly wrong, and both would be believed. Reporting a
+ * summary that will never be demanded — because the section it would be owed
+ * for is already summarised, or because the boundary is into furniture the
+ * engine steps over — sends the reader hunting for a stop that does not come.
+ * And reporting only the summary is true and misleading, because the cadence
+ * check will interrupt several times inside the same stretch.
+ */
+describe("nextStop", () => {
+  const CADENCE = 250;
+
+  it("counts down to the cadence check from the last one, not from zero", () => {
+    const doc = makeDoc([{ words: 1000 }]);
+    expect(nextStop(doc, 400, 300, {}, CADENCE).toCheck).toBe(150);
+    expect(nextStop(doc, 300, 300, {}, CADENCE).toCheck).toBe(250);
+  });
+
+  it("does not go negative once the window is overdue", () => {
+    const doc = makeDoc([{ words: 1000 }]);
+    expect(nextStop(doc, 700, 300, {}, CADENCE).toCheck).toBe(0);
+  });
+
+  it("measures to the boundary that arms the intercept", () => {
+    // Second section arms one; the summary is owed for the first.
+    const doc = makeDoc([{ words: 100 }, { words: 100, intercept: true }]);
+    expect(nextStop(doc, 40, 0, {}, CADENCE).toSummary).toBe(60);
+  });
+
+  it("skips a boundary that arms nothing", () => {
+    const doc = makeDoc([
+      { words: 100 },
+      { words: 100 },
+      { words: 100, intercept: true },
+    ]);
+    // Not 60: crossing into section 1 arms no intercept, so the next summary is
+    // owed at the start of section 2.
+    expect(nextStop(doc, 40, 0, {}, CADENCE).toSummary).toBe(160);
+  });
+
+  it("skips a section whose summary is already written", () => {
+    const doc = makeDoc([
+      { words: 100, intercept: true },
+      { words: 100, intercept: true },
+      { words: 100, intercept: true },
+    ]);
+    // Leaving section 0 owes nothing now, so the next stop is leaving 1.
+    expect(nextStop(doc, 10, 0, { 0: "written" }, CADENCE).toSummary).toBe(190);
+  });
+
+  it("does not promise a summary at a boundary into furniture", () => {
+    // The engine steps over furniture, so it never crosses this boundary at
+    // all and the intercept it appears to arm is never raised.
+    const doc = makeDoc([
+      { words: 100 },
+      { words: 100, intercept: true, furniture: true },
+    ]);
+    expect(nextStop(doc, 40, 0, {}, CADENCE).toSummary).toBeNull();
+  });
+
+  it("says there is no summary left rather than inventing one", () => {
+    const doc = makeDoc([{ words: 100 }, { words: 100 }]);
+    const at = nextStop(doc, 150, 100, {}, CADENCE);
+    expect(at.toSummary).toBeNull();
+    // But the cadence check still comes round, which is the whole reason both
+    // numbers are reported.
+    expect(at.toCheck).toBe(200);
+  });
+
+  it("stops counting the cadence at the end of the document", () => {
+    const doc = makeDoc([{ words: 100 }]);
+    expect(nextStop(doc, 100, 0, {}, CADENCE).toCheck).toBeNull();
   });
 });

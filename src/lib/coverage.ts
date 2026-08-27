@@ -266,6 +266,75 @@ export function buildCoverage(doc: ParsedDoc, input: CoverageInput): DocCoverage
  * section not yet read needs reading. Within a band, the longest first: that is
  * where the most unaccounted-for material is.
  */
+/**
+ * How much reading stands between here and the next enforced stop.
+ *
+ * The reader asked for a countdown and a countdown is the wrong shape. A
+ * ticking clock in the field of view is a thing to watch instead of the text,
+ * and this app puts the vigilance pill in the corner precisely so it is noticed
+ * without being looked at. Distance in words is the same information with none
+ * of that pull: it is glanced at deliberately, in the sidebar, and it does not
+ * move on its own.
+ *
+ * Both rungs are reported, because reporting only the summary would be true and
+ * misleading. The ladder fires a spot check every 250 tokens, so a reader told
+ * "1,400 words to the next summary" will in fact be stopped four or five times
+ * before then, and would reasonably conclude the number was wrong.
+ *
+ * The spot-check figure is a floor rather than a promise, and the summary
+ * figure assumes the section is read from here to its end. `buildCloze` can
+ * find nothing worth asking in a stretch — narrative passages and reference
+ * lists both do it — and then the engine slides the window forward instead of
+ * stopping. Nothing here can know that in advance, which is why the caller
+ * renders these as approximations.
+ */
+export interface NextStop {
+  /** Words until the reading cadence next comes round, at the earliest. */
+  toCheck: number | null;
+  /** Words until crossing into a section that owes a summary for this one. */
+  toSummary: number | null;
+}
+
+export function nextStop(
+  doc: ParsedDoc,
+  tokenIndex: number,
+  lastCheckToken: number,
+  summaries: Record<number, string>,
+  clozeIntervalTokens: number
+): NextStop {
+  // `wordCount` rather than `tokens.length`: they are the same number in a
+  // parsed document, and only the first is present on one built from sections
+  // alone. Depending on the token array made this untestable without building
+  // one, which is a lot of scaffolding for a subtraction.
+  const toCheck =
+    tokenIndex >= doc.wordCount
+      ? null
+      : Math.max(0, clozeIntervalTokens - (tokenIndex - lastCheckToken));
+
+  // Walk forward for the next boundary that would actually arm an intercept:
+  // a section that arms one, entered from a section that has not been
+  // summarised yet. A boundary into furniture arms nothing, and neither does a
+  // boundary out of a section whose summary is already written.
+  let toSummary: number | null = null;
+  // Located from the section bounds rather than from `tokens[i].section`, for
+  // the same reason. The two agree in a parsed document.
+  const here = Math.max(
+    0,
+    doc.sections.findIndex((x) => tokenIndex < x.tokenEnd)
+  );
+  for (let i = here; i < doc.sections.length - 1; i++) {
+    const leaving = doc.sections[i];
+    const entering = doc.sections[i + 1];
+    if (!entering || leaving.furniture || entering.furniture) continue;
+    if (!entering.intercept) continue;
+    if (summaries[leaving.i] !== undefined) continue;
+    toSummary = Math.max(0, entering.tokenStart - tokenIndex);
+    break;
+  }
+
+  return { toCheck, toSummary };
+}
+
 export function nextToVerify(coverage: DocCoverage): SectionCoverage | null {
   const rank: Record<SectionCoverage["state"], number> = {
     unchecked: 0,

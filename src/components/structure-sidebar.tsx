@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
   buildCoverage,
+  nextStop,
   nextToVerify,
   type RungState,
   type SectionCoverage,
@@ -24,7 +25,7 @@ import {
 import { contentWordCount, formatDuration } from "@/lib/parse";
 import type { Section } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { useFocusStore } from "@/store/useFocusStore";
+import { CLOZE_INTERVAL_TOKENS, useFocusStore } from "@/store/useFocusStore";
 
 type Verified = SectionCoverage["state"];
 
@@ -215,6 +216,7 @@ export function StructureSidebar() {
   const doc = useFocusStore((s) => s.doc);
   const tokenIndex = useFocusStore((s) => s.tokenIndex);
   const summaries = useFocusStore((s) => s.summaries);
+  const lastCheckToken = useFocusStore((s) => s.lastCheckToken);
   const gridsPassed = useFocusStore((s) => s.gridsPassed);
   const gridAttempts = useFocusStore((s) => s.gridAttempts);
   const clozeChecks = useFocusStore((s) => s.clozeChecks);
@@ -245,6 +247,21 @@ export function StructureSidebar() {
         : null,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [doc, caretSection, summaries, gridsPassed, gridAttempts, clozeChecks]
+  );
+
+  /**
+   * How far to the next enforced stop, in words rather than in seconds.
+   *
+   * A live clock would be read instead of the text — the same reason the
+   * vigilance pill sits in a corner. This is glanced at on purpose, in a panel
+   * the reader opens, and it does not tick.
+   */
+  const stop = React.useMemo(
+    () =>
+      doc
+        ? nextStop(doc, tokenIndex, lastCheckToken, summaries, CLOZE_INTERVAL_TOKENS)
+        : null,
+    [doc, tokenIndex, lastCheckToken, summaries]
   );
 
   if (!doc || !coverage) return null;
@@ -360,6 +377,30 @@ export function StructureSidebar() {
           <p className="mt-0.5 text-[11px] text-muted-foreground/70">
             {skipped.toLocaleString()} more in front matter and references,
             skipped
+          </p>
+        )}
+
+        {/* Both rungs, because reporting only the summary would be true and
+            misleading: the cadence check comes round four or five times inside
+            the same stretch, and a reader told otherwise would rightly stop
+            believing the number. Approximate on purpose — a stretch with
+            nothing worth asking about slides the window instead of stopping. */}
+        {stop && (stop.toCheck !== null || stop.toSummary !== null) && (
+          <p
+            className="mt-1.5 text-[11px] text-muted-foreground/80"
+            title="A spot check needs something in the passage worth asking about; when there is nothing, the engine slides the window on rather than stopping. Both figures are the earliest a stop can come, not a promise that it will."
+          >
+            {stop.toCheck !== null && (
+              <>
+                ≈{stop.toCheck.toLocaleString()}w to a spot check
+              </>
+            )}
+            {stop.toCheck !== null && stop.toSummary !== null && " · "}
+            {stop.toSummary !== null ? (
+              <>≈{stop.toSummary.toLocaleString()}w to a summary</>
+            ) : (
+              stop.toCheck !== null && " · no summary left in this document"
+            )}
           </p>
         )}
       </div>

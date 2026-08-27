@@ -198,6 +198,54 @@ await capture("The sponsor keeps accountability", "/e");
 await page.locator('button[aria-label="Chain from here"]').first().click();
 await capture("Qualification audit before selection", "/m");
 await capture("A signed management plan", "/o");
+/* ---- Distance to the next stop -------------------------------------- *
+ *
+ * Checked on a real PDF, because the claim depends on real section structure:
+ * a document whose next boundary arms nothing, or arms an intercept into
+ * furniture the engine steps over, must not be told a summary is coming.
+ *
+ * The check that matters is that the figure *moves*. A constant would render
+ * identically and satisfy any assertion about the text being present.
+ */
+const stopLine = () =>
+  page.evaluate(() => {
+    const m = document.body.innerText.match(/≈([\d,]+)w to a spot check(?:.*?≈([\d,]+)w to a summary)?/);
+    return m ? { check: m[1], summary: m[2] ?? null, raw: m[0] } : null;
+  });
+
+const stopBefore = await stopLine();
+check(
+  "the sidebar says how far the next stop is",
+  stopBefore !== null,
+  stopBefore?.raw ?? "no distance line"
+);
+check(
+  "both rungs are reported, not just the summary",
+  Boolean(stopBefore?.check && stopBefore?.summary),
+  stopBefore?.raw ?? "—"
+);
+
+// Seek forward by clicking a word well down the pane, then read it again.
+//
+// The *summary* figure is the one asserted on, not the spot check. Seeking
+// resets `lastCheckToken` to wherever you landed — jumping over text is not
+// reading it, so the cadence window restarts — which means the spot-check
+// figure correctly sits at the full interval after any seek. Asserting that it
+// moved failed against an app that was behaving properly.
+await page.locator("span[data-token]").nth(60).click();
+await page.waitForTimeout(400);
+const stopAfter = await stopLine();
+check(
+  "the distance to a summary moves as the caret does",
+  Boolean(stopAfter?.summary) && stopAfter.summary !== stopBefore?.summary,
+  `${stopBefore?.summary ?? "?"}w then ${stopAfter?.summary ?? "?"}w`
+);
+check(
+  "seeking restarts the cadence window rather than carrying it",
+  stopAfter?.check === stopBefore?.check,
+  `${stopBefore?.check ?? "?"} then ${stopAfter?.check ?? "?"}`
+);
+
 // Scoped by `aria-pressed`: every word in the reader pane is a `role="button"`
 // for click-to-seek, so an unscoped role lookup matches the document's prose.
 await page.locator("button[aria-pressed]", { hasText: "Graph" }).click();
