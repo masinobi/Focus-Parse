@@ -863,6 +863,143 @@ check("the citation panel fits its pane", cites.overflow === 0, `${cites.overflo
 
 await page.screenshot({ path: "scripts/.probe-citations.png", fullPage: true });
 
+/* ---- The summary intercept, and dictating into it -------------------- *
+ *
+ * The one path here that needs a device this machine does not have. A real
+ * recognizer wants a microphone and a network service, so the constructor is
+ * replaced with one that reads from a script -- everything downstream of it is
+ * the app's own code, including the reconciliation that this feature exists
+ * for.
+ *
+ * What that leaves untested is the microphone itself and whatever Chrome's
+ * transcription actually returns for these words. The unit tests cover the
+ * repair; nothing here can cover the hearing.
+ *
+ * Two things about reaching an intercept at all, both of which cost time to
+ * find. A section arms one only at 60 words or more (MIN_INTERCEPT_WORDS), so
+ * the fixture's *second* section has to be long while the first stays short
+ * enough to read through quickly. And the dialog is portalled: it is in the
+ * DOM and `document.body.innerText` does not return it, so a check written
+ * against innerText reports a working intercept as missing.
+ */
+console.log(`
+=== summary intercept ===`);
+
+const HEARD = "the see are eff must not identify a participant and edc keeps an audit trail";
+
+const INTERCEPT_FIXTURE = `# Data privacy in trials
+
+The sponsor holds accountability and the CRF must not identify a participant.
+EDC systems keep an audit trail of every change made after entry.
+
+# Coding dictionaries and their upkeep
+
+MedDRA is used to code adverse events and CDISC standards govern the format of
+a submission. A coding dictionary is versioned, and the version in force at the
+time of coding has to be recorded so that a later reviewer can reproduce the
+decision. Upversioning is a planned activity with its own impact assessment,
+because a term that moved between system organ classes changes the analysis
+that reads it. The data manager keeps the mapping, the medical monitor approves
+the changes, and both are recorded in the trial master file for inspection.
+`;
+
+await page.addInitScript((script) => {
+  class ScriptedRecognition {
+    constructor() {
+      this.lang = "en-US";
+      this.continuous = false;
+      this.interimResults = false;
+      this.onresult = null;
+      this.onerror = null;
+      this.onend = null;
+    }
+    start() {
+      setTimeout(() => {
+        this.onresult?.({ results: [[{ transcript: script }]] });
+      }, 60);
+    }
+    stop() {
+      this.onend?.();
+    }
+  }
+  Object.defineProperty(window, "webkitSpeechRecognition", {
+    value: ScriptedRecognition,
+    configurable: true,
+  });
+  Object.defineProperty(window, "SpeechRecognition", {
+    value: ScriptedRecognition,
+    configurable: true,
+  });
+}, HEARD);
+
+await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+await page.waitForTimeout(2000);
+await page.setInputFiles('input[type="file"][accept*="pdf"]', {
+  name: "Intercept probe.md",
+  mimeType: "text/markdown",
+  buffer: Buffer.from(INTERCEPT_FIXTURE, "utf8"),
+});
+await page.getByRole("button", { name: "Play", exact: true }).waitFor({ timeout: 120_000 });
+await page.getByRole("button", { name: "Play", exact: true }).click();
+
+// Read the dialog out of the portal, not out of innerText.
+const dialogText = async () =>
+  page.evaluate(
+    () => document.querySelector("[role=dialog]")?.textContent?.replace(/\s+/g, " ") ?? ""
+  );
+
+let opened = false;
+for (let i = 0; i < 24 && !opened; i++) {
+  await page.waitForTimeout(2500);
+  opened = /Cognitive intercept/.test(await dialogText());
+}
+
+check(
+  "crossing a section boundary demands a summary",
+  opened,
+  opened ? "the dialog opened" : "no intercept in 60s"
+);
+
+if (opened) {
+  const before = await dialogText();
+  check(
+    "the intercept names the section just finished",
+    /Data privacy in trials/.test(before),
+    before.slice(0, 70)
+  );
+
+  const mic = page.getByRole("button", { name: /Speak it/ });
+  check("dictation is offered where the platform has a recognizer", await mic.isVisible());
+
+  await mic.click();
+  await page.waitForTimeout(900);
+
+  const typed = await page
+    .locator("[role=dialog] textarea")
+    .inputValue()
+    .catch(() => "");
+  const after = await dialogText();
+
+  check(
+    "what was heard reaches the box",
+    /must not identify a participant/.test(typed),
+    JSON.stringify(typed.slice(0, 64))
+  );
+  check(
+    "the terms the recognizer mangled are put back",
+    /\bCRF\b/.test(typed) && /\bEDC\b/.test(typed),
+    JSON.stringify(typed.slice(0, 64))
+  );
+  check(
+    "the repair is declared rather than made silently",
+    /Heard and corrected/.test(after) && /see are eff/.test(after),
+    after.slice(after.indexOf("Heard and corrected"), after.indexOf("Heard and corrected") + 60) ||
+      "nothing declared"
+  );
+
+  await page.screenshot({ path: "scripts/.probe-intercept.png", fullPage: true });
+}
+
 /* ---- Report -------------------------------------------------------- */
 
 check("no console errors", consoleErrors.length === 0, consoleErrors[0] ?? "");
@@ -873,7 +1010,7 @@ console.log(`\n=== probe ===`);
 console.log(`  document: ${sample.f} (${Math.round(sample.size / 1024)}KB)`);
 console.log(`  clock at first question: ${clockAtStart ?? "—"}`);
 console.log(
-  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations (.png, in scripts/)`
+  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept (.png, in scripts/)`
 );
 console.log(`  failures: ${failures.length}   (must be 0)`);
 if (failures.length) {

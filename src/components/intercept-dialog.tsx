@@ -7,6 +7,8 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  Mic,
+  MicOff,
   ShieldAlert,
   Sparkles,
   TriangleAlert,
@@ -23,6 +25,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  recognitionCtor,
+  reconcile,
+  transcriptOf,
+  type Correction,
+} from "@/lib/dictation";
 import type { Verdict } from "@/lib/graders/types";
 import { cn } from "@/lib/utils";
 import { readingNodes, useFocusStore } from "@/store/useFocusStore";
@@ -40,6 +48,53 @@ const VERDICT_META: Record<
 };
 
 /**
+ * Start a recognition session, or throw if the platform has none.
+ *
+ * Kept here rather than in `dictation.ts` because it is all side effect: the
+ * module holds the part worth testing, this holds the part that needs a
+ * microphone. `continuous` with `interimResults` means the box fills as the
+ * reader speaks instead of after they stop, which is what makes it feel like
+ * talking rather than like submitting a recording.
+ */
+function startRecognizer(handlers: {
+  onTranscript: (text: string) => void;
+  onError: (message: string) => void;
+  onEnd: () => void;
+}) {
+  const Ctor = recognitionCtor();
+  if (!Ctor) throw new Error("no recognizer");
+
+  const recognizer = new Ctor();
+  recognizer.lang = "en-US";
+  recognizer.continuous = true;
+  recognizer.interimResults = true;
+  recognizer.onresult = (event) => handlers.onTranscript(transcriptOf(event));
+  recognizer.onerror = (event) => {
+    const code = (event as { error?: string }).error;
+    handlers.onError(
+      code === "not-allowed"
+        ? "Microphone access was refused."
+        : code === "no-speech"
+          ? "Nothing was heard."
+          : "The recognizer stopped."
+    );
+  };
+  recognizer.onend = handlers.onEnd;
+  recognizer.start();
+
+  return {
+    stop() {
+      recognizer.onend = null;
+      try {
+        recognizer.stop();
+      } catch {
+        /* already stopped */
+      }
+    },
+  };
+}
+
+/**
  * Automated cognitive intercept. Fires at every section boundary and holds
  * playback until the section just finished has been restated in one sentence.
  * The dialog is intentionally non-dismissible: escape, outside-click and the
@@ -54,6 +109,13 @@ export function InterceptDialog() {
   const [checking, setChecking] = React.useState(false);
   const [verdict, setVerdict] = React.useState<Verdict | null>(null);
   const [checkError, setCheckError] = React.useState<string | null>(null);
+
+  const [listening, setListening] = React.useState(false);
+  const [corrections, setCorrections] = React.useState<Correction[]>([]);
+  const [micError, setMicError] = React.useState<string | null>(null);
+  const recognizerRef = React.useRef<ReturnType<typeof startRecognizer> | null>(null);
+  /** Text already committed, so a restart appends rather than replaces. */
+  const committedRef = React.useRef("");
 
   const doc = useFocusStore((s) => s.doc);
   const intercept = useFocusStore((s) => s.intercept);
@@ -85,8 +147,20 @@ export function InterceptDialog() {
       setShowCaptures(false);
       setVerdict(null);
       setCheckError(null);
+      setCorrections([]);
+      setMicError(null);
+      committedRef.current = "";
     }
   }, [intercept.open, intercept.section]);
+
+  // The recognizer holds a microphone. Nothing may survive this dialog.
+  React.useEffect(() => {
+    if (!intercept.open && recognizerRef.current) {
+      recognizerRef.current.stop();
+      recognizerRef.current = null;
+      setListening(false);
+    }
+  }, [intercept.open]);
 
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   const valid = words >= MIN_WORDS;
@@ -100,8 +174,60 @@ export function InterceptDialog() {
     [nodes, intercept.section]
   );
 
+  /**
+   * The acronyms this section actually contains.
+   *
+   * The tokens already carry them — `parse.ts` tags every token it recognises —
+   * so this is a lookup rather than a guess, and it is what keeps the corrector
+   * from putting words into the reader's mouth: nothing outside this set is
+   * ever substituted in.
+   */
+  const vocabulary = React.useMemo(() => {
+    if (!doc || !section) return [];
+    const found = new Set<string>();
+    for (let i = section.tokenStart; i < section.tokenEnd; i++) {
+      const key = doc.tokens[i]?.acronym;
+      if (key) found.add(key);
+    }
+    return [...found];
+  }, [doc, section]);
+
+  const stopListening = React.useCallback(() => {
+    recognizerRef.current?.stop();
+    recognizerRef.current = null;
+    setListening(false);
+  }, []);
+
+  const toggleListening = () => {
+    if (listening) {
+      stopListening();
+      return;
+    }
+    setMicError(null);
+    committedRef.current = text;
+    try {
+      recognizerRef.current = startRecognizer({
+        onTranscript: (heard) => {
+          const joined = [committedRef.current.trim(), heard].filter(Boolean).join(" ");
+          const fixed = reconcile(joined, vocabulary);
+          setText(fixed.text);
+          setCorrections(fixed.corrections);
+        },
+        onError: (message) => {
+          setMicError(message);
+          stopListening();
+        },
+        onEnd: () => setListening(false),
+      });
+      setListening(true);
+    } catch {
+      setMicError("Could not start the microphone.");
+    }
+  };
+
   const submit = () => {
     setTouched(true);
+    stopListening();
     if (!valid) return;
     submitSummary(text);
   };
@@ -206,6 +332,35 @@ export function InterceptDialog() {
               {!valid && ` · at least ${MIN_WORDS} needed`}
             </span>
 
+            {/* Absent where the platform has no recognizer, rather than
+                present and inert: a button that does nothing is worse than no
+                button. Chrome is the only browser that ships one. */}
+            {recognitionCtor() && (
+              <button
+                type="button"
+                onClick={toggleListening}
+                aria-pressed={listening}
+                className={cn(
+                  "flex items-center gap-1.5 rounded border px-1.5 py-0.5",
+                  listening
+                    ? "border-destructive/60 bg-destructive/20 text-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                )}
+                title={
+                  listening
+                    ? "Stop dictating"
+                    : "Say it instead of typing it. Chrome sends the audio to Google for transcription."
+                }
+              >
+                {listening ? (
+                  <MicOff className="h-3 w-3" />
+                ) : (
+                  <Mic className="h-3 w-3" />
+                )}
+                {listening ? "Listening" : "Speak it"}
+              </button>
+            )}
+
             {sectionNodes.length > 0 && (
               <button
                 type="button"
@@ -222,6 +377,27 @@ export function InterceptDialog() {
               </button>
             )}
           </div>
+
+          {micError && (
+            <p className="mt-2 text-xs text-muted-foreground">{micError}</p>
+          )}
+
+          {/* Every substitution, named. The corrector is more dangerous than
+              the recognizer it repairs -- a mangled word is visible and a
+              swapped one is not -- so it says what it did and the text stays
+              editable. */}
+          {corrections.length > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Heard and corrected:{" "}
+              {corrections.map((c, i) => (
+                <span key={`${c.from}-${i}`}>
+                  {i > 0 && ", "}
+                  <span className="line-through opacity-60">{c.from}</span>{" "}
+                  <span className="text-foreground">{c.to}</span>
+                </span>
+              ))}
+            </p>
+          )}
 
           {showCaptures && sectionNodes.length > 0 && (
             <div className="mt-3 space-y-1.5 rounded-md border bg-muted/30 p-3">
