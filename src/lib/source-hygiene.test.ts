@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -68,5 +68,51 @@ describe("source hygiene", () => {
     }
 
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * The published demo is held to a stricter rule than the app: pure ASCII.
+ *
+ * `demo/index.html` is a standalone page published as an Artifact, and the
+ * wrapper owns `<head>` — so the page cannot declare a charset and anything
+ * outside ASCII renders as mojibake. Curly quotes and em-dashes have to be HTML
+ * entities in markup and `\uXXXX` escapes in script.
+ *
+ * It drifts. Two em-dashes had reached JavaScript comments by the seventh
+ * round, where they were invisible and harmless — and one edit away from being
+ * moved into markup, at which point they render as garbage on a page nobody
+ * runs a build over.
+ */
+describe("the published demo", () => {
+  const path = join("demo", "index.html");
+
+  it("exists where the notes say it does", () => {
+    // It lived only in a session scratchpad for six rounds, and every change
+    // meant fetching the published page back to recover it.
+    expect(existsSync(path)).toBe(true);
+  });
+
+  it("is pure ASCII, because it cannot declare a charset", () => {
+    const bytes = readFileSync(path);
+    const offenders: string[] = [];
+    for (let i = 0; i < bytes.length; i++) {
+      if (bytes[i] > 127) {
+        const around = bytes.subarray(Math.max(0, i - 40), i + 12).toString("utf8");
+        offenders.push(`byte ${i}: ${JSON.stringify(around)}`);
+        if (offenders.length >= 3) break;
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("is the page body, without the wrapper the publisher adds", () => {
+    // Republishing the fetched file verbatim would nest a whole document inside
+    // the one the publisher builds.
+    const html = readFileSync(path, "utf8");
+    expect(html).not.toMatch(/<!doctype/i);
+    expect(html).not.toMatch(/<html[\s>]/i);
+    expect(html).not.toMatch(/<body[\s>]/i);
+    expect(html).toMatch(/^<title>/);
   });
 });

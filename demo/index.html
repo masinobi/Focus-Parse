@@ -1,0 +1,1868 @@
+<title>FocusParse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;1,7..72,400&display=swap">
+
+<style>
+/* ---------------------------------------------------------------------------
+   Palette. Light is the complete set on bare :root; dark redefines tokens only.
+   Hues are taken from the app's own globals.css so the demo and the product
+   are the same object: amber is the pacing channel, and cyan / violet / green
+   are the three re-encoding channels.
+   --------------------------------------------------------------------------- */
+:root {
+  --ground:        hsl(220 22% 95%);
+  --console:       hsl(220 20% 91%);
+  --console-line:  hsl(220 16% 84%);
+  --surface:       hsl(40 40% 98.5%);
+  --surface-line:  hsl(38 22% 88%);
+
+  --ink:           hsl(222 26% 14%);
+  --ink-soft:      hsl(220 14% 34%);
+  --ink-faint:     hsl(220 12% 43%);
+
+  --pace:          hsl(45 93% 44%);
+  --pace-ink:      hsl(40 60% 16%);
+  --entity:        hsl(199 89% 38%);
+  --mechanism:     hsl(271 66% 50%);
+  --output:        hsl(142 62% 32%);
+  --alert:         hsl(2 74% 48%);
+
+  --shadow: 0 1px 2px hsl(220 30% 20% / .07), 0 8px 24px -12px hsl(220 30% 20% / .18);
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:        hsl(225 16% 7%);
+    --console:       hsl(225 14% 11%);
+    --console-line:  hsl(225 12% 19%);
+    --surface:       hsl(226 13% 13%);
+    --surface-line:  hsl(226 11% 22%);
+
+    --ink:           hsl(220 22% 93%);
+    --ink-soft:      hsl(220 12% 70%);
+    --ink-faint:     hsl(220 12% 58%);
+
+    --pace:          hsl(45 96% 60%);
+    --pace-ink:      hsl(40 80% 10%);
+    --entity:        hsl(199 89% 64%);
+    --mechanism:     hsl(271 89% 76%);
+    --output:        hsl(142 62% 58%);
+    --alert:         hsl(2 84% 68%);
+
+    --shadow: 0 1px 2px hsl(0 0% 0% / .4), 0 10px 30px -14px hsl(0 0% 0% / .7);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:        hsl(225 16% 7%);
+  --console:       hsl(225 14% 11%);
+  --console-line:  hsl(225 12% 19%);
+  --surface:       hsl(226 13% 13%);
+  --surface-line:  hsl(226 11% 22%);
+
+  --ink:           hsl(220 22% 93%);
+  --ink-soft:      hsl(220 12% 70%);
+  --ink-faint:     hsl(220 12% 58%);
+
+  --pace:          hsl(45 96% 60%);
+  --pace-ink:      hsl(40 80% 10%);
+  --entity:        hsl(199 89% 64%);
+  --mechanism:     hsl(271 89% 76%);
+  --output:        hsl(142 62% 58%);
+  --alert:         hsl(2 84% 68%);
+
+  --shadow: 0 1px 2px hsl(0 0% 0% / .4), 0 10px 30px -14px hsl(0 0% 0% / .7);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 32px 20px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ---- Masthead ----------------------------------------------------------- */
+
+.mast { display: flex; flex-direction: column; gap: 10px; }
+
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  display: flex; align-items: center; gap: 10px;
+}
+.eyebrow::after {
+  content: ""; flex: 1; height: 1px; background: var(--console-line);
+}
+
+h1.title {
+  font-family: Literata, Georgia, serif;
+  font-weight: 700;
+  font-size: clamp(30px, 4.6vw, 46px);
+  line-height: 1.05;
+  letter-spacing: -.02em;
+  margin: 0;
+  text-wrap: balance;
+}
+h1.title em {
+  font-style: normal;
+  color: var(--pace);
+}
+
+.standfirst {
+  font-family: Literata, Georgia, serif;
+  font-size: 16.5px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  max-width: 64ch;
+  margin: 0;
+}
+
+/* ---- Trigger rail ------------------------------------------------------- */
+
+.rail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.trigger {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 11px 13px;
+  text-align: left;
+  background: var(--console);
+  border: 1px solid var(--console-line);
+  border-left: 3px solid var(--tint, var(--ink-faint));
+  border-radius: var(--radius);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: transform .12s ease, border-color .12s ease, background .12s ease;
+}
+.trigger:hover { transform: translateY(-1px); background: var(--surface); }
+.trigger:focus-visible { outline: 2px solid var(--pace); outline-offset: 2px; }
+.trigger b { font-size: 13.5px; font-weight: 600; }
+.trigger span {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: .05em; color: var(--ink-faint);
+}
+
+/* ---- Console ------------------------------------------------------------ */
+
+.console {
+  background: var(--console);
+  border: 1px solid var(--console-line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  position: relative;
+}
+
+.transport {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--console-line);
+}
+
+.btn {
+  font: inherit; font-size: 13px;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--console-line);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease;
+}
+.btn:hover { border-color: var(--ink-faint); }
+.btn:focus-visible { outline: 2px solid var(--pace); outline-offset: 2px; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+.btn-play {
+  background: var(--pace); border-color: var(--pace); color: var(--pace-ink);
+  font-weight: 600; min-width: 92px; justify-content: center;
+}
+.btn-play:hover { filter: brightness(1.06); border-color: var(--pace); }
+
+.seg { display: flex; border: 1px solid var(--console-line); border-radius: 7px; overflow: hidden; }
+.seg button {
+  font: inherit; font-size: 12px;
+  padding: 5px 10px; border: 0; background: transparent; color: var(--ink-soft); cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 600; }
+.seg button:focus-visible { outline: 2px solid var(--pace); outline-offset: -2px; }
+
+.toggles { display: flex; gap: 4px; }
+.tog {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: .04em;
+  padding: 5px 8px; border-radius: 6px;
+  border: 1px solid var(--console-line); background: transparent;
+  color: var(--ink-faint); cursor: pointer;
+}
+.tog[aria-pressed="true"] { background: var(--surface); color: var(--ink); border-color: var(--ink-faint); }
+.tog:focus-visible { outline: 2px solid var(--pace); outline-offset: 2px; }
+
+.readout {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 14px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-faint);
+}
+.readout b { color: var(--ink); font-weight: 500; }
+
+.progress { height: 2px; background: var(--console-line); }
+.progress > i { display: block; height: 100%; width: 0; background: var(--pace); transition: width .2s linear; }
+
+/* ---- Working area ------------------------------------------------------- */
+
+.work { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); min-height: 460px; }
+@media (max-width: 860px) { .work { grid-template-columns: 1fr; } }
+
+.paper {
+  position: relative;
+  background: var(--surface);
+  border-right: 1px solid var(--console-line);
+  overflow-y: auto;
+  max-height: 60vh;
+  min-height: 460px;
+}
+@media (max-width: 860px) { .paper { border-right: 0; border-bottom: 1px solid var(--console-line); } }
+
+.flow {
+  font-family: Literata, Georgia, serif;
+  font-size: 16px;
+  line-height: 1.9;
+  padding: 26px 30px 40vh;
+  max-width: 62ch;
+}
+.flow h2 {
+  font-size: 13px; font-weight: 600;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 30px 0 10px;
+}
+.flow h2:first-child { margin-top: 0; }
+.flow p, .flow li { margin: 0 0 14px; }
+.flow ul, .flow ol { margin: 0 0 14px; padding-left: 22px; }
+.flow blockquote {
+  margin: 0 0 14px; padding-left: 16px;
+  border-left: 2px solid var(--pace);
+  font-style: italic; color: var(--ink-soft);
+}
+
+/* Word-level pacing. The block caret is a hard edge that snaps: the instant
+   move is the feature, so it never transitions. */
+.w { border-radius: 2px; padding: 0 .5px; display: inline-block; }
+.w.read { color: var(--ink-faint); }
+.w.on {
+  background: var(--pace); color: var(--pace-ink); font-weight: 600;
+}
+.paper.no-caret .w.on {
+  background: hsl(45 93% 50% / .3); color: inherit;
+  box-shadow: inset 0 -2px 0 0 var(--pace);
+  font-weight: inherit;
+}
+.paper.pulse .w.on { animation: beat var(--beat, 240ms) ease-out; transform-origin: center bottom; }
+@keyframes beat { 0% { transform: scale(1); } 35% { transform: scale(1.11); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .paper.pulse .w.on { animation: none; } }
+
+.paper.spot .w { color: hsl(220 10% 62% / .5); }
+.paper.spot .w.live { color: var(--ink); }
+.paper.spot .w.on { color: var(--pace-ink); }
+.paper.spot.no-caret .w.on { color: var(--ink); }
+.lead { font-weight: 700; }
+
+.badge {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .82em; font-weight: 600; letter-spacing: .02em;
+  border: 1px solid currentColor; border-radius: 4px; padding: 0 3px;
+}
+.a-standard { color: var(--entity); }
+.a-data     { color: var(--mechanism); }
+.a-reg      { color: var(--alert); }
+.a-ops      { color: var(--output); }
+.w.on .badge { color: inherit; }
+
+/* RSVP */
+.rsvp {
+  position: absolute; inset: 0;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--surface); gap: 18px;
+}
+.rsvp.show { display: flex; }
+.rsvp .word {
+  font-family: Literata, Georgia, serif;
+  font-size: clamp(30px, 5vw, 52px); font-weight: 600; letter-spacing: -.01em;
+}
+.rsvp .word i { font-style: normal; color: var(--pace); }
+.rsvp .tick { width: 180px; height: 1px; background: var(--console-line); position: relative; }
+.rsvp .tick::after {
+  content: ""; position: absolute; top: -5px; left: 50%; width: 1px; height: 11px; background: var(--pace);
+}
+
+/* Grid cards take the pane: the surrounding page must not compete. */
+.cards {
+  position: absolute; inset: 0; display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  background: var(--console); padding: 24px; gap: 4px;
+}
+.cards.show { display: flex; }
+.cards .cap {
+  position: absolute; top: 14px; left: 18px; right: 18px;
+  display: flex; gap: 10px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
+}
+.cards .cap b { margin-left: auto; font-weight: 500; font-variant-numeric: tabular-nums; }
+.cards .row { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); }
+.cards .col { font-size: 14px; color: var(--ink-soft); margin-top: 14px; }
+.cards .val { font-family: Literata, Georgia, serif; font-size: clamp(32px, 5vw, 54px); font-weight: 700; color: var(--pace); line-height: 1.1; }
+.cards .pips { position: absolute; left: 18px; right: 18px; bottom: 16px; display: flex; gap: 3px; }
+.cards .pips i { flex: 1; height: 2px; border-radius: 2px; background: var(--console-line); }
+.cards .pips i.done { background: var(--ink-faint); }
+.cards .pips i.now { background: var(--pace); }
+
+/* ---- Re-encoding rail --------------------------------------------------- */
+
+.pad { display: flex; flex-direction: column; background: var(--console); min-width: 0; }
+.pad-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 14px; border-bottom: 1px solid var(--console-line);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
+}
+.pad-head .counts { margin-left: auto; display: flex; gap: 5px; }
+.chip {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px; padding: 1px 6px; border-radius: 20px;
+  border: 1px solid currentColor; font-variant-numeric: tabular-nums;
+}
+.c-e { color: var(--entity); } .c-m { color: var(--mechanism); } .c-o { color: var(--output); }
+.c-p { color: var(--ink-faint); cursor: pointer; background: transparent; font: inherit; }
+.c-p[aria-pressed="true"] { color: var(--ink); border-color: var(--ink); }
+.c-p:focus-visible { outline: 2px solid var(--pace); outline-offset: 2px; }
+
+/* Parked thoughts. Deliberately plainer than a node: no tag, no colour, no
+   place in the map. A parked thought that grew features would compete for the
+   attention it exists to protect. */
+.parked {
+  display: none; border-bottom: 1px solid var(--console-line);
+  padding: 10px 14px; background: var(--surface); max-height: 34vh; overflow-y: auto;
+}
+.parked.show { display: block; }
+.parked p.lead-in { margin: 0 0 6px; font-size: 11px; color: var(--ink-faint); }
+.parked ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.parked li { font-size: 13px; color: var(--ink-soft); }
+
+.nodes { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; max-height: 40vh; }
+.empty { color: var(--ink-faint); font-size: 13px; line-height: 1.7; margin: auto 0; }
+.empty kbd { margin-right: 4px; }
+
+.node {
+  border: 1px solid var(--console-line); border-left: 3px solid var(--tint);
+  border-radius: 8px; padding: 8px 10px; background: var(--surface);
+  animation: nodein .18s cubic-bezier(.2,.8,.2,1);
+  font-size: 13.5px;
+}
+@keyframes nodein { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .node { animation: none; } }
+.node .tag {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--tint);
+  display: block; margin-bottom: 2px;
+}
+
+.pad-in { border-top: 1px solid var(--console-line); padding: 10px 14px; display: flex; flex-direction: column; gap: 7px; }
+textarea, input[type="text"] {
+  font: inherit; width: 100%;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--console-line); border-radius: 8px;
+  padding: 8px 10px; resize: none;
+}
+textarea:focus, input[type="text"]:focus { outline: 2px solid var(--pace); outline-offset: -1px; border-color: transparent; }
+.hint { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: .04em; color: var(--ink-faint); }
+
+kbd {
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px;
+  border: 1px solid var(--console-line); border-bottom-width: 2px;
+  border-radius: 4px; padding: 1px 5px; background: var(--surface); color: var(--ink-soft);
+}
+
+/* ---- Overlays ----------------------------------------------------------- */
+
+.veil {
+  position: absolute; inset: 0; z-index: 20;
+  display: none; align-items: center; justify-content: center;
+  background: var(--console); padding: 26px;
+  overflow-y: auto;
+}
+.veil.show { display: flex; }
+.sheet { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 14px; }
+.sheet .kicker {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--pace);
+}
+.sheet h3 {
+  font-family: Literata, Georgia, serif; font-weight: 700;
+  font-size: clamp(20px, 3vw, 26px); line-height: 1.2; margin: 0; text-wrap: balance;
+}
+.sheet p.sub { margin: 0; color: var(--ink-soft); font-size: 14px; }
+.actions { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+
+.opt {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 11px 13px; text-align: left; font: inherit;
+  border: 1px solid var(--console-line); border-radius: 9px;
+  background: var(--surface); color: var(--ink); cursor: pointer;
+}
+.opt:hover:not([disabled]) { border-color: var(--ink-faint); }
+.opt:focus-visible { outline: 2px solid var(--pace); outline-offset: 2px; }
+.opt.right { border-color: var(--output); background: hsl(142 62% 40% / .1); }
+.opt.wrong { border-color: var(--alert); background: hsl(2 74% 50% / .1); }
+.opt.dim { opacity: .4; }
+.opt .n { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 10px; color: var(--ink-faint); }
+
+.cloze-line { font-family: Literata, Georgia, serif; font-size: 16px; line-height: 2.1; }
+.cloze-line input {
+  font-family: "IBM Plex Sans", sans-serif; font-size: 14px;
+  width: 160px; padding: 2px 6px; margin: 0 4px;
+  background: transparent; color: var(--ink);
+  border: 0; border-bottom: 2px solid var(--pace); border-radius: 0;
+}
+.cloze-line input:focus { outline: 0; background: hsl(45 93% 50% / .12); }
+.cloze-line input.right { border-color: var(--output); color: var(--output); }
+.cloze-line input.wrong { border-color: var(--alert); color: var(--alert); text-decoration: line-through; }
+.verdict { font-size: 13px; margin: 3px 0 0; }
+.verdict.right { color: var(--output); }
+.verdict.wrong { color: var(--alert); }
+
+/* Presence pill &#x2014; peripheral on purpose. */
+.pill {
+  position: absolute; right: 16px; bottom: 16px; z-index: 30;
+  display: none; align-items: center; gap: 9px;
+  padding: 9px 14px; border-radius: 999px;
+  border: 1px solid var(--pace); background: var(--pace); color: var(--pace-ink);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  box-shadow: var(--shadow);
+  animation: nodein .18s ease-out;
+}
+.pill.show { display: flex; }
+.pill kbd { background: hsl(0 0% 100% / .35); border-color: currentColor; color: inherit; }
+.lapse {
+  position: absolute; right: 16px; bottom: 16px; z-index: 30; display: none;
+  max-width: 320px; padding: 12px 14px; border-radius: var(--radius);
+  border: 1px solid var(--alert); background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.lapse.show { display: block; }
+.lapse b { color: var(--alert); font-size: 13.5px; display: block; }
+.lapse p { margin: 4px 0 9px; font-size: 12.5px; color: var(--ink-soft); }
+
+/* ---- Notes -------------------------------------------------------------- */
+
+.notes {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;
+}
+.note {
+  border: 1px solid var(--console-line); border-radius: var(--radius);
+  padding: 13px 15px; background: var(--console);
+}
+.note h4 {
+  margin: 0 0 5px; font-size: 12px; font-weight: 600;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--tint, var(--ink-faint));
+}
+.note p { margin: 0; font-size: 13px; color: var(--ink-soft); line-height: 1.62; }
+
+.foot {
+  font-size: 12.5px; color: var(--ink-faint); line-height: 1.65;
+  border-top: 1px solid var(--console-line); padding-top: 14px;
+}
+.foot b { color: var(--ink-soft); font-weight: 500; }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <p class="eyebrow">Reading instrument &middot; live demo</p>
+    <h1 class="title">A document that <em>refuses to let you coast</em></h1>
+    <p class="standfirst">
+      FocusParse paces dense technical reading with speech, locks a word-level highlight to
+      the audio, and stops dead when it cannot tell whether you are still processing any of
+      it. Everything below is running &#x2014; press play, or fire any one mechanism directly.
+    </p>
+  </header>
+
+  <nav class="rail" aria-label="Fire a mechanism">
+    <button class="trigger" data-fire="intercept" style="--tint: var(--pace)">
+      <b>Cognitive intercept</b><span>summarize or stop</span>
+    </button>
+    <button class="trigger" data-fire="grid" style="--tint: var(--entity)">
+      <b>Grid interrogation</b><span>marked by the table</span>
+    </button>
+    <button class="trigger" data-fire="cloze" style="--tint: var(--mechanism)">
+      <b>Cloze spot check</b><span>fill what you heard</span>
+    </button>
+    <button class="trigger" data-fire="presence" style="--tint: var(--output)">
+      <b>Presence check</b><span>prove you are there</span>
+    </button>
+  </nav>
+
+  <main class="console">
+    <div class="transport">
+      <button class="btn btn-play" id="play">Play</button>
+      <button class="btn" id="prev" aria-label="Previous sentence">&larr;</button>
+      <button class="btn" id="next" aria-label="Next sentence">&rarr;</button>
+
+      <div class="seg" role="group" aria-label="View mode">
+        <button data-view="standard" aria-pressed="true">Standard</button>
+        <button data-view="bionic" aria-pressed="false">Bionic</button>
+        <button data-view="rsvp" aria-pressed="false">RSVP</button>
+      </div>
+
+      <div class="toggles" role="group" aria-label="Kinetic anchors">
+        <button class="tog" data-anchor="caret" aria-pressed="true">CARET</button>
+        <button class="tog" data-anchor="pulse" aria-pressed="true">PULSE</button>
+        <button class="tog" data-anchor="spot" aria-pressed="true">SPOTLIGHT</button>
+        <button class="tog" data-anchor="badges" aria-pressed="true">BADGES</button>
+        <button class="tog" data-anchor="noise" aria-pressed="false">NOISE</button>
+      </div>
+
+      <div class="readout">
+        <span><b id="rate">1.4</b>&times;</span>
+        <span><b id="pos">0</b> / <span id="total">0</span></span>
+        <span><b id="wpm">259</b> wpm</span>
+        <span id="queue" title="Items waiting in the retrieval queue">Q <b>0</b></span>
+        <span id="toStop" title="Distance to the next enforced stop. Approximate: a stretch with nothing worth asking about slides the window on instead of stopping."></span>
+      </div>
+    </div>
+    <div class="progress"><i id="bar"></i></div>
+
+    <div class="work">
+      <section class="paper pulse spot" id="paper" aria-label="Reading surface">
+        <article class="flow" id="flow"></article>
+
+        <div class="rsvp" id="rsvp" aria-hidden="true">
+          <div class="word" id="rsvpWord"></div>
+          <div class="tick"></div>
+        </div>
+
+        <div class="cards" id="cards" aria-hidden="true">
+          <div class="cap"><span id="cardCap"></span><b id="cardNum"></b></div>
+          <div class="row" id="cardRow"></div>
+          <div class="col" id="cardCol"></div>
+          <div class="val" id="cardVal"></div>
+          <div class="pips" id="cardPips"></div>
+        </div>
+      </section>
+
+      <aside class="pad" aria-label="Re-encoding scratchpad">
+        <div class="pad-head">
+          Re-encoding
+          <div class="counts">
+            <span class="chip c-e">/e <b id="ce">0</b></span>
+            <span class="chip c-m">/m <b id="cm">0</b></span>
+            <span class="chip c-o">/o <b id="co">0</b></span>
+            <button class="chip c-p" id="parkChip" aria-pressed="false" hidden
+              title="Thoughts you parked while reading">/p <b id="cp">0</b></button>
+          </div>
+        </div>
+
+        <div class="parked" id="parkedBox">
+          <p class="lead-in" id="parkedLead">Parked while reading. Not part of the map.</p>
+          <ul id="parkedList"></ul>
+        </div>
+        <div class="nodes" id="nodes">
+          <p class="empty">
+            Restate what you hear, in your own words, while it is still moving.<br><br>
+            <kbd>/e</kbd> entity &middot; a thing in the model<br>
+            <kbd>/m</kbd> mechanism &middot; something that acts<br>
+            <kbd>/o</kbd> output &middot; what falls out<br>
+            <kbd>/p</kbd> park &middot; a thought that is not about the text<br><br>
+            Typing a tag commits the line instantly &#x2014; the audio never stops.
+          </p>
+        </div>
+        <div class="pad-in">
+          <textarea id="draft" rows="2" spellcheck="false"
+            placeholder="Type the idea, then /e, /m or /o &mdash; or /p to park it&hellip;"></textarea>
+          <span class="hint">Tag commits &middot; Enter for an untagged note &middot; /p parks it</span>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Overlays live inside the console so the demo never hijacks the page. -->
+    <div class="veil" id="veil"><div class="sheet" id="sheet"></div></div>
+
+    <button class="pill" id="pill">Still there? <kbd>V</kbd></button>
+
+    <div class="lapse" id="lapse">
+      <b>Presence check missed</b>
+      <p>Playback stopped. Nothing between here and the last check was verified.</p>
+      <button class="btn" id="lapseResume">Resume</button>
+    </div>
+  </main>
+
+  <section class="notes" aria-label="What each mechanism is for">
+    <div class="note" style="--tint: var(--pace)">
+      <h4>Audio-visual pacing</h4>
+      <p>The highlight is not interpolated. Each sentence is spoken from the current word's
+         offset, and the synthesizer's own boundary events are mapped back to a word &#x2014; so the
+         caret sits on what you are hearing, not near it.</p>
+    </div>
+    <div class="note" style="--tint: var(--entity)">
+      <h4>Marked by the document</h4>
+      <p>A recovered table and a blanked term already have exactly one right answer in the
+         parsed text. An answer the app can mark itself is an answer it can demand &#x2014; no model,
+         no key, no network.</p>
+    </div>
+    <div class="note" style="--tint: var(--mechanism)">
+      <h4>Split channels</h4>
+      <p>In prose the eye gets a short badge and the ear gets the term in full: <b>eCRF</b> is
+         spoken as "electronic case report form". Reading four letters teaches nothing.
+         A grid card is the exception &#x2014; it shows one cell alone and the question that
+         follows draws its answer from that same cell, so there the two channels say
+         exactly the same thing.</p>
+    </div>
+    <div class="note" style="--tint: var(--output)">
+      <h4>Nothing is assumed</h4>
+      <p>Every other mechanism assumes a reader is there. The presence check is the only one
+         that verifies it, and it is the reason a session's record means something.</p>
+    </div>
+  </section>
+
+  <p class="foot">
+    <b>Demo pacing is accelerated.</b> In the real app a presence check comes every 90&#x2013;135
+    seconds, a spot check every 250 words, and an intercept at each section boundary; here
+    they are tuned to fire within a short visit. Speech uses your browser's own synthesizer &#x2014;
+    where it reports no word boundaries, the caret falls back to an estimator and says so.
+    A blank is never cut from a cross-reference: "Section&nbsp;____ defines the review cycle"
+    asks where something is, not what it says, so the check skips it and takes the next
+    candidate instead. Nothing you type leaves this page.
+  </p>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   Dictionary. The eye gets the badge, the ear gets the expansion.
+   ========================================================================= */
+const ACRONYMS = {
+  EDC:  ["electronic data capture", "a-data"],
+  CRF:  ["case report form", "a-data"],
+  eCRF: ["electronic case report form", "a-data"],
+  CRO:  ["contract research organization", "a-ops"],
+  SOP:  ["standard operating procedure", "a-ops"],
+  DMP:  ["data management plan", "a-ops"],
+  QA:   ["quality assurance", "a-ops"],
+  CDM:  ["clinical data management", "a-ops"],
+  ICH:  ["the International Council for Harmonisation", "a-reg"],
+  GCP:  ["good clinical practice", "a-reg"],
+  FDA:  ["the Food and Drug Administration", "a-reg"],
+  SAE:  ["serious adverse event", "a-reg"],
+  CDISC:["the Clinical Data Interchange Standards Consortium", "a-standard"],
+  SDTM: ["the Study Data Tabulation Model", "a-standard"],
+};
+
+/* =========================================================================
+   The document. Structured directly rather than parsed from markdown: the
+   demo is not ingesting PDFs, so block kinds are given.
+   ========================================================================= */
+const SOURCE = [
+  { kind: "h1", text: "The Drift Problem" },
+  { kind: "p",  text: "Reading failure is rarely a comprehension failure. It is an attention failure that comprehension gets blamed for. The eyes keep moving, the page keeps turning, and somewhere around the third paragraph the internal narrator quietly stops narrating." },
+  { kind: "p",  text: "Nothing announces the moment. You discover it retroactively, at the bottom of a page you cannot summarize." },
+
+  { kind: "h2", text: "Why Silent Reading Drifts" },
+  { kind: "p",  text: "Silent reading is unusually easy to fake. There is no external signal that stops when attention stops. Compare that to a conversation, where a three-second gap is immediately obvious to both participants, or to driving, where drift produces feedback within a second." },
+  { kind: "li", text: "The eye can traverse a line without lexical access." },
+  { kind: "li", text: "Subvocalization stops before the page-turning habit does." },
+  { kind: "li", text: "Familiar phrasing is especially dangerous: fluency feels like understanding." },
+  { kind: "quote", text: "Rereading a passage until it feels familiar produces confidence, not retention. Familiarity is the cheapest possible signal, and the brain accepts it anyway." },
+
+  { kind: "h2", text: "Dual-Channel Ingestion" },
+  { kind: "p",  text: "Pairing audio with synchronized visual highlighting closes the feedback gap. Audio sets an external pace that does not wait for you, and the highlight makes your position unambiguous at every moment." },
+  { kind: "p",  text: "The effect is not that you read faster. The effect is that you notice, within about a second, that you have stopped reading. Recovery becomes cheap because the position is never lost." },
+
+  { kind: "h2", text: "Vendor Oversight in Clinical Data" },
+  { kind: "p",  text: "Regulation is clear that a sponsor may delegate the conduct of a trial to a CRO, but never the accountability for it. Oversight of the EDC build, the CRF specification and the resulting SDTM datasets remains with the sponsor under ICH GCP, whoever performs the work." },
+  { kind: "p",  text: "Where a procedure is versioned, Section 4.2 defines the review cycle and Table 3.1 lists who signs it off; neither number is worth remembering, and neither is worth asking about." },
+  { kind: "p",  text: "That distinction is what a responsibility matrix exists to record. Read aloud as prose a matrix is noise, because the relation between a value and its column is spatial and speech has no spatial dimension. Each cell is therefore spoken as its own step, naming its row, its column and its value." },
+  { kind: "table",
+    caption: "Responsibility matrix \u2014 core data management activities",
+    header: ["Activity", "Sponsor", "CRO", "Data Manager"],
+    rows: [
+      ["CRF design",              "Consulted", "Informed",  "Responsible"],
+      ["Edit check specification","Informed",  "Consulted", "Responsible"],
+      ["Query resolution",        "Informed",  "Responsible","Accountable"],
+      ["Database lock",           "Accountable","Consulted", "Responsible"],
+    ] },
+  { kind: "p",  text: "A matrix read once and never asked about is a matrix that was heard rather than learned, which is why leaving one arms a question drawn straight from its cells." },
+
+  { kind: "h2", text: "The Intercept" },
+  { kind: "p",  text: "The last mechanism is the least comfortable. At every major structural boundary, playback stops and refuses to continue until you have typed one sentence describing what you just heard." },
+  { kind: "p",  text: "This is deliberately annoying. The annoyance is the mechanism. A summary you cannot produce is a section you did not process, and discovering that at the boundary costs you thirty seconds. Discovering it at the end of the document costs you the document." }
+];
+
+/* =========================================================================
+   Parse. Three aligned arrays, exactly as the app builds them: blocks for
+   layout, chunks for utterances, tokens for words. Every token carries both
+   a display offset and a speech offset, because an expanded acronym makes
+   those two coordinate spaces diverge \u2014 and the boundary event reports in
+   the second one.
+   ========================================================================= */
+const CLAUSE_END = /[,;:]["'\u2019\u201d)\]]?$|[\u2014\u2013]$/;
+const MAX_CHUNK = 170;
+
+function splitSentences(text) {
+  const out = [];
+  let buf = "";
+  const parts = text.split(/(?<=[.!?])\s+/);
+  for (const part of parts) {
+    if (!part) continue;
+    // Guard the obvious abbreviations so "e.g." does not end a sentence.
+    if (/\b(e\.g|i\.e|etc|vs|Dr|Mr|Ms|No)\.$/.test(buf.trim())) { buf += " " + part; continue; }
+    if (buf) out.push(buf.trim());
+    buf = part;
+  }
+  if (buf.trim()) out.push(buf.trim());
+
+  // Long utterances get split on a clause boundary: synthesis backends
+  // degrade on long strings, and sentence-skip stops feeling immediate.
+  const capped = [];
+  for (const s of out) {
+    if (s.length <= MAX_CHUNK) { capped.push(s); continue; }
+    let line = "";
+    for (const piece of s.split(/(?<=[,;:])\s+/)) {
+      if ((line + " " + piece).trim().length > MAX_CHUNK && line) { capped.push(line.trim()); line = piece; }
+      else line = (line ? line + " " : "") + piece;
+    }
+    if (line.trim()) capped.push(line.trim());
+  }
+  return capped;
+}
+
+function matchAcronym(token) {
+  const m = /^([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9]*)$/.exec(token);
+  if (!m || !m[2]) return null;
+  const core = m[2];
+  for (const key of Object.keys(ACRONYMS)) {
+    if (core === key || core === key + "s") return { key, lead: m[1], trail: m[3], plural: core === key + "s" };
+  }
+  return null;
+}
+
+function spokenFor(token) {
+  const hit = matchAcronym(token);
+  if (!hit) return token;
+  let core = ACRONYMS[hit.key][0];
+  if (hit.plural && !core.endsWith("s")) core += "s";
+  return hit.lead + core + hit.trail;
+}
+
+function stepText(s) {
+  return s.column ? s.row + " \u2014 " + s.column + ": " + s.value : s.row + ": " + s.value;
+}
+
+const doc = { blocks: [], chunks: [], tokens: [], sections: [] };
+
+(function parse() {
+  let clause = 0;
+  let section = -1;
+
+  SOURCE.forEach((raw, b) => {
+    if (raw.kind === "h1" || raw.kind === "h2") {
+      section += 1;
+      doc.sections.push({
+        i: section, title: raw.text, level: raw.kind === "h1" ? 1 : 2,
+        chunkStart: doc.chunks.length, tokenStart: doc.tokens.length, tokenEnd: doc.tokens.length,
+        wordCount: 0, intercept: true
+      });
+    }
+    if (section < 0) { section = 0; doc.sections.push({ i: 0, title: "Opening", level: 1, chunkStart: 0, tokenStart: 0, tokenEnd: 0, wordCount: 0, intercept: true }); }
+
+    const block = { i: b, kind: raw.kind, section, chunks: [], text: raw.text || "" };
+
+    // A grid contributes one chunk per flattened step, so each step is a real
+    // sentence boundary rather than a pause the engine has to fake.
+    let pieces;
+    if (raw.kind === "table") {
+      block.grid = { caption: raw.caption, header: raw.header, rows: raw.rows };
+      block.steps = [];
+      for (const row of raw.rows) {
+        for (let c = 1; c < row.length; c++) {
+          block.steps.push({ row: row[0], column: raw.header[c] || "", value: row[c] });
+        }
+      }
+      pieces = block.steps.map(stepText);
+    } else if (raw.kind === "h1" || raw.kind === "h2") {
+      pieces = [raw.text];
+    } else {
+      pieces = splitSentences(raw.text);
+    }
+
+    for (const piece of pieces) {
+      const ci = doc.chunks.length;
+      const tokenStart = doc.tokens.length;
+      let speech = "";
+
+      for (const m of piece.matchAll(/\S+/g)) {
+        const word = m[0];
+        // A grid card shows one cell alone in the largest type on the pane, and
+        // the question that follows draws its answer from that same raw cell.
+        // Expanding an acronym here would have the eye read "CRF design" while
+        // the ear heard "case report form design", then test the first. Prose
+        // still expands: hearing the term in full inside a sentence is the
+        // whole point of the split channel.
+        const spoken = raw.kind === "table" ? word : spokenFor(word);
+        if (speech) speech += " ";
+        const speechOffset = speech.length;
+        speech += spoken;
+
+        const hit = matchAcronym(word);
+        doc.tokens.push({
+          i: doc.tokens.length, text: word, offset: m.index, speechOffset,
+          chunk: ci, block: b, section, clause,
+          acronym: hit ? hit.key : null
+        });
+        if (CLAUSE_END.test(word)) clause += 1;
+      }
+      if (doc.tokens.length === tokenStart) continue;
+      clause += 1;
+
+      doc.chunks.push({ i: ci, text: piece, speech, block: b, section, tokenStart, tokenEnd: doc.tokens.length });
+      block.chunks.push(ci);
+    }
+    doc.blocks.push(block);
+  });
+
+  doc.sections.forEach((s, i) => {
+    const next = doc.sections[i + 1];
+    s.tokenEnd = next ? next.tokenStart : doc.tokens.length;
+    s.wordCount = s.tokenEnd - s.tokenStart;
+  });
+})();
+
+/* =========================================================================
+   State
+   ========================================================================= */
+const S = {
+  token: 0, chunk: 0, playing: false, rate: 1.4,
+  view: "standard",
+  anchors: { caret: true, pulse: true, spot: true, badges: true, noise: false },
+  nodes: [], parked: [], summaries: {},
+  check: null,             // { kind, block, cloze, resume, attempt }
+  intercept: null,         // { section, resume }
+  gridsPassed: {}, gridAttempts: {},
+  lastCheckToken: 0,
+  presence: "quiet",       // quiet | waiting | lapsed
+  raisedAt: 0, lastPresenceAt: Date.now(), missed: 0, answered: 0,
+  wordsSpoken: 0, activeMs: 0, lastTick: null,
+  estimating: false,
+  offeredParked: false
+};
+
+// Demo pacing. The real thresholds are 250 words and 90-135 seconds.
+const CLOZE_EVERY = 55;
+const PRESENCE_BASE = 26000, PRESENCE_JITTER = 14000, PRESENCE_GRACE = 4200;
+const MAX_GRID_ATTEMPTS = 2;
+
+const $ = (id) => document.getElementById(id);
+const wordSpans = [];
+const clauseIndex = new Map();
+
+/* =========================================================================
+   Render the flow once; afterwards only classes move.
+   ========================================================================= */
+function bionic(word) {
+  const letters = word.replace(/[^A-Za-z]/g, "").length;
+  const n = Math.max(1, Math.round(letters * 0.45));
+  let seen = 0, cut = 0;
+  for (let i = 0; i < word.length; i++) {
+    if (/[A-Za-z]/.test(word[i])) seen++;
+    if (seen >= n) { cut = i + 1; break; }
+  }
+  return [word.slice(0, cut || 1), word.slice(cut || 1)];
+}
+
+function paintWord(span, token) {
+  const hit = token.acronym ? matchAcronym(token.text) : null;
+  if (hit && S.anchors.badges) {
+    const cls = ACRONYMS[hit.key][1];
+    span.innerHTML = "";
+    if (hit.lead) span.appendChild(document.createTextNode(hit.lead));
+    const b = document.createElement("span");
+    b.className = "badge " + cls;
+    b.textContent = hit.key + (hit.plural ? "s" : "");
+    b.title = ACRONYMS[hit.key][0];
+    span.appendChild(b);
+    if (hit.trail) span.appendChild(document.createTextNode(hit.trail));
+    return;
+  }
+  if (S.view === "bionic") {
+    const [head, tail] = bionic(token.text);
+    span.innerHTML = "";
+    const strong = document.createElement("span");
+    strong.className = "lead";
+    strong.textContent = head;
+    span.appendChild(strong);
+    span.appendChild(document.createTextNode(tail));
+    return;
+  }
+  span.textContent = token.text;
+}
+
+function buildFlow() {
+  const flow = $("flow");
+  flow.innerHTML = "";
+  wordSpans.length = 0;
+  clauseIndex.clear();
+
+  for (const block of doc.blocks) {
+    if (block.kind === "table") {
+      const marker = document.createElement("p");
+      marker.style.cssText = "font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);border:1px dashed var(--surface-line);border-radius:8px;padding:9px 12px";
+      marker.textContent = "\u25a6 " + block.grid.caption + " \u2014 " + block.steps.length + " steps";
+      flow.appendChild(marker);
+      // A grid's words never lie in the flow; the cards render them instead.
+      for (const ci of block.chunks) {
+        for (let t = doc.chunks[ci].tokenStart; t < doc.chunks[ci].tokenEnd; t++) wordSpans[t] = marker;
+      }
+      continue;
+    }
+
+    const tag = block.kind === "h1" ? "h2" : block.kind === "h2" ? "h2"
+      : block.kind === "li" ? "li" : block.kind === "quote" ? "blockquote" : "p";
+    let host = document.createElement(tag);
+    if (block.kind === "li") {
+      let ul = flow.lastElementChild;
+      if (!ul || ul.tagName !== "UL") { ul = document.createElement("ul"); flow.appendChild(ul); }
+      ul.appendChild(host);
+    } else {
+      flow.appendChild(host);
+    }
+
+    block.chunks.forEach((ci) => {
+      const chunk = doc.chunks[ci];
+      for (let t = chunk.tokenStart; t < chunk.tokenEnd; t++) {
+        const token = doc.tokens[t];
+        const span = document.createElement("span");
+        span.className = "w";
+        span.dataset.t = t;
+        paintWord(span, token);
+        host.appendChild(span);
+        host.appendChild(document.createTextNode(" "));
+        wordSpans[t] = span;
+        if (!clauseIndex.has(token.clause)) clauseIndex.set(token.clause, []);
+        clauseIndex.get(token.clause).push(span);
+      }
+    });
+  }
+
+  flow.addEventListener("click", (e) => {
+    const span = e.target.closest(".w");
+    if (span && span.dataset.t) seekToken(+span.dataset.t);
+  });
+}
+
+let paintedTo = -1, litClause = -1;
+
+function paintPosition() {
+  const token = doc.tokens[S.token];
+  if (!token) return;
+
+  // Read-state: incremental forwards, full pass on a backward seek.
+  if (S.token < paintedTo) {
+    for (let i = 0; i < wordSpans.length; i++) {
+      const s = wordSpans[i];
+      if (s && s.classList) s.classList.toggle("read", i < S.token);
+    }
+  } else {
+    for (let i = Math.max(0, paintedTo); i < S.token; i++) {
+      const s = wordSpans[i];
+      if (s && s.classList) s.classList.add("read");
+    }
+  }
+  paintedTo = S.token;
+
+  document.querySelectorAll(".w.on").forEach((s) => s.classList.remove("on"));
+  const active = wordSpans[S.token];
+  if (active && active.classList && active.classList.contains("w")) {
+    active.classList.add("on");
+    active.id = "activeWord";
+    const paper = $("paper");
+    const box = paper.getBoundingClientRect(), w = active.getBoundingClientRect();
+    if (w.top < box.top + box.height * 0.22 || w.bottom > box.top + box.height * 0.72) {
+      active.scrollIntoView({ block: "center", behavior: Math.abs(w.top - box.top) < box.height ? "smooth" : "auto" });
+    }
+  }
+
+  if (token.clause !== litClause) {
+    (clauseIndex.get(litClause) || []).forEach((s) => s.classList.remove("live"));
+    (clauseIndex.get(token.clause) || []).forEach((s) => s.classList.add("live"));
+    litClause = token.clause;
+  }
+
+  // Grid cards take the pane when the position is inside a matrix.
+  const block = doc.blocks[token.block];
+  const inGrid = block && block.kind === "table";
+  $("cards").classList.toggle("show", inGrid && S.view !== "rsvp");
+  $("cards").setAttribute("aria-hidden", String(!inGrid));
+  if (inGrid) {
+    const idx = block.chunks.indexOf(token.chunk);
+    const step = block.steps[Math.max(0, idx)];
+    $("cardCap").textContent = block.grid.caption;
+    $("cardNum").textContent = (idx + 1) + " / " + block.steps.length;
+    $("cardRow").textContent = step.row;
+    $("cardCol").textContent = step.column;
+    $("cardVal").textContent = step.value;
+    $("cardPips").innerHTML = block.steps
+      .map((_, i) => '<i class="' + (i < idx ? "done" : i === idx ? "now" : "") + '"></i>').join("");
+  }
+
+  if (S.view === "rsvp") {
+    const [head, tail] = bionic(token.text);
+    $("rsvpWord").innerHTML = "<i>" + head.replace(/</g, "&lt;") + "</i>" + tail.replace(/</g, "&lt;");
+  }
+
+  $("pos").textContent = S.token;
+  $("bar").style.width = ((S.token + 1) / doc.tokens.length * 100) + "%";
+  $("wpm").textContent = wpm();
+  $("paper").style.setProperty("--beat", Math.max(90, Math.min(420, Math.round(60000 / wpm() * 0.8))) + "ms");
+  paintNextStop();
+}
+
+/* How far the next enforced stop is, in words rather than in seconds.
+   A ticking clock in the field of view is a thing to watch instead of the text,
+   which is the one behaviour this is built to avoid. Both rungs are reported,
+   because naming only the summary is true and misleading: the cadence check
+   comes round several times inside the same stretch and a reader told otherwise
+   would rightly stop believing the number. */
+function paintNextStop() {
+  const el = $("toStop");
+  if (!el) return;
+  const parts = [];
+
+  if (S.token < doc.tokens.length - 1) {
+    parts.push("~" + Math.max(0, CLOZE_EVERY - (S.token - S.lastCheckToken)) + "w check");
+  }
+
+  // The next boundary that would actually arm an intercept: a section long
+  // enough to be worth summarizing, that has not been summarized already.
+  const here = doc.tokens[S.token] ? doc.tokens[S.token].section : 0;
+  for (let i = here; i < doc.sections.length - 1; i++) {
+    const leaving = doc.sections[i], entering = doc.sections[i + 1];
+    if (!entering || leaving.wordCount <= 25 || S.summaries[i] !== undefined) continue;
+    parts.push("~" + Math.max(0, entering.tokenStart - S.token) + "w summary");
+    break;
+  }
+
+  el.textContent = parts.join("  ");
+}
+
+function wpm() {
+  if (S.wordsSpoken > 20 && S.activeMs > 3000) return Math.round(S.wordsSpoken / (S.activeMs / 60000) / 5) * 5;
+  return Math.round(185 * S.rate / 5) * 5;
+}
+
+/* =========================================================================
+   Speech. One code path: everything reduces to "speak from token N".
+   ========================================================================= */
+const synth = window.speechSynthesis || null;
+let generation = 0, estTimer = null, voice = null;
+
+function pickVoice() {
+  if (!synth) return;
+  const list = synth.getVoices();
+  if (!list.length) return;
+  voice = list.find((v) => v.default && v.lang.startsWith("en")) || list.find((v) => v.lang.startsWith("en")) || list[0];
+}
+if (synth) { pickVoice(); synth.addEventListener("voiceschanged", pickVoice); }
+
+function tokenAtCharIndex(chunk, absolute) {
+  let lo = chunk.tokenStart, hi = chunk.tokenEnd - 1, best = chunk.tokenStart;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (doc.tokens[mid].speechOffset <= absolute) { best = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return best;
+}
+
+function stopAudio() {
+  generation += 1;
+  if (estTimer) { clearInterval(estTimer); estTimer = null; }
+  if (synth) synth.cancel();
+}
+
+function tick() {
+  const now = Date.now();
+  const gap = S.lastTick === null ? 0 : Math.min(now - S.lastTick, 1500);
+  S.wordsSpoken += 1; S.activeMs += gap; S.lastTick = now;
+}
+
+function speakFrom(tokenIndex) {
+  const gen = generation;
+  const token = doc.tokens[tokenIndex];
+  if (!token) { setPlaying(false); return; }
+  const chunk = doc.chunks[token.chunk];
+
+  S.token = tokenIndex; S.chunk = chunk.i;
+  paintPosition();
+
+  const text = chunk.speech.slice(token.speechOffset);
+  if (!text.trim()) { finishChunk(chunk.i); return; }
+
+  let sawBoundary = false, last = tokenIndex;
+  const started = performance.now();
+
+  // Interpolating fallback for engines that never fire word boundaries.
+  const startEstimator = () => {
+    if (estTimer) clearInterval(estTimer);
+    estTimer = setInterval(() => {
+      if (gen !== generation) return;
+      if (sawBoundary) return;
+      const elapsed = performance.now() - started;
+      if (elapsed < 320) return;
+      if (!S.estimating) { S.estimating = true; $("wpm").title = "estimated pacing \u2014 this voice reports no word boundaries"; }
+      const msPerWord = 60000 / (185 * S.rate);
+      const target = Math.min(chunk.tokenEnd - 1, tokenIndex + Math.floor(elapsed / msPerWord));
+      if (target > last) { last = target; S.token = target; tick(); paintPosition(); }
+      // The estimator moves the highlight; it must not also advance the chunk
+      // while an utterance is still running, or its `onend` fires a second
+      // advance and a whole sentence is skipped. Only take over when nothing
+      // is actually speaking -- no synthesizer at all, or a dropped utterance.
+      const silent = !synth || (!synth.speaking && !synth.pending);
+      if (silent && target >= chunk.tokenEnd - 1 &&
+          elapsed > msPerWord * (chunk.tokenEnd - tokenIndex)) {
+        clearInterval(estTimer); estTimer = null; finishChunk(chunk.i);
+      }
+    }, 55);
+  };
+
+  if (!synth) { startEstimator(); return; }
+
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = S.rate; utter.pitch = 1; utter.volume = 1;
+  if (voice) { utter.voice = voice; utter.lang = voice.lang; }
+
+  utter.onboundary = (e) => {
+    if (gen !== generation) return;
+    if (e.name && e.name !== "word") return;
+    sawBoundary = true;
+    if (estTimer) { clearInterval(estTimer); estTimer = null; }
+    const next = tokenAtCharIndex(chunk, token.speechOffset + (e.charIndex || 0));
+    // Monotonic within an utterance: a highlight that jumps back reads as a bug.
+    if (next > last) { last = next; S.token = next; tick(); paintPosition(); }
+  };
+  utter.onend = () => { if (gen === generation) finishChunk(chunk.i); };
+  utter.onerror = (e) => {
+    if (gen !== generation) return;
+    if (e.error === "canceled" || e.error === "interrupted") return;
+    finishChunk(chunk.i);
+  };
+
+  startEstimator();
+  synth.speak(utter);
+}
+
+/* -------------------------------------------------------------------------
+   The enforcement ladder. At most one rung fires per boundary, in descending
+   cost: a boundary that owes a summary does not also owe a grid question.
+   ------------------------------------------------------------------------- */
+function finishChunk(ci) {
+  if (estTimer) { clearInterval(estTimer); estTimer = null; }
+  const next = ci + 1;
+  if (next >= doc.chunks.length) {
+    S.token = doc.tokens.length - 1; setPlaying(false); paintPosition();
+    // The end of the document is the only moment that can offer the parked
+    // thoughts back without being asked. Once, so a reader who closes it is
+    // not fought.
+    if (S.parked.length && !S.offeredParked) {
+      S.offeredParked = true;
+      $("parkedLead").textContent =
+        "Parked while reading. Not part of the map. That is the end of the document.";
+      showParked(true);
+    }
+    return;
+  }
+
+  const leaving = doc.chunks[ci].section, entering = doc.chunks[next].section;
+
+  // 1. Structural boundary: the summary is owed for the section just finished.
+  if (entering !== leaving && doc.sections[entering] && doc.sections[leaving] &&
+      doc.sections[leaving].wordCount > 25 && !S.summaries[leaving]) {
+    S.token = doc.chunks[ci].tokenEnd - 1;
+    armIntercept(leaving, next);
+    return;
+  }
+
+  // 2. Leaving a grid: the answer is already in the table.
+  const leftBlock = doc.chunks[ci].block;
+  if (doc.chunks[next].block !== leftBlock) {
+    const block = doc.blocks[leftBlock];
+    const attempts = S.gridAttempts[leftBlock] || 0;
+    if (block && block.kind === "table" && !S.gridsPassed[leftBlock] &&
+        attempts < MAX_GRID_ATTEMPTS && buildGridQuestion(block, attempts)) {
+      S.token = doc.chunks[ci].tokenEnd - 1;
+      armGrid(leftBlock, next);
+      return;
+    }
+  }
+
+  // 3. Reading cadence: the cheap rung.
+  const readTo = doc.chunks[ci].tokenEnd;
+  if (readTo - S.lastCheckToken >= CLOZE_EVERY) {
+    const cloze = buildCloze(S.lastCheckToken, readTo);
+    if (cloze) { S.token = readTo - 1; armCloze(cloze, next); return; }
+    S.lastCheckToken = readTo;
+  }
+
+  speakFrom(doc.chunks[next].tokenStart);
+}
+
+function setPlaying(on) {
+  S.playing = on && !S.check && !S.intercept;
+  $("play").textContent = S.playing ? "Pause" : "Play";
+  S.lastTick = S.playing ? Date.now() : null;
+  stopAudio();
+  if (S.playing) {
+    S.lastPresenceAt = Date.now();
+    setTimeout(() => { if (S.playing) speakFrom(S.token); }, 60);
+  }
+}
+
+function seekToken(i) {
+  S.token = Math.max(0, Math.min(i, doc.tokens.length - 1));
+  S.chunk = doc.tokens[S.token].chunk;
+  S.lastCheckToken = S.token;
+  paintPosition();
+  if (S.playing) { stopAudio(); setTimeout(() => speakFrom(S.token), 60); }
+}
+function stepSentence(d) {
+  const c = Math.max(0, Math.min(S.chunk + d, doc.chunks.length - 1));
+  seekToken(doc.chunks[c].tokenStart);
+}
+
+/* =========================================================================
+   Grid interrogation \u2014 no model, no key, no network.
+   ========================================================================= */
+function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+
+function buildGridQuestion(block, attempt) {
+  const steps = block.steps || [];
+  if (!steps.length) return null;
+  const counts = new Map();
+  steps.forEach((s) => counts.set(s.row, (counts.get(s.row) || 0) + 1));
+
+  // A step with no column name is usable only when its row has one value:
+  // otherwise the question is ambiguous, and an ambiguous question graded
+  // wrong is worse than no question.
+  const usable = steps.map((step, stepIndex) => ({ step, stepIndex }))
+    .filter(({ step }) => step.value && (step.column || counts.get(step.row) === 1));
+  if (!usable.length) return null;
+
+  const picked = usable[attempt % usable.length];
+  const answer = picked.step.value, column = picked.step.column;
+
+  // Distractors from the same column first: a plausible wrong answer is one
+  // the grid actually contains somewhere it could have gone.
+  const same = new Set(), any = new Set();
+  for (const s of steps) {
+    if (!s.value || s.value === answer) continue;
+    any.add(s.value);
+    if (column && s.column === column) same.add(s.value);
+  }
+  const pool = same.size >= 2 ? same : any;
+  if (pool.size < 2) return null;
+
+  const seed = block.i + ":" + picked.stepIndex + ":" + attempt;
+  const distractors = [...pool].sort((a, b) => hash(a + seed) - hash(b + seed)).slice(0, 3);
+  const options = [answer, ...distractors].sort((a, b) => hash(seed + a) - hash(seed + b));
+  return { block: block.i, caption: block.grid.caption, row: picked.step.row, column, answer, options };
+}
+
+/* =========================================================================
+   Cloze \u2014 salience-ranked, and never from a heading or a grid.
+   ========================================================================= */
+const STOPWORDS = new Set(["the","this","that","these","those","there","then","when","where","while","which","what","each","every","any","all","some","both","for","from","with","without","however","therefore","because","although","since","after","before","during","under","over","into","such","they","their","them","its","and","but","not","may","must","should","would","could","will","shall","can","has","have","had","was","were","are","been","being","section","figure","table"]);
+const SKIP_BLOCKS = new Set(["table", "h1", "h2"]);
+const BLANK = "____";
+
+/* Structural nouns that turn the number after them into a reference.
+   "Section ____ defines the review cycle" asks where something is, not what it
+   says. The mock exam in the real app has refused these since it was written;
+   the reading check did not, and asked for one 72 times across 2,774 blanks
+   before the rule was moved down a rung. Mirrored here so the demo does not
+   show behaviour the app no longer has. */
+const REFERENCE_LEAD = /\b(sections?|sec|parts?|chapters?|appendix|annex|figures?|tables?|clauses?|paragraphs?|items?|steps?|volumes?|pages?)\.?\s*$/i;
+
+function isStructuralReference(carrier, answer) {
+  if (!/^\d[\d.\u2013-]*$/.test(answer)) return false;
+  const at = carrier.indexOf(BLANK);
+  if (at < 0) return false;
+  return REFERENCE_LEAD.test(carrier.slice(0, at));
+}
+
+function coreOf(text) {
+  const m = /^([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9]*)$/.exec(text);
+  return m && m[2] ? { lead: m[1], core: m[2] } : null;
+}
+
+function salience(token, core) {
+  if (token.acronym) return 10;
+  if (/\d/.test(core) && core.length >= 2) return 4;
+  if (token.i === doc.chunks[token.chunk].tokenStart) return 0;
+  if (STOPWORDS.has(core.toLowerCase())) return 0;
+  if (/^[A-Z]{2,}$/.test(core)) return 5;
+  if (/^[A-Z][a-z]{3,}$/.test(core)) return 3;
+  return 0;
+}
+
+function buildCloze(from, to) {
+  const start = Math.max(0, from), end = Math.min(to, doc.tokens.length);
+  if (end - start < 18) return null;
+  const byKey = new Map();
+
+  for (let i = start; i < end; i++) {
+    const token = doc.tokens[i];
+    const block = doc.blocks[token.block];
+    // A heading is a label the reader heard announced, not a claim they
+    // reasoned through; a grid has its own check.
+    if (!block || SKIP_BLOCKS.has(block.kind)) continue;
+    const shell = coreOf(token.text);
+    if (!shell) continue;
+    const score = salience(token, shell.core);
+    if (score <= 0) continue;
+    const key = token.acronym || shell.core.toLowerCase();
+    const seen = byKey.get(key);
+    if (seen) { seen.at.push(i); seen.score += score; }
+    else byKey.set(key, { score, at: [i] });
+  }
+
+  const blanks = [];
+  // One blank per sentence. Two blanks cut from the same carrier print that
+  // sentence twice with different holes, and each copy then shows the other's
+  // answer in full -- a leak the single-carrier check below cannot see, because
+  // it only ever looks at one blank at a time.
+  const usedChunks = new Set();
+
+  for (const cand of [...byKey.values()].sort((a, b) => b.score - a.score)) {
+    if (blanks.length >= 3) break;
+    for (const ti of cand.at) {
+      const token = doc.tokens[ti], chunk = doc.chunks[token.chunk];
+      if (usedChunks.has(chunk.i)) continue;
+      if (chunk.tokenEnd - chunk.tokenStart < 6) continue;
+      const shell = coreOf(token.text);
+      const at = token.offset + shell.lead.length;
+      if (chunk.text.slice(at, at + shell.core.length) !== shell.core) continue;
+      const carrier = chunk.text.slice(0, at) + BLANK + chunk.text.slice(at + shell.core.length);
+      // Given away by another occurrence in the same sentence.
+      if (carrier.includes(shell.core)) continue;
+      // Skipped rather than abandoning the candidate: the same answer is often
+      // a reference in one sentence and a fact in the next, so the loop tries
+      // the term's next occurrence.
+      if (isStructuralReference(carrier, shell.core)) continue;
+      blanks.push({ carrier, answer: shell.core, acronym: token.acronym, at: ti });
+      usedChunks.add(chunk.i);
+      break;
+    }
+  }
+  if (blanks.length < 2) return null;
+  blanks.sort((a, b) => a.at - b.at);
+  return { blanks };
+}
+
+function normalize(v) {
+  return v.toLowerCase().replace(/['\u2019]s\b/g, "").replace(/[^a-z0-9%. ]+/g, " ")
+    .replace(/\s+/g, " ").trim().replace(/s$/, "");
+}
+function answerMatches(given, expected, acronym) {
+  const a = normalize(given);
+  if (!a) return false;
+  if (a === normalize(expected)) return true;
+  // The app speaks the expansion, so accepting it is the only fair rule.
+  const key = acronym || (matchAcronym(expected) || {}).key;
+  if (key && ACRONYMS[key]) {
+    if (a === normalize(ACRONYMS[key][0].replace(/^the\s+/i, ""))) return true;
+  }
+  return false;
+}
+
+/* =========================================================================
+   Retrieval queue. Content-derived ids, so answering the same term twice
+   advances one schedule instead of stacking duplicates.
+   ========================================================================= */
+const QUEUE_KEY = "focusparse.demo.queue";
+function loadQueue() { try { return JSON.parse(localStorage.getItem(QUEUE_KEY)) || {}; } catch { return {}; } }
+function saveQueue(q) { try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); } catch {} }
+
+function record(id, correct) {
+  const q = loadQueue();
+  const item = q[id] || { ease: 2.5, days: 0, reps: 0 };
+  if (!correct) { item.ease = Math.max(1.3, item.ease - 0.8); item.days = 0; item.reps = 0; }
+  else {
+    item.reps += 1; item.ease = Math.min(2.8, item.ease);
+    item.days = item.reps === 1 ? 1 : item.reps === 2 ? 6 : Math.round(item.days * item.ease);
+  }
+  q[id] = item; saveQueue(q);
+  paintQueue();
+  return item.days === 0 ? "10 minutes" : item.days === 1 ? "1 day" : item.days + " days";
+}
+function paintQueue() { $("queue").innerHTML = "Q <b>" + Object.keys(loadQueue()).length + "</b>"; }
+
+/* =========================================================================
+   Overlays
+   ========================================================================= */
+function closeVeil() { $("veil").classList.remove("show"); $("sheet").innerHTML = ""; }
+
+function armIntercept(section, resume) {
+  stopAudio(); S.playing = false; $("play").textContent = "Play";
+  S.intercept = { section, resume };
+  hidePresence();
+  const sec = doc.sections[section];
+
+  $("sheet").innerHTML =
+    '<p class="kicker">Cognitive intercept</p>' +
+    '<h3>Summarize \u201c' + sec.title + '\u201d in one sentence.</h3>' +
+    '<p class="sub">' + sec.wordCount + ' words just went past. Write it from memory, before you look back at the text. Playback stays paused until you do.</p>' +
+    '<textarea id="sum" rows="3" placeholder="The section argued that&hellip;"></textarea>' +
+    '<div class="actions"><button class="btn btn-play" id="logIt">Log it and resume</button>' +
+    '<span class="hint" id="sumCount">0 words &middot; at least 4 needed</span></div>';
+  $("veil").classList.add("show");
+
+  const ta = $("sum");
+  ta.focus();
+  const count = () => {
+    const n = ta.value.trim() ? ta.value.trim().split(/\s+/).length : 0;
+    $("sumCount").textContent = n >= 4 ? n + " words" : n + " words \u00b7 at least 4 needed";
+    return n;
+  };
+  ta.addEventListener("input", count);
+  ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } });
+  $("logIt").addEventListener("click", submit);
+
+  function submit() {
+    if (count() < 4) { ta.focus(); return; }
+    S.summaries[section] = ta.value.trim();
+    record("summary:" + section, true);
+    const r = S.intercept.resume;
+    S.intercept = null; closeVeil();
+    S.lastCheckToken = doc.chunks[r].tokenStart;
+    seekToken(doc.chunks[r].tokenStart);
+    setPlaying(true);
+  }
+}
+
+function armGrid(blockIndex, resume) {
+  stopAudio(); S.playing = false; $("play").textContent = "Play";
+  S.gridAttempts[blockIndex] = (S.gridAttempts[blockIndex] || 0) + 1;
+  const attempt = S.gridAttempts[blockIndex];
+  S.check = { kind: "grid", block: blockIndex, resume, attempt };
+  hidePresence();
+
+  const block = doc.blocks[blockIndex];
+  const q = buildGridQuestion(block, attempt - 1);
+  if (!q) { S.check = null; resumeAt(resume); return; }
+
+  $("sheet").innerHTML =
+    '<p class="kicker">Grid check' + (attempt > 1 ? " \u00b7 attempt " + attempt + " of " + MAX_GRID_ATTEMPTS : "") + '</p>' +
+    '<h3>For <span style="color:var(--pace)">' + q.row + '</span>, what was the ' + q.column + '?</h3>' +
+    '<p class="sub">' + q.caption + '</p>' +
+    '<div id="opts"></div>' +
+    '<div id="grVerdict"></div>';
+  $("veil").classList.add("show");
+
+  const wrap = $("opts");
+  wrap.style.cssText = "display:flex;flex-direction:column;gap:8px";
+  q.options.forEach((opt, i) => {
+    const b = document.createElement("button");
+    b.className = "opt";
+    b.innerHTML = '<span class="n">' + (i + 1) + '</span><span>' + opt + '</span>';
+    b.addEventListener("click", () => answer(opt));
+    wrap.appendChild(b);
+  });
+
+  const onKey = (e) => {
+    const n = Number(e.key) - 1;
+    if (n >= 0 && n < q.options.length) { e.preventDefault(); answer(q.options[n]); }
+  };
+  window.addEventListener("keydown", onKey);
+
+  function answer(opt) {
+    window.removeEventListener("keydown", onKey);
+    const right = opt === q.answer;
+    const exhausted = attempt >= MAX_GRID_ATTEMPTS;
+    [...wrap.children].forEach((b) => {
+      b.disabled = true;
+      const label = b.lastChild.textContent;
+      if (label === q.answer) b.classList.add("right");
+      else if (label === opt) b.classList.add("wrong");
+      else b.classList.add("dim");
+    });
+    const back = record("grid:" + blockIndex + ":" + q.row + ":" + q.column, right);
+    $("grVerdict").innerHTML =
+      '<p class="verdict ' + (right ? "right" : "wrong") + '">' +
+      (right ? "Correct." : exhausted
+        ? 'The grid said \u201c' + q.answer + '\u201d. Moving on \u2014 it stays in the queue.'
+        : 'The grid said \u201c' + q.answer + '\u201d. Playing it again.') +
+      '</p><p class="hint" style="margin-top:4px">Back in ' + back + '.</p>' +
+      '<div class="actions" style="margin-top:12px"><button class="btn btn-play" id="grGo">' +
+      (right || exhausted ? "Resume" : "Replay the grid") + '</button></div>';
+
+    $("grGo").focus();
+    $("grGo").addEventListener("click", () => {
+      if (right) S.gridsPassed[blockIndex] = true;
+      S.check = null; closeVeil();
+      if (right || exhausted) resumeAt(resume);
+      else {
+        // The replay is the correction: the cards go round again and the next
+        // question draws a different cell.
+        const first = doc.blocks[blockIndex].chunks[0];
+        S.lastCheckToken = doc.chunks[first].tokenStart;
+        seekToken(doc.chunks[first].tokenStart);
+        setPlaying(true);
+      }
+    });
+  }
+}
+
+function armCloze(cloze, resume) {
+  stopAudio(); S.playing = false; $("play").textContent = "Play";
+  S.check = { kind: "cloze", cloze, resume };
+  hidePresence();
+
+  $("sheet").innerHTML =
+    '<p class="kicker">Spot check</p>' +
+    '<h3>Fill the blanks from what you just heard.</h3>' +
+    '<div id="lines" style="display:flex;flex-direction:column;gap:16px"></div>' +
+    '<div class="actions"><button class="btn btn-play" id="mark">Mark it</button>' +
+    '<span class="hint" id="markHint">Every blank needs an answer \u2014 guess rather than skip</span></div>';
+  $("veil").classList.add("show");
+
+  const lines = $("lines");
+  cloze.blanks.forEach((blank, i) => {
+    const at = blank.carrier.indexOf(BLANK);
+    const div = document.createElement("div");
+    const p = document.createElement("p");
+    p.className = "cloze-line";
+    p.appendChild(document.createTextNode(blank.carrier.slice(0, at)));
+    const input = document.createElement("input");
+    input.type = "text"; input.spellcheck = false;
+    input.setAttribute("aria-label", "Blank " + (i + 1) + " of " + cloze.blanks.length);
+    p.appendChild(input);
+    p.appendChild(document.createTextNode(blank.carrier.slice(at + BLANK.length)));
+    div.appendChild(p);
+    const v = document.createElement("p");
+    v.className = "verdict";
+    div.appendChild(v);
+    lines.appendChild(div);
+    blank._input = input; blank._verdict = v;
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); mark(); } });
+  });
+  cloze.blanks[0]._input.focus();
+  $("mark").addEventListener("click", mark);
+
+  let marked = false;
+  function mark() {
+    if (marked) return;
+    if (!cloze.blanks.every((b) => b._input.value.trim())) { $("markHint").style.color = "var(--alert)"; return; }
+    marked = true;
+    let got = 0;
+    cloze.blanks.forEach((b) => {
+      const right = answerMatches(b._input.value, b.answer, b.acronym);
+      if (right) got++;
+      b._input.disabled = true;
+      b._input.classList.add(right ? "right" : "wrong");
+      b._verdict.className = "verdict " + (right ? "right" : "wrong");
+      b._verdict.textContent = right ? "Correct." : "It was \u201c" + b.answer + "\u201d.";
+      record("cloze:" + b.answer.toLowerCase(), right);
+    });
+    $("mark").textContent = "Resume";
+    $("markHint").style.color = "";
+    $("markHint").textContent = got + " of " + cloze.blanks.length + " recalled" +
+      (got < cloze.blanks.length ? " \u00b7 the misses are queued" : "");
+    $("mark").onclick = () => { S.check = null; closeVeil(); resumeAt(resume); };
+  }
+}
+
+function resumeAt(chunkIndex) {
+  S.lastCheckToken = doc.chunks[chunkIndex].tokenStart;
+  seekToken(doc.chunks[chunkIndex].tokenStart);
+  setPlaying(true);
+}
+
+/* =========================================================================
+   Presence check. The cue is peripheral; the consequence is not.
+   ========================================================================= */
+function hidePresence() { $("pill").classList.remove("show"); $("lapse").classList.remove("show"); }
+
+function notePresence() {
+  if (S.presence === "waiting") S.answered += 1;
+  S.presence = "quiet"; S.lastPresenceAt = Date.now(); hidePresence();
+}
+
+function raisePresence() {
+  if (S.presence !== "quiet" || S.check || S.intercept) return;
+  S.presence = "waiting"; S.raisedAt = Date.now();
+  $("pill").classList.add("show");
+}
+
+function lapse() {
+  S.presence = "lapsed"; S.missed += 1;
+  $("pill").classList.remove("show");
+  $("lapse").classList.add("show");
+  stopAudio(); S.playing = false; $("play").textContent = "Play";
+}
+
+let due = Date.now() + PRESENCE_BASE + Math.random() * PRESENCE_JITTER;
+setInterval(() => {
+  if (S.check || S.intercept) return;
+  const now = Date.now();
+  if (S.presence === "waiting") {
+    if (now - S.raisedAt > PRESENCE_GRACE) lapse();
+    return;
+  }
+  if (S.presence === "lapsed" || !S.playing) return;
+  // Anchored to the last proof of presence, so someone typing in the pad is
+  // never interrupted to prove what they are already demonstrating.
+  const anchored = S.lastPresenceAt + PRESENCE_BASE + PRESENCE_JITTER / 2;
+  if (anchored > due) due = anchored;
+  if (now >= due) { raisePresence(); due = now + PRESENCE_BASE + Math.random() * PRESENCE_JITTER; }
+}, 250);
+
+$("parkChip").addEventListener("click", () => {
+  showParked(!$("parkedBox").classList.contains("show"));
+});
+
+$("pill").addEventListener("click", notePresence);
+$("lapseResume").addEventListener("click", () => { S.presence = "quiet"; hidePresence(); setPlaying(true); });
+
+/* =========================================================================
+   Scratchpad
+   ========================================================================= */
+const TAGS = { e: ["entity", "var(--entity)"], m: ["mechanism", "var(--mechanism)"], o: ["output", "var(--output)"] };
+const TRIGGER = /(^|\s)\/(e|m|o|p)$/i;
+/* The fourth trigger, and the only one that is not a tag. A parked thought is
+   stored and is nowhere: not in the list, the graph, the counts or the chain.
+   The point is that it is outside the argument being built. */
+const PARK = "p";
+
+function park(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  S.parked.push({ text: trimmed, section: doc.tokens[S.token].section });
+  const li = document.createElement("li");
+  li.textContent = trimmed + "  \u00b7  " + doc.sections[doc.tokens[S.token].section].title;
+  $("parkedList").appendChild(li);
+  $("cp").textContent = S.parked.length;
+  $("parkChip").hidden = false;
+}
+
+function showParked(on) {
+  $("parkedBox").classList.toggle("show", on);
+  $("parkChip").setAttribute("aria-pressed", String(on));
+}
+
+function addNode(text, tag) {
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  S.nodes.push({ text: trimmed, tag, section: doc.tokens[S.token].section });
+  const list = $("nodes");
+  const empty = list.querySelector(".empty");
+  if (empty) empty.remove();
+  const el = document.createElement("div");
+  el.className = "node";
+  el.style.setProperty("--tint", tag ? TAGS[tag][1] : "var(--ink-faint)");
+  el.innerHTML = '<span class="tag">' + (tag ? TAGS[tag][0] : "note") + " \u00b7 " +
+    doc.sections[doc.tokens[S.token].section].title + "</span>";
+  el.appendChild(document.createTextNode(trimmed));
+  list.appendChild(el);
+  list.scrollTop = list.scrollHeight;
+  ["e", "m", "o"].forEach((k) => {
+    $("c" + k).textContent = S.nodes.filter((n) => n.tag === k).length;
+  });
+}
+
+$("draft").addEventListener("input", (e) => {
+  // Typing here is proof of presence in its own right.
+  notePresence();
+  const value = e.target.value;
+  const hit = TRIGGER.exec(value);
+  if (hit) {
+    const body = value.slice(0, value.length - hit[0].length);
+    const key = hit[2].toLowerCase();
+    if (body.trim()) { if (key === PARK) park(body); else addNode(body, key); }
+    e.target.value = "";
+  }
+});
+$("draft").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addNode(e.target.value, null); e.target.value = ""; }
+});
+
+/* =========================================================================
+   Brown noise. White noise integrated with a leak term, so the signal is a
+   bounded random walk rather than a hiss. `last` is captured before the
+   output gain, so the gain never re-enters the feedback path.
+   ========================================================================= */
+let audioCtx = null, noiseNode = null, noiseGain = null;
+function toggleNoise(on) {
+  if (on) {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const rate = audioCtx.sampleRate, buffer = audioCtx.createBuffer(1, rate * 2, rate);
+    const data = buffer.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < data.length; i++) {
+      const white = Math.random() * 2 - 1;
+      last = (last + 0.02 * white) / 1.02;
+      data[i] = last * 3.5;
+    }
+    noiseNode = audioCtx.createBufferSource();
+    noiseNode.buffer = buffer; noiseNode.loop = true;
+    noiseGain = audioCtx.createGain();
+    noiseGain.gain.value = 0.0001;
+    noiseNode.connect(noiseGain).connect(audioCtx.destination);
+    noiseNode.start();
+    // Ramped, never assigned: a step change in gain is audible as a click.
+    noiseGain.gain.exponentialRampToValueAtTime(0.16, audioCtx.currentTime + 0.35);
+  } else if (noiseNode) {
+    const node = noiseNode, gain = noiseGain;
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+    setTimeout(() => { try { node.stop(); } catch {} }, 400);
+    noiseNode = null;
+  }
+}
+
+/* =========================================================================
+   Controls
+   ========================================================================= */
+$("play").addEventListener("click", () => { notePresence(); setPlaying(!S.playing); });
+$("prev").addEventListener("click", () => stepSentence(-1));
+$("next").addEventListener("click", () => stepSentence(1));
+
+document.querySelectorAll("[data-view]").forEach((b) => {
+  b.addEventListener("click", () => {
+    S.view = b.dataset.view;
+    document.querySelectorAll("[data-view]").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+    $("rsvp").classList.toggle("show", S.view === "rsvp");
+    $("rsvp").setAttribute("aria-hidden", String(S.view !== "rsvp"));
+    doc.tokens.forEach((t, i) => {
+      const s = wordSpans[i];
+      if (s && s.classList && s.classList.contains("w")) paintWord(s, t);
+    });
+    paintPosition();
+  });
+});
+
+document.querySelectorAll("[data-anchor]").forEach((b) => {
+  b.addEventListener("click", () => {
+    const key = b.dataset.anchor;
+    S.anchors[key] = !S.anchors[key];
+    b.setAttribute("aria-pressed", String(S.anchors[key]));
+    if (key === "noise") { toggleNoise(S.anchors.noise); return; }
+    $("paper").classList.toggle("no-caret", !S.anchors.caret);
+    $("paper").classList.toggle("pulse", S.anchors.pulse);
+    $("paper").classList.toggle("spot", S.anchors.spot);
+    if (key === "badges") {
+      doc.tokens.forEach((t, i) => {
+        const s = wordSpans[i];
+        if (s && s.classList && s.classList.contains("w")) paintWord(s, t);
+      });
+      paintPosition();
+    }
+  });
+});
+
+// Trigger rail: fire any mechanism directly, so a short visit sees all four.
+document.querySelectorAll("[data-fire]").forEach((b) => {
+  b.addEventListener("click", () => {
+    const what = b.dataset.fire;
+    if (what === "presence") {
+      if (!S.playing) setPlaying(true);
+      S.presence = "quiet";
+      setTimeout(raisePresence, 120);
+      return;
+    }
+    if (what === "intercept") {
+      const sec = doc.sections[1];
+      delete S.summaries[1];
+      seekToken(sec.tokenEnd - 1);
+      armIntercept(1, doc.tokens[sec.tokenEnd - 1].chunk + 1);
+      return;
+    }
+    if (what === "grid") {
+      const block = doc.blocks.find((x) => x.kind === "table");
+      S.gridsPassed[block.i] = false; S.gridAttempts[block.i] = 0;
+      const lastChunk = block.chunks[block.chunks.length - 1];
+      seekToken(doc.chunks[lastChunk].tokenStart);
+      armGrid(block.i, lastChunk + 1);
+      return;
+    }
+    if (what === "cloze") {
+      // Draw from the acronym-dense section so the check is representative.
+      const sec = doc.sections.find((s) => s.title.startsWith("Vendor"));
+      const cloze = buildCloze(sec.tokenStart, sec.tokenEnd) || buildCloze(0, doc.tokens.length);
+      if (!cloze) return;
+      seekToken(cloze.blanks[cloze.blanks.length - 1].at);
+      armCloze(cloze, doc.tokens[cloze.blanks[cloze.blanks.length - 1].at].chunk + 1);
+    }
+  });
+});
+
+window.addEventListener("keydown", (e) => {
+  if (S.check || S.intercept) return;
+  const t = e.target;
+  if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT")) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+  if (e.code === "KeyV") {
+    e.preventDefault();
+    if (S.presence === "waiting") notePresence();
+    else if (S.presence === "lapsed") { S.presence = "quiet"; hidePresence(); setPlaying(true); }
+    return;
+  }
+  if (e.code === "Space") { e.preventDefault(); notePresence(); setPlaying(!S.playing); }
+  else if (e.code === "ArrowRight") { e.preventDefault(); stepSentence(1); }
+  else if (e.code === "ArrowLeft") { e.preventDefault(); stepSentence(-1); }
+  else if (e.code === "ArrowUp") { e.preventDefault(); S.rate = Math.min(3, Math.round((S.rate + 0.1) * 10) / 10); $("rate").textContent = S.rate.toFixed(1); if (S.playing) seekToken(S.token); }
+  else if (e.code === "ArrowDown") { e.preventDefault(); S.rate = Math.max(1, Math.round((S.rate - 0.1) * 10) / 10); $("rate").textContent = S.rate.toFixed(1); if (S.playing) seekToken(S.token); }
+  else if (e.code === "Escape") { e.preventDefault(); setPlaying(false); }
+});
+
+/* ---- Boot --------------------------------------------------------------- */
+buildFlow();
+$("total").textContent = doc.tokens.length;
+$("rate").textContent = S.rate.toFixed(1);
+paintQueue();
+paintPosition();
+
+if (!synth) {
+  const note = document.createElement("p");
+  note.className = "hint";
+  note.style.cssText = "padding:8px 14px;border-top:1px solid var(--console-line);color:var(--alert)";
+  note.textContent = "This browser exposes no speech synthesis. The caret still paces the text on an estimator.";
+  document.querySelector(".console").appendChild(note);
+}
+</script>

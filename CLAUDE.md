@@ -61,12 +61,27 @@ the scratchpad and all four checks, with a trigger rail so a visitor can fire an
 mechanism directly instead of waiting for it. Intervals are deliberately
 accelerated and the page says so.
 
-**The source file does not survive the session.** It was written to a
-session-scoped scratchpad, not to the repo, so a later session has no copy of it.
-To change the demo, fetch the published page to recover its HTML, edit that, and
-republish passing the existing **URL** — publishing a new file path without the
-URL creates a second artifact instead of updating this one. If the demo is worth
-keeping, the honest fix is to commit it here.
+**The source now lives at `demo/index.html`.** It did not for the first six
+rounds — it was written to a session-scoped scratchpad, so every change meant
+fetching the published page back and rebuilding from it. That is committed now
+and the recovery dance is over: edit `demo/index.html`, then publish it passing
+the existing **URL**. Publishing a file path *without* the URL creates a second
+artifact instead of updating this one.
+
+**Favicon: 📖.** Recorded because it is not recoverable. The publish call
+requires one and neither `action: "list"` nor `action: "read"` returns the
+current value, so a redeploy that does not know it silently changes the icon the
+reader finds their tab by. This one was chosen in the seventh round and may not
+be what the first six used.
+
+**Republishing takes three calls, not one.** The first publish is refused with
+"you hadn't viewed the live version"; a `read` saves the full HTML to a file and
+*every line* of that file has to be Read — including line 1, the injected
+frame-runtime wrapper, which is ~9KB of minified JavaScript on a single line and
+easy to skip. The second publish is then refused as "identical content resent
+unchanged" unless the URL is fetched once more. Re-fetch, then publish. The
+authored page is lines 2 to the closing `</body></html>`; line 1 is never part
+of what is published.
 
 Four things it cost to learn, all of which will bite again:
 
@@ -82,10 +97,21 @@ Four things it cost to learn, all of which will bite again:
   (opacity 0 → 1) stays frozen there too. This looks exactly like a broken
   artifact. `/code/frame/<uuid>` renders the same content standalone and does
   paint, which is how to check it.
-- **Keep the demo's logic in step with `src/lib/quiz.ts` by hand.** It is a
-  parallel implementation, so the one-blank-per-sentence fix had to be applied
-  twice. Anything fixed in the real check builders should be mirrored, or the
-  demo will start demonstrating behaviour the app no longer has.
+- **Keep the demo's logic in step with `src/lib/quiz.ts` and `parse.ts` by
+  hand.** It is a parallel implementation, so the one-blank-per-sentence fix had
+  to be applied twice, and so did the seventh round's two check-builder changes:
+  the cross-reference guard in `buildCloze`, and a grid speaking its cells
+  without expanding acronyms. Anything fixed in the real check builders should be
+  mirrored, or the demo will start demonstrating behaviour the app no longer has.
+  **Mirror it so it is demonstrable, not just present** — the cross-reference
+  guard needed a sentence added to the demo's own text before it did anything,
+  and both were then proved load-bearing by disabling them and re-running
+  (6 of 12 grid chunks diverge without the first; "4.2" is blanked out of
+  "Section ____ defines the review cycle" without the second).
+- **The demo must be pure ASCII, and drifts.** The wrapper owns `<head>`, so the
+  page cannot declare a charset. Two em-dashes had got into JavaScript comments
+  in an earlier round — invisible there, and a trap the moment that text moves
+  into markup. Check with a byte scan before publishing, not by eye.
 
 ## Environment traps
 
