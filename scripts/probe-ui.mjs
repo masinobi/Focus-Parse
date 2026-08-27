@@ -845,7 +845,7 @@ check(
 );
 check(
   "the decoys were refused",
-  !cites.rows.some((r) => /^(Section|Table|Figure|Chapter)/.test(r)),
+  !cites.rows.some((r) => /^(Section|Table|Figure|Chapter)\b/.test(r)),
   cites.rows.find((r) => /^(Section|Table|Figure|Chapter)/.test(r)) ?? "none admitted"
 );
 
