@@ -214,6 +214,11 @@ const byKind = { acronym: 0, numeric: 0, capitalized: 0 };
 /** Parsed prose, kept so the adaptive pass can re-walk the same windows. */
 /** Reading-cadence blanks that ask for a cross-reference. */
 let structural = 0;
+/** Grid chunks the ear hears differently from what the eye is shown. */
+let gridDivergent = 0;
+let gridChunks = 0;
+/** Prose chunks where an acronym still expands, which must stay non-zero. */
+let proseExpanded = 0;
 
 const prose = [];
 
@@ -232,6 +237,46 @@ for (const file of files.filter((f) => /\.(pdf|md)$/i.test(f))) {
   if (!source.trim()) continue;
   const doc = parseDocument(source, file);
   prose.push({ file, doc });
+
+  // A grid card shows one cell alone in the largest type in the app, and the
+  // question that follows draws its answer from that same raw cell. If the
+  // utterance differs, the reader studies one string and is tested on another.
+  //
+  // The control is the line below it: prose *must* still diverge, because
+  // expanding an acronym for the ear inside a sentence is the point of
+  // invariant 1. A change that silenced expansion everywhere would satisfy the
+  // must-be-zero and break the app.
+  for (const chunk of doc.chunks) {
+    const kind = doc.blocks[chunk.block]?.kind;
+    // Expansion is the thing being counted, not any difference at all.
+    //
+    // `speech` also differs from `text` wherever an evidence grade was stripped
+    // or a doubled terminator collapsed, and those have nothing to do with
+    // acronyms. Counting every difference made the control useless: killing
+    // expansion everywhere still left 373 prose chunks "expanded", so the
+    // must-be-non-zero line stayed green through exactly the change it exists
+    // to catch. An expansion is the only thing here that makes the utterance
+    // *longer*, and it only happens where a token carries an acronym.
+    const carriesAcronym = doc.tokens
+      .slice(chunk.tokenStart, chunk.tokenEnd)
+      .some((t) => t.acronym);
+    const expanded = carriesAcronym && chunk.speech.length > chunk.text.length;
+
+    if (kind === "table") {
+      gridChunks += 1;
+      if (expanded) {
+        gridDivergent += 1;
+        if (verbose && gridDivergent <= 5) {
+          console.log(
+            `      ! grid says ${JSON.stringify(chunk.speech.slice(0, 46))}` +
+              ` for ${JSON.stringify(chunk.text.slice(0, 46))}`
+          );
+        }
+      }
+    } else if (expanded) {
+      proseExpanded += 1;
+    }
+  }
 
   let fileChecks = 0;
   for (let from = 0; from + CLOZE_INTERVAL_TOKENS <= doc.tokens.length; from += CLOZE_INTERVAL_TOKENS) {
@@ -387,6 +432,22 @@ console.log(
 );
 console.log(`  blanks per check: ${checks ? (blanksTotal / checks).toFixed(2) : "—"}`);
 console.log(`  blanks asking for a cross-reference: ${structural}   (must be 0)`);
+console.log(
+  `  grid cells the ear hears differently from the eye: ${gridDivergent}` +
+    ` of ${gridChunks}   (must be 0)`
+);
+console.log(
+  `  prose chunks where an acronym still expands: ${proseExpanded}   (must be > 0)`
+);
+console.log(
+  `
+  The last two lines are one check read in both directions. A grid cell must be
+  spoken exactly as it is shown, because the question that follows draws its
+  answer from that same raw cell. Prose must keep expanding, because hearing
+  "electronic case report form" inside a sentence is what invariant 1 is for.
+  A change that silenced expansion everywhere would satisfy the first line and
+  break the app, which is what the second one is there to notice.`
+);
 console.log(
   `  by kind — acronym ${byKind.acronym}, numeric ${byKind.numeric}, capitalized ${byKind.capitalized}`
 );

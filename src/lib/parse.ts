@@ -23,7 +23,7 @@ const MAX_CHUNK_CHARS = 180;
  * checkpoints of a larger one — both are on `Section`, and stored documents
  * have to be rebuilt to gain them.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /**
  * Sections shorter than this do not arm a cognitive intercept. Stopping a
@@ -117,12 +117,39 @@ const EVIDENCE_GRADE = /\[[IVXLCDM]{1,6}\]/g;
  * anchored pattern silently misses it.
  */
 function speechFor(token: string): string {
-  const stripped = token
-    .replace(EVIDENCE_GRADE, "")
-    // "patient.[III]." would otherwise leave a doubled terminator.
-    .replace(/([.,;:])\1+$/, "$1");
-
+  const stripped = gradeless(token);
   return stripped ? spokenForm(stripped) : "";
+}
+
+/** Everything `speechFor` does except expanding the acronym. */
+function gradeless(token: string): string {
+  return (
+    token
+      .replace(EVIDENCE_GRADE, "")
+      // "patient.[III]." would otherwise leave a doubled terminator.
+      .replace(/([.,;:])\1+$/, "$1")
+  );
+}
+
+/**
+ * What a grid cell is given to the synthesizer.
+ *
+ * Prose expands an acronym for the ear on purpose — hearing "electronic case
+ * report form" inside a sentence is the whole reason invariant 1 exists. A grid
+ * card is not a sentence. It shows one cell, alone, in the largest type in the
+ * app, and says a different string than the one on screen: the eye reads `CRF`
+ * while the ear hears "case report form".
+ *
+ * The argument that settles it is not comfort, it is the check that follows.
+ * `buildGridQuestion` draws its answer from the raw cell value, so the reader
+ * studies "case report form" and is then asked to pick `CRF` out of four
+ * options. The study channel and the test channel disagreed.
+ *
+ * The evidence-grade stripping stays — that is about not reading `[III]` aloud
+ * and has nothing to do with acronyms.
+ */
+function gridSpeechFor(token: string): string {
+  return gradeless(token);
 }
 
 /** Traditional reference symbols fused to a word: `Smith†`, `method‡`. */
@@ -627,7 +654,11 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
 
         for (const m of Array.from(piece.matchAll(/\S+/g))) {
           const raw = m[0];
-          const spoken = sqlBlock ? sqlSpeechFor(raw) : speechFor(raw);
+          const spoken = sqlBlock
+            ? sqlSpeechFor(raw)
+            : p.kind === "table"
+              ? gridSpeechFor(raw)
+              : speechFor(raw);
 
           // A silent token contributes no separator either, so it leaves no gap
           // in the utterance. Its offset then coincides with the next token's,
@@ -649,6 +680,11 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
             // Acronym badges are suppressed inside SQL. `SET`, `ID` and `CRO`
             // are column names here, not the terms the dictionary means, and a
             // badge that expands one is worse than no badge.
+            //
+            // A grid keeps its tag. Only the *speech* stops expanding there:
+            // the tag is what feeds the corpus index, the acronym drill and
+            // cloze weighting, and dropping it would quietly remove every grid
+            // cell from all three.
             acronym: sqlBlock ? undefined : matchAcronym(raw)?.key,
           });
 
