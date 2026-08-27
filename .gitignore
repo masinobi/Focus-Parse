@@ -22,3 +22,5 @@ Thumbs.db
 
 # probe artifacts
 scripts/.probe-*.png
+# scratch measurement scripts, named so they never ship
+scripts/.*.mjs
