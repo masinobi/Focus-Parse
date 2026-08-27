@@ -8,6 +8,7 @@ import {
   type ImportSummary,
 } from "./backup";
 import type { CoverageUnit } from "./blueprint-coverage";
+import { citationsInDocument, type CitationSite } from "./citations";
 import { buildCoverage } from "./coverage";
 import { horizonDays, loadDeadline } from "./deadline";
 import { buildEntityIndex, ENTITY_SCHEMA, type DocEntityIndex } from "./entities";
@@ -456,6 +457,40 @@ export const db = {
       });
     }
     return units;
+  },
+
+  /**
+   * Every regulation this corpus cites, with somewhere to go and read it.
+   *
+   * Same shape and same cost as `blueprintUnits`: one `getAll()` over the
+   * document store, which the home screen already pays for on every load.
+   *
+   * Nothing is cached. The entity index is stored per document because it is
+   * expensive to build and is wanted on every corpus view; this walks the token
+   * array once with a regex and is wanted when a panel opens, so a store, a
+   * schema number and an invalidation rule would all be carrying weight for
+   * nothing.
+   */
+  async citationSites(): Promise<CitationSite[]> {
+    const docs = await safe(
+      tx<ParsedDoc[]>(DOCS, "readonly", (s) => s.getAll() as IDBRequest<ParsedDoc[]>),
+      []
+    );
+
+    const out: CitationSite[] = [];
+    for (const doc of docs) {
+      if (doc.schema !== SCHEMA_VERSION) continue;
+      out.push(
+        ...citationsInDocument({
+          docId: doc.id,
+          docTitle: doc.title,
+          words: doc.tokens.map((t) => t.text),
+          sectionOf: (i) => doc.tokens[i]?.section ?? 0,
+          sectionTitle: (n) => doc.sections[n]?.title ?? "Unsectioned",
+        })
+      );
+    }
+    return out;
   },
 
   /* ---- Backup and restore ---------------------------------------------- */

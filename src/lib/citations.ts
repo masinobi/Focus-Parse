@@ -219,6 +219,10 @@ export function findCitations(text: string): Citation[] {
  * ------------------------------------------------------------------ */
 
 export interface CitationSite {
+  /** Canonical regulation, as `Citation.regulation`. */
+  regulation: string;
+  /** Provision within it, or null. */
+  provision: string | null;
   docId: string;
   docTitle: string;
   /** Section the citation sits in, for the label and for seeking. */
@@ -297,7 +301,7 @@ export function citationsInDocument(source: CitationSource): CitationSite[] {
       text: c.text,
       regulation: c.regulation,
       provision: c.provision,
-    } as CitationSite & { regulation: string; provision: string | null };
+    };
   });
 }
 
@@ -309,13 +313,8 @@ export function citationsInDocument(source: CitationSource): CitationSite[] {
  * text says less than one discussed by four different chapters, which is the
  * disagreement worth reading.
  */
-export function buildCitationIndex(
-  sites: (CitationSite & { regulation: string; provision: string | null })[]
-): RegulationEntry[] {
-  const byRegulation = new Map<
-    string,
-    Map<string, (CitationSite & { provision: string | null })[]>
-  >();
+export function buildCitationIndex(sites: CitationSite[]): RegulationEntry[] {
+  const byRegulation = new Map<string, Map<string, CitationSite[]>>();
 
   for (const site of sites) {
     const provisions = byRegulation.get(site.regulation) ?? new Map();

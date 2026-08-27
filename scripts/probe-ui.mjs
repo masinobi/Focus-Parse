@@ -766,6 +766,103 @@ check(
 
 await page.screenshot({ path: "scripts/.probe-blueprint.png", fullPage: true });
 
+/* ---- The citation index --------------------------------------------- *
+ *
+ * Driven on the real corpus document the probe loaded first, because the claim
+ * is about what a citation recogniser does to actual regulatory prose. The
+ * fixture-sized version of this check would pass on a recogniser that matched
+ * every number in the document.
+ */
+console.log(`
+=== citation index ===`);
+
+// A second document that cites the same rule, so "discussed by more than one
+// document" is a claim this can actually test. The probe's library otherwise
+// holds one real PDF, and the multi-document ranking would be vacuously true.
+//
+// It also carries two decoys: a bare section number and a table reference,
+// which are exactly what a generous pattern turns into regulations.
+const CITE_FIXTURE = `# Records and signatures
+
+Electronic records must satisfy 21 CFR Part 11 section 11.10, and the audit
+trail requirements in Part 11 section 11.10(e) apply to every change.
+
+# Governance
+
+Sponsor oversight follows ICH E6(R2), Chapter 5, and the investigator duties in
+ICH E6(R2), Chapter 4. See section 5.0 of the protocol and Table 1 above for
+the study-specific detail.
+`;
+
+await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+await page.waitForTimeout(1500);
+await page.setInputFiles('input[type="file"][accept*="pdf"]', {
+  name: "Citation probe.md",
+  mimeType: "text/markdown",
+  buffer: Buffer.from(CITE_FIXTURE, "utf8"),
+});
+await page.getByRole("button", { name: "Play", exact: true }).waitFor({ timeout: 120_000 });
+
+await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+await page.getByRole("button", { name: /Regulations cited/ }).click();
+await page.getByRole("heading", { name: "Regulations cited" }).waitFor({ timeout: 30_000 });
+
+const cites = await page.evaluate(() => {
+  const text = document.body.innerText;
+  const rows = [...document.querySelectorAll("li > button[aria-expanded]")].map(
+    (b) => (b.textContent ?? "").replace(/\s+/g, " ").trim()
+  );
+  return {
+    rows,
+    overflow: Math.max(
+      0,
+      document.documentElement.scrollWidth - document.documentElement.clientWidth
+    ),
+  };
+});
+
+check(
+  "the corpus's regulations are listed",
+  cites.rows.length >= 2,
+  `${cites.rows.length} regulations`
+);
+check(
+  "Part 11 is found, and carries its official title",
+  cites.rows.some(
+    (r) => r.startsWith("21 CFR Part 11") && /Electronic Records/.test(r)
+  ),
+  cites.rows[0]?.slice(0, 60) ?? "no rows"
+);
+check(
+  "ICH E6 keeps the revision it was cited with",
+  cites.rows.some((r) => r.startsWith("ICH E6(R2)")),
+  cites.rows.map((r) => r.split(/\d/)[0]).join(" | ").slice(0, 70)
+);
+check(
+  "a rule two documents argue about is ranked first",
+  /in [2-9]\d* documents/.test(cites.rows[0] ?? ""),
+  cites.rows[0]?.slice(0, 60) ?? "no rows"
+);
+check(
+  "the decoys were refused",
+  !cites.rows.some((r) => /^(Section|Table|Figure|Chapter)/.test(r)),
+  cites.rows.find((r) => /^(Section|Table|Figure|Chapter)/.test(r)) ?? "none admitted"
+);
+
+// Expanding a rule shows its provisions and a way into the text.
+await page.locator("li > button[aria-expanded]").first().click();
+await page.waitForTimeout(300);
+const expanded = await page.evaluate(() => document.body.innerText);
+check(
+  "expanding a rule names the provision it was cited by",
+  /§ 11\.10/.test(expanded),
+  (expanded.match(/§ [\d.]+/g) ?? []).slice(0, 3).join(", ") || "no provisions shown"
+);
+
+check("the citation panel fits its pane", cites.overflow === 0, `${cites.overflow}px`);
+
+await page.screenshot({ path: "scripts/.probe-citations.png", fullPage: true });
+
 /* ---- Report -------------------------------------------------------- */
 
 check("no console errors", consoleErrors.length === 0, consoleErrors[0] ?? "");
@@ -775,7 +872,9 @@ await browser.close();
 console.log(`\n=== probe ===`);
 console.log(`  document: ${sample.f} (${Math.round(sample.size / 1024)}KB)`);
 console.log(`  clock at first question: ${clockAtStart ?? "—"}`);
-console.log(`  screenshots: .probe-graph.png, .probe-exam.png, .probe-sql.png, .probe-blueprint.png (in scripts/)`);
+console.log(
+  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations (.png, in scripts/)`
+);
 console.log(`  failures: ${failures.length}   (must be 0)`);
 if (failures.length) {
   for (const f of failures) console.log(`    - ${f}`);

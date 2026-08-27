@@ -15,7 +15,8 @@
     "scan-headings": "node scripts/scan-headings.mjs",
     "scan-coverage": "node scripts/scan-coverage.mjs",
     "scan-sql": "node scripts/scan-sql.mjs",
-    "scan-blueprint": "node scripts/scan-blueprint.mjs"
+    "scan-blueprint": "node scripts/scan-blueprint.mjs",
+    "scan-citations": "node scripts/scan-citations.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

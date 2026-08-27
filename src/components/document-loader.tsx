@@ -11,6 +11,7 @@ import {
   Loader2,
   Pencil,
   Sparkles,
+  Scale,
   Tags,
   Target,
   Upload,
@@ -20,6 +21,7 @@ import {
 import { AcronymDrill } from "@/components/acronym-drill";
 import { BackupControls } from "@/components/backup-controls";
 import { BlueprintPanel } from "@/components/blueprint-panel";
+import { CitationIndex } from "@/components/citation-index";
 import { CorpusIndex } from "@/components/corpus-index";
 import { ExamHistory } from "@/components/exam-history";
 import { ExamSession } from "@/components/exam-session";
@@ -53,6 +55,7 @@ export function DocumentLoader() {
   const [drilling, setDrilling] = React.useState(false);
   const [reviewingPapers, setReviewingPapers] = React.useState(false);
   const [blueprint, setBlueprint] = React.useState(false);
+  const [citations, setCitations] = React.useState(false);
   /** How many mock papers have been sat, for the history entry. */
   const [papers, setPapers] = React.useState(0);
   const fileRef = React.useRef<HTMLInputElement>(null);
@@ -173,6 +176,10 @@ export function DocumentLoader() {
     return <BlueprintPanel onBack={() => setBlueprint(false)} />;
   }
 
+  if (citations) {
+    return <CitationIndex onBack={() => setCitations(false)} />;
+  }
+
   if (reviewingPapers) {
     return <ExamHistory onBack={() => setReviewingPapers(false)} />;
   }
@@ -281,6 +288,28 @@ export function DocumentLoader() {
               <span className="block text-xs text-muted-foreground">
                 Acronyms, terms in context and table cells, drawn across
                 everything and marked at the end.
+              </span>
+            </span>
+          </button>
+        )}
+
+        {/* The corpus index is keyed by term, and a citation is not a term.
+            `21 CFR Part 11 section 11.10` is a provision, and the question
+            builders throw provisions away on purpose -- so until this, the
+            thing these documents argue about most was the one thing nothing
+            could show. */}
+        {recent.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setCitations(true)}
+            className="mb-6 flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors hover:bg-accent/60"
+          >
+            <Scale className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 text-sm">
+              <span className="font-medium">Regulations cited</span>
+              <span className="block text-xs text-muted-foreground">
+                Every rule your documents cite, and which of them argue about
+                the same provision.
               </span>
             </span>
           </button>
