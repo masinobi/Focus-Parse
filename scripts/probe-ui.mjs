@@ -138,7 +138,12 @@ async function loadDocument() {
    * "hydrated" on this page — it renders the same before and after — so the
    * honest fix is to set the file and check whether the app reacted.
    */
-  const playing = page.getByRole("button", { name: "Play" });
+  // `exact` matters more than it looks. Without it the accessible-name match is
+  // a substring one, every word of the document is a `role="button"` span for
+  // seek-on-click, and any document containing "display" resolves this to nine
+  // elements and throws on strict mode. It went unnoticed until the corpus
+  // grew and the smallest PDF changed to one that says "display" seven times.
+  const playing = page.getByRole("button", { name: "Play", exact: true });
   const working = page.getByText(/Opening PDF|Extracting text|Reading /);
   const input = 'input[type="file"][accept*="pdf"]';
 
@@ -277,7 +282,21 @@ for (let i = 0; i < 25; i++) {
   await page.waitForTimeout(80);
 }
 
-check("every question was presented", answered === 20, `answered ${answered}`);
+// The paper's own denominator, not a number written down here. This used to
+// assert exactly 20, which was the yield of whichever PDF happened to be the
+// smallest in the corpus — so growing the corpus by one document broke a probe
+// that was testing nothing about the app. What is actually worth asserting is
+// that every question the exam built was put to the reader, and that the queue
+// received one item for each: both survive a corpus of any size.
+const paperTotal = Number(
+  (await page.evaluate(() => (document.body.innerText.match(/\d+ of (\d+) — \d+%/) ?? [])[1])) ?? 0
+);
+check("the paper had questions to ask", paperTotal > 0, `${paperTotal} questions`);
+check(
+  "every question was presented",
+  answered === paperTotal,
+  `answered ${answered} of ${paperTotal}`
+);
 
 const marked = await page.getByRole("button", { name: "Back to documents" }).isVisible();
 check("paper was marked", marked);
@@ -310,7 +329,11 @@ const reviews = await page.evaluate(
       req.onerror = () => resolve(-1);
     })
 );
-check("the queue actually received them", reviews === 20, `${reviews} items`);
+check(
+  "the queue actually received them",
+  reviews === paperTotal,
+  `${reviews} items for ${paperTotal} questions`
+);
 
 await page.screenshot({ path: "scripts/.probe-exam.png", fullPage: true });
 
@@ -344,7 +367,7 @@ await page.setInputFiles('input[type="file"][accept*="pdf"]', {
   mimeType: "text/plain",
   buffer: Buffer.from(SQL_FIXTURE, "utf8"),
 });
-await page.getByRole("button", { name: "Play" }).waitFor({ timeout: 120_000 });
+await page.getByRole("button", { name: "Play", exact: true }).waitFor({ timeout: 120_000 });
 
 const spans = page.locator("[data-sql-step]");
 check("the query rendered as steps", (await spans.count()) === 5, `${await spans.count()} clauses`);
@@ -389,7 +412,7 @@ await page.waitForTimeout(400);
 const seeded = await stepState();
 check("the first step is the row source", /^FROM/.test(seeded?.text ?? ""), seeded?.text ?? "");
 
-await page.getByRole("button", { name: "Play" }).click();
+await page.getByRole("button", { name: "Play", exact: true }).click();
 const walk = [];
 for (let i = 0; i < 240; i++) {
   await page.waitForTimeout(250);
@@ -431,6 +454,182 @@ check("no clause is clipped out of view", clipped.steps === 0, `${clipped.steps}
 
 await page.screenshot({ path: "scripts/.probe-sql.png" });
 
+/* ---- Blueprint coverage --------------------------------------------- *
+ *
+ * The fourth path. Everything else this probe drives reports on the corpus;
+ * this panel reports on what the corpus is *missing*, which means the claim
+ * that has to survive a real browser is a negative one — a chapter named by the
+ * exam that nothing in the library matches.
+ *
+ * The fixture is built to spring the trap the matcher exists to avoid. It
+ * carries a heading called "Assuring Data Quality", which is a real GCDMP
+ * chapter that is *not* on the blueprint and is one word from "Measuring Data
+ * Quality", which is. If any similarity scoring ever creeps into the matcher,
+ * "Measuring Data Quality" quietly stops being reported as absent and this goes
+ * red. A DOM check that only confirmed the panel rendered would not.
+ */
+console.log(`
+=== blueprint coverage ===`);
+
+const BLUEPRINT_FIXTURE = `# Data Privacy
+
+Data privacy must be maintained to protect the confidentiality of personal
+data of study participants throughout the conduct of the trial.
+
+# Edit Check Design Principles
+
+Edit checks should be specified before programming begins, and each check
+should state the discrepancy it raises and the action expected of the site.
+
+# Assuring Data Quality
+
+Quality assurance is the planned and systematic set of activities that
+establish confidence that the trial is conducted to good clinical practice.
+
+# Electronic Data Capture-Study Implementation and Start-up
+
+Study start-up in an electronic data capture study covers system
+configuration, user acceptance testing, site training and go-live.
+`;
+
+await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+await page.waitForTimeout(2000);
+await page.setInputFiles('input[type="file"][accept*="pdf"]', {
+  name: "Blueprint probe.md",
+  mimeType: "text/markdown",
+  buffer: Buffer.from(BLUEPRINT_FIXTURE, "utf8"),
+});
+await page.getByRole("button", { name: "Play", exact: true }).waitFor({ timeout: 120_000 });
+
+// Back to the library, then into the panel.
+await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+await page.getByRole("button", { name: /Blueprint coverage/ }).click();
+await page.getByRole("heading", { name: "Blueprint coverage" }).waitFor({ timeout: 30_000 });
+await page.getByText(/chapters? (is|are) named by the exam/).waitFor({ timeout: 30_000 });
+
+const bp = await page.evaluate(() => {
+  const text = (el) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+  const missing = [...document.querySelectorAll("section")].find((s) =>
+    /named by the\s+exam and not in your library/.test(text(s))
+  );
+  const rows = [...document.querySelectorAll("li")].map(text);
+  const missingItems = missing
+    ? [...missing.querySelectorAll("li")].map(text)
+    : [];
+  const sections = [...document.querySelectorAll("section")];
+  return {
+    // Every chapter the blueprint names has a row in the full list.
+    listed: (text(document.body).match(/Every chapter the blueprint names \((\d+)\)/) ?? [])[1],
+    missingItems,
+    // The absent block must come before the per-domain block, and must not be
+    // painted in the same language as an unread chapter.
+    missingIsFirst: missing ? sections.indexOf(missing) === 0 : false,
+    missingIsDestructive: missing
+      ? missing.className.includes("destructive")
+      : false,
+    rowCount: rows.length,
+    body: text(document.body),
+    overflow: Math.max(
+      0,
+      document.documentElement.scrollWidth - document.documentElement.clientWidth
+    ),
+  };
+});
+
+const missingText = bp.missingItems.join(" | ");
+
+check(
+  "every blueprint chapter is listed",
+  bp.listed === "18",
+  `listed ${bp.listed ?? "none"}`
+);
+check(
+  "a chapter the library has is not called missing",
+  !/Data Privacy/.test(missingText) && !/Edit Check Design Principles/.test(missingText),
+  missingText.slice(0, 90)
+);
+check(
+  "a chapter the library lacks is called missing",
+  /Reports and Metrics/.test(missingText),
+  missingText.slice(0, 90)
+);
+// The trap, and the reason the fixture says "Assuring Data Quality".
+//
+// The first version of this asserted that "Measuring Data Quality" appeared in
+// the full chapter list, which it always does — the list renders all eighteen
+// whatever their state — so it stayed green with fuzzy matching deliberately
+// switched on. What has to be true is that the chapter is still reported
+// *absent*: the fixture supplies its one-word neighbour and nothing else, so
+// the moment anything scores similarity it drops out of the missing block.
+check(
+  "the nearest neighbour did not silently satisfy a chapter",
+  /Measuring Data Quality/.test(missingText),
+  "Measuring Data Quality is no longer reported missing"
+);
+check(
+  "a resemblance is offered without being counted",
+  /which covers related ground under a different name/.test(missingText),
+  "no resemblance note rendered"
+);
+check(
+  "the gap is stated before the progress",
+  bp.missingIsFirst,
+  "the missing block is not the first section"
+);
+check(
+  "a missing chapter is not painted like an unread one",
+  bp.missingIsDestructive,
+  "the missing block reuses ordinary styling"
+);
+check("the panel fits its pane", bp.overflow === 0, `${bp.overflow}px of overflow`);
+// The same lesson as the clipped JOINs, on a third component: nothing in the
+// DOM says a human cannot read this. The first version of the "has minimum
+// standards" badge used `text-destructive`, which in dark mode is the token
+// `0 62.8% 30.6%` — a dark red meant to sit *behind* text. It rendered, it was
+// in the tree, every structural check passed, and it was invisible.
+const contrast = await page.evaluate(() => {
+  const parse = (c) => (c.match(/[\d.]+/g) ?? []).map(Number);
+  const over = (fg, bg) => {
+    const a = fg[3] ?? 1;
+    return [0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a));
+  };
+  const lum = (rgb) => {
+    const [r, g, b] = rgb.map((v) => {
+      const x = v / 255;
+      return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+
+  const badge = [...document.querySelectorAll("span")].find(
+    (el) => el.textContent?.trim() === "has minimum standards"
+  );
+  if (!badge) return { found: false };
+
+  // Flatten every translucent layer between the badge and an opaque ancestor.
+  const layers = [];
+  for (let el = badge; el; el = el.parentElement) {
+    const bg = parse(getComputedStyle(el).backgroundColor);
+    if (bg.length && (bg[3] ?? 1) > 0) layers.push(bg);
+    if ((bg[3] ?? 1) === 1) break;
+  }
+  let ground = layers.pop() ?? [0, 0, 0];
+  while (layers.length) ground = over(layers.pop(), ground);
+
+  const fg = over(parse(getComputedStyle(badge).color), ground);
+  const [a, b] = [lum(fg), lum(ground)].sort((x, y) => y - x);
+  return { found: true, ratio: (a + 0.05) / (b + 0.05) };
+});
+
+check(
+  "the standards badge is legible against what is behind it",
+  contrast.found && contrast.ratio >= 4.5,
+  contrast.found ? `contrast ${contrast.ratio.toFixed(2)}:1` : "badge not rendered"
+);
+
+
+await page.screenshot({ path: "scripts/.probe-blueprint.png", fullPage: true });
+
 /* ---- Report -------------------------------------------------------- */
 
 check("no console errors", consoleErrors.length === 0, consoleErrors[0] ?? "");
@@ -440,7 +639,7 @@ await browser.close();
 console.log(`\n=== probe ===`);
 console.log(`  document: ${sample.f} (${Math.round(sample.size / 1024)}KB)`);
 console.log(`  clock at first question: ${clockAtStart ?? "—"}`);
-console.log(`  screenshots: scripts/.probe-graph.png, scripts/.probe-exam.png, scripts/.probe-sql.png`);
+console.log(`  screenshots: .probe-graph.png, .probe-exam.png, .probe-sql.png, .probe-blueprint.png (in scripts/)`);
 console.log(`  failures: ${failures.length}   (must be 0)`);
 if (failures.length) {
   for (const f of failures) console.log(`    - ${f}`);

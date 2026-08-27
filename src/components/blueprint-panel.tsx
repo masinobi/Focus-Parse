@@ -154,7 +154,11 @@ function Missing({ report }: { report: BlueprintCoverage }) {
           <li key={c.chapter} className="text-sm">
             <span className="font-medium">{c.chapter}</span>
             {c.standards && (
-              <span className="ml-2 rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-destructive">
+              // `text-destructive` is unreadable here. In dark mode the token is
+              // `0 62.8% 30.6%` — a dark red meant to sit *behind* text, and at
+              // 10px on a tinted panel it disappears. The red stays as the tint
+              // and the border; the words are foreground.
+              <span className="ml-2 rounded border border-destructive/50 bg-destructive/25 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-foreground/90">
                 has minimum standards
               </span>
             )}
@@ -228,7 +232,10 @@ function Domains({ report }: { report: BlueprintCoverage }) {
             <p className="mt-2 text-xs text-muted-foreground">
               {d.verified} verified
               {d.absent > 0 && (
-                <span className="text-destructive"> · {d.absent} missing</span>
+                <span className="font-medium text-foreground/80">
+                  {" "}
+                  · {d.absent} missing
+                </span>
               )}
             </p>
           </div>
