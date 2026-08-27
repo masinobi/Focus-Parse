@@ -120,7 +120,7 @@ function speechFor(token: string): string {
   const stripped = token
     .replace(EVIDENCE_GRADE, "")
     // "patient.[III]." would otherwise leave a doubled terminator.
-    .replace(/([.,;:])+$/, "$1");
+    .replace(/([.,;:])\1+$/, "$1");
 
   return stripped ? spokenForm(stripped) : "";
 }

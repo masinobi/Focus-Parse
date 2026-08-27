@@ -143,7 +143,7 @@ const MAX_JOINED_HEADING_WORDS = 18;
 const OUTLINE_MARKER = /^(\(?[a-z]\)|\(?[ivxlcdm]{1,5}\)|\d{1,2}(\.\d{1,2}){0,3}\.?)\s+\S/i;
 
 /** Citations, affiliations and contact lines masquerading as headings. */
-const FRONT_MATTER = /@|https?:|doi\.org|et al\.|,\s*[A-Z]{2}$|^\*/;
+const FRONT_MATTER = /@|https?:|doi\.org|\bet al\.|,\s*[A-Z]{2}$|^\*/;
 
 const LIST_MARKER = /^([•●▪◦·‣]|[-–—](?=\s))\s*/;
 const NUMBERED = /^(\d{1,3})[.)]\s+/;
