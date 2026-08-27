@@ -37,7 +37,7 @@ change for different reasons:
 | Constant | Where | Now | Bump when |
 |---|---|---|---|
 | `DB_VERSION` | `db.ts` | **4** | An object store or index is added. Every store creation is guarded by `contains`, so a fresh database and an upgraded one take the identical path. Version 4 added `exams`. **A bump silently hangs any other tab already holding the database**: the second tab blocks the upgrade, `open()` neither resolves nor rejects, so `safe()` cannot catch it and every `db.*` call awaits for ever. Cost half an hour of measuring a page that was fine. Close other tabs before verifying a bump. |
-| `SCHEMA_VERSION` | `parse.ts` | **5** | The Token/Chunk/**Section**/**Block** shape changes. A stored document whose `schema` differs is rebuilt from `source` on read — which is how documents already in a reader's browser pick up parser fixes. Version 4 added `Section.furniture` and the pacing-checkpoint metadata; version 5 added `Block.sqlSteps` and `Block.sqlStepOfChunk`. |
+| `SCHEMA_VERSION` | `parse.ts` | **6** | The Token/Chunk/**Section**/**Block** shape changes. A stored document whose `schema` differs is rebuilt from `source` on read — which is how documents already in a reader's browser pick up parser fixes. Version 4 added `Section.furniture` and the pacing-checkpoint metadata; version 5 added `Block.sqlSteps` and `Block.sqlStepOfChunk`; version 6 stopped expanding acronyms inside grid cells, which changes every stored `Token.speechOffset` and `Chunk.speech` in a table block. |
 | `ENTITY_SCHEMA` | `entities.ts` | 1 | Entity extraction rules change. A stale index rebuilds itself rather than reporting yesterday's rules. |
 | `BACKUP_FORMAT` | `backup.ts` | **2** | The backup envelope changes. Import validates per record, so a bump need not invalidate old files. Version 2 added `exams`; a version-1 file simply has no such key and reads as absent rather than malformed. |
 
@@ -411,6 +411,24 @@ the only thing that sees it; TypeScript compiles it, ESLint passes it, and a dif
 shows an empty space. See the working-practice note in "Outstanding" for the
 mechanism that keeps producing them.
 
+**30. A grid is spoken exactly as it is shown; prose is not.** Invariant 1 says
+displayed and spoken text are different strings, and inside a sentence that is
+the point — hearing "electronic case report form" is why acronyms expand. A grid
+card is not a sentence: it shows one cell alone in the largest type in the app.
+The argument that settles it is the check that follows, not comfort.
+`buildGridQuestion` draws its answer from the raw cell value, so with expansion
+on, the reader studied "case report form" and was then asked to pick `CRF` — the
+study channel and the test channel disagreed on 33 of the corpus’s 262 grid
+steps. Only the *speech* changes: the acronym tag stays, because it feeds the
+corpus index, the acronym drill and cloze weighting.
+
+**31. Every rung of the ladder refuses the same unfair blank.** A blank asking
+where something is rather than what it says is worthless at any rung, and
+`isStructuralReference` sat in `quiz.ts` being called only by `exam.ts` — so a
+paper threw out "Section ____ states" while the check firing every 250 words
+asked it, 72 times across 2,774 blanks. When a fairness rule is added to one
+check, look for the other rung that should also be refusing it.
+
 ## How to verify work here
 
 Unit tests would not have caught most of the real bugs in this project. What has
@@ -770,7 +788,7 @@ exam across the whole corpus** · **an acronym drill over the whole
 vocabulary** · **a coverage map that reports what has been verified rather than
 how far the caret got** · **a kept exam history with a repeat-miss report** ·
 **an exam date that caps every review interval at half the time remaining** ·
-**a T-SQL stepper that reads a query in the order it is evaluated** · **blueprint coverage, which measures the library against the published exam outline rather than against itself** · **a citation index over the regulations the corpus argues about** · **`/p` to park an intrusive thought without it entering the map** · **the distance to the next enforced stop, in words** · **dictating a summary, with the document’s own acronyms put back into the transcript**.
+**a T-SQL stepper that reads a query in the order it is evaluated** · **blueprint coverage, which measures the library against the published exam outline rather than against itself** · **a citation index over the regulations the corpus argues about** · **`/p` to park an intrusive thought without it entering the map** · **the distance to the next enforced stop, in words** · **dictating a summary, with the document’s own acronyms put back into the transcript** · **a grader that asks whether the summary reached the *why*, and says when the section gives none**.
 
 Four of those are one idea, and reading them separately misses the point: grid
 interrogation, cloze spot checks, the presence check and the retrieval queue.

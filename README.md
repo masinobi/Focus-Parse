@@ -396,6 +396,89 @@ Three details keep it from becoming noise:
 Pressing `V` with nothing pending does nothing at all: a check that could be answered in
 advance could be held down, and would prove nothing.
 
+## What a grid says out loud
+
+Acronyms expand for the ear everywhere else, and that is deliberate — hearing
+"electronic case report form" inside a sentence is what the whole speech-offset
+machinery exists for. A grid card is the exception, and not for comfort.
+
+A grid card shows **one cell, alone, in the largest type in the app**. With
+expansion on, the eye read `CRF` and the ear heard "case report form". The
+argument that settles it is the check that follows: `buildGridQuestion` draws
+its answer from the raw cell value, so the reader studied one string and was
+then asked to pick the other out of four options. Study channel and test channel
+disagreed on **33 of the corpus’s 262 grid steps**.
+
+Only the speech changes. The acronym tag stays — it feeds the corpus index, the
+acronym drill and cloze weighting, and dropping it would quietly remove every
+grid cell from all three. Evidence-grade stripping stays too: not reading
+`[III]` aloud has nothing to do with acronyms.
+
+`scan-checks` reports it in both directions, which matters more than the check
+itself. Counting *any* difference between a chunk’s speech and its text made the
+control useless — killing expansion everywhere still left 373 prose chunks
+"expanded" from grade stripping, so the must-be-non-zero line stayed green
+through exactly the change it exists to catch. Counting only expansions, the one
+thing that makes an utterance longer, takes it to 0 under that break and 3,845
+when correct.
+
+## Every rung refuses the same unfair blank
+
+"Section ____ states that…" asks where something is, not what it says. The mock
+exam has refused those since it was written — and only the mock exam did. The
+rule lived in `quiz.ts` and only `exam.ts` called it, so the spot check firing
+every 250 words was free to ask "Section ____ Qualification and Training
+highlights…" and want "3.4". It did, **72 times across 2,774 blanks**.
+
+The skip goes inside `carrierFor`’s occurrence loop rather than around it,
+because the same answer is often a reference in one sentence and a fact in the
+next: "Section 15 of the guideline" is a lookup, "retained for 15 years" is the
+thing worth remembering. It shows in the numbers — 72 offending blanks became 0
+while the total fell only from 2,774 to 2,760, so 58 were replaced rather than
+lost.
+
+The measurement was the bigger finding. `scan-checks` walked `.md` only, and
+this corpus has one markdown guide: **five windows**. Every must-be-zero line
+about cloze quality was resting on five checks, and a new cross-reference count
+reads 0 over that sample whether the rule exists or not. It walks the PDFs now —
+1,080 windows, 958 checks — and "windows where a weak term displaced a blank"
+went from 3 to 522 on the same change.
+
+## Did you get the why
+
+Clinical data management is examined on why a rule exists, not only on what it
+requires. Measured against the live grader before changing anything: a bare
+restatement of Part 11’s audit-trail requirement and an account of what audit
+trails are *for* both came back `accurate`, with nothing to tell them apart.
+
+So the grade carries a second, separate judgement:
+
+| | |
+|---|---|
+| `captured` | the section gives a reason and the summary reached it |
+| `missed` | it gives one and the summary stopped at the requirement |
+| `not_stated` | the section gives none — and that is normal |
+
+**The third level is what keeps it fair.** Much of the GCDMP is lists of minimum
+standards with no reasoning attached, and a grader that demanded a rationale
+from a list would mark a correct summary down for omitting something the section
+never said. That is the same failure as an unfair cloze: the reader learns the
+check is unreliable and stops believing it. Verified against the real grader — a
+bare minimum-standards list returns `not_stated`, an empty reason, and an
+unchanged verdict.
+
+The reason itself is quoted in the section’s own terms and never supplied from
+outside it, however well known it is.
+
+What is **not** settled is how cleanly the two judgements stay apart. The same
+borderline summary returned three `accurate` and three `partial` across six
+runs, and the pre-change prompt returned `partial` for it too — so that verdict
+is unstable either way, and the sample is too small to say whether the rationale
+instruction moves it. The free-tier quota ran out before a matching baseline
+could be taken. The guard in place is structural rather than instructional:
+`propertyOrdering` emits `verdict` before `rationale`, so the verdict is
+committed to first.
+
 ## Spaced retrieval
 
 Sessions used to end and take everything with them. A summary written at an intercept
@@ -983,7 +1066,9 @@ because splicing "renew the car insurance" into entity → mechanism → output 
 the exact thing this prevents.
 
 A count in the pad’s header opens a drawer with the parked thoughts, each a link
-back to where it interrupted. Deliberately nothing else: no tag, no chain, no
+back to where it interrupted — and the drawer opens itself once when the
+document runs out, which is the only moment the app already has that can offer
+them back without being asked. Deliberately nothing else: no tag, no chain, no
 place in the graph. A parked thought that grew features would start competing
 for the attention it exists to protect.
 
