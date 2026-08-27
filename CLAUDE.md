@@ -794,6 +794,90 @@ rule eating three digits out of DOIs (`journal.pone.0083049` → `pone.3049`); a
 26-row grid reported as fragments of 6 and 10 with a data row as the header; an
 evidence grade fused as `patient.[III]` that an anchored pattern missed.
 
+## What a long document costs
+
+`Full-GCDMP-Oct-2013.pdf` is not the same kind of object as the rest of the
+corpus. Every other PDF is one GCDMP chapter or one guideline; this is the whole
+compendium, and it is **6.7x larger than the next biggest**:
+
+| | tokens | chunks | blocks | sections |
+|---|---|---|---|---|
+| Full GCDMP (524 pages) | 136,645 | 10,447 | **5,404** | 773 |
+| ICH E6(R3), the next biggest | 28,024 | 2,328 | 1,491 | 41 |
+| 21 CFR Part 11, the smallest | 2,714 | 188 | 116 | 13 |
+
+The reader said the audio froze on it and sometimes the browser with it. It is
+the document that finds anything in the app that scales with document size, and
+two things did. Both are fixed; a third is not, and is the reason to read this.
+
+**How to measure it, and what the numbers mean.** Drive the real app and read
+the main thread, because every candidate cause here is invisible in the source:
+
+- A `longtask` `PerformanceObserver` over 20s of playback gives blocked time.
+  Expect run-to-run variance of about a third; take three runs.
+- `Performance.getMetrics` over CDP splits the same window into
+  `ScriptDuration`, `RecalcStyleDuration`, `LayoutDuration` and
+  `TaskOtherDuration` — the last being paint, compositing and DOM work. Four
+  hypotheses died on that split alone.
+- **The control is the same document in RSVP**, which plays identically with no
+  flow in the pane. Idle on the same page is 0.28s of task time per 20s; RSVP
+  playing is 3.0s; the flow playing is 7.8s. Without those two the flow's number
+  means nothing.
+
+**Do not measure with a Playwright role query.** Waiting on
+`getByRole("button", {name: "Play"})` reported this document as taking **95
+seconds** to open. It takes 13. Every word is a `role="button"` span for
+seek-on-click, so the accessible-name scan walks 135,000 candidates and the
+probe's own wait was most of what it measured.
+
+**What was wrong, and is now fixed.** `matchAcronym` scanned all 56 keys per
+token and built three template literals per key to test the plural forms —
+7.6 million comparisons and 23 million throwaway strings on this document, 10%
+of the whole open. It is a lookup now: `parseDocument` went from 3,879ms to
+671ms. And the flow rebuilt all 5,404 React elements on every spoken word for
+React to discover that one had changed; it now reuses the previous element for
+every block whose relation to the caret has not moved, which halved the blocked
+time. Neither of these is dev-mode-only.
+
+**What is still wrong.** The remaining cost is the size of the DOM and nothing
+else. Switching this document to RSVP removes **408,901 nodes**; the flow's
+extra 4.8s per 20s of playback is 3.7s of `TaskOtherDuration` against 0.5s of
+layout and 0.4s of script. Micro-optimizations do not touch it — dropping
+`role="button"` from every word, turning all four anchors off, and disabling the
+auto-scroll effect entirely were each measured and each moved it by little or
+nothing. Opening the document still blocks the main thread for **one unbroken
+7.2 seconds** while those nodes are built.
+
+The only real fix is to stop putting every word of a 524-page book in the DOM at
+once, and that collides with a deliberate decision recorded in `reader-pane.tsx`
+— *"every block stays in the DOM, so scrolling, find-in-page and scroll-into-view
+all behave normally"*. Rendering distant blocks as plain text instead of word
+spans would cut the node count by about three, and would cost per-word
+click-to-seek, acronym badges and bionic lead-bolding everywhere except near the
+caret. **That is a decision about how the reader looks, not a bug fix, so it is
+the reader's to make.**
+
+**Dev mode inflates the open, not the playback.** The load profile is thick with
+`validateProperty`, `defineKeyPropWarningGetter` and `warnOnInvalidKey`, all
+stripped from a production build. The 7.2s figure is therefore an upper bound and
+the production number is unknown — measuring it needs `npm run build`, which
+fights the dev server (see Environment traps). The playback numbers are much less
+exposed: the React share is small there and `TaskOtherDuration` is browser work
+that production does not make cheaper.
+
+**A gap the measurements do not cover.** `useSpeechEngine`'s stall watchdog
+recovers from one failure only — the engine silently dropping an utterance and
+going idle, which it catches by testing `!synth.speaking && !synth.pending`. If
+the platform instead wedges with `speaking` stuck true, no boundary, no `end`
+and no `error` ever arrives, the watchdog re-arms for ever and the audio is dead
+until the reader hits pause. That is exactly what "the audio freezes" would look
+like, and this document issues **10,447 utterances in one session** against
+1,600 for the next biggest, over Edge's *network* voices. It could not be
+reproduced here: headless Chromium enumerates zero voices, and a headed launch
+fails with `spawn UNKNOWN` in this environment. **Unverified, therefore not
+fixed** — if the audio still stops after the main-thread work above, this is
+where to look, and the test is whether pressing pause and play brings it back.
+
 ## Feature inventory
 
 Dual-channel pacing (a **words-per-minute** target, solved per voice;
@@ -862,10 +946,9 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed on `main`. The first six rounds were pushed on
-26 Aug 2026 when the reader asked; the **seventh round’s commits are local and
-unpushed**, because pushing is outward-facing and permission for one batch does
-not carry to the next.
+Everything here is committed on `main`, and everything through the seventh round
+is pushed. The **eighth round’s commits are local and unpushed**, because pushing
+is outward-facing and permission for one batch does not carry to the next.
 
 **Where the last session left it.** Four rounds have landed. The first three
 were the feature trio (entity index, node linking, adaptive difficulty), the
