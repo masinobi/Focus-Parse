@@ -835,6 +835,229 @@ a scrollbar sideways while the audio moved. The block wraps with a hanging inden
 the probe asserts directly that nothing is clipped — the same lesson the lane graph taught,
 on a second component: nothing in the DOM says a human cannot see this.
 
+## Blueprint coverage
+
+Every account in this app is a closed system. The coverage map answers "how much
+of this document have I been held to"; the corpus index answers "where else does
+this term appear". Both can only report on material that is already in the
+library — so the one question neither can reach is the one that decides the exam:
+**what is on the blueprint that I do not have?**
+
+That gap is invisible from inside and no amount of reading closes it. It closes
+by comparing the library against an external list, which is what
+[src/lib/blueprint.ts](src/lib/blueprint.ts) is: the SCDM CCDA study guide’s six
+domains, their tasks, the GCDMP chapters each draws on, and the sixteen chapters
+the guide gives minimum standards for.
+
+**Transcribed, not parsed.** The obvious move is to feed the guide through
+`pdf.ts` like everything else, and it is the wrong one. Its domain tables are
+rotated — the task column runs diagonally across the page — and extraction
+interleaves chapter names with fragments of task text and page furniture. A
+heuristic over that produces a *plausible* blueprint, and a domain missing two
+chapters reads exactly like a domain that only had four. Sixty lines of data
+that changes when SCDM republishes, which is roughly never, beats a parser that
+can be quietly wrong about the thing the whole panel is for.
+
+### Why an alias table and not a similarity score
+
+The handbook contains the counterexample. Its chapter list holds both
+
+```
+Assuring Data Quality      revised Oct 2013, 20 pages
+Measuring Data Quality     revised Sep 2008, 12 pages
+```
+
+— different chapters about different things, one word apart, and only the second
+is on the blueprint. Every edit-distance or trigram metric scores that pair as a
+near-certain match, and the failure is silent in *both* directions at once: the
+reader is told they covered `Measuring Data Quality` when they read `Assuring
+Data Quality`, and the real chapter never shows as missing.
+
+So a title matches a chapter exactly after normalization, or through an explicit
+alias, or not at all. Three tables carry the judgements, and a title may appear
+in only one of them:
+
+| | |
+|---|---|
+| `ALIASES` | this title *is* that chapter |
+| `RESEMBLES` | related and never counted — a later edition that re-split it |
+| `EXCLUDED` | examined and ruled out, with the reason |
+
+Fuzzy matching is used in exactly one place, and never to decide: `scan-blueprint`
+flags any corpus title within an edit or two that did **not** match, so a missing
+alias is adjudicated rather than absorbed. It found one on its first run —
+`m) Data Privacy`, a lettered run-in sub-heading inside the DCI chapter, two
+hundred words about privacy in CRF design. Matching it to the twenty-page `Data
+Privacy` chapter would have reported a chapter as covered on the strength of a
+paragraph.
+
+### What it says on this library
+
+Three chapters the exam names are not here. Two are metrics chapters that do not
+exist in the 2013 GCDMP edition; the third is the 2021 vendor chapter, and it
+carries minimum standards — which is where "which of the following is a minimum
+standard" questions come from.
+
+The panel puts that first and paints it differently from an unread chapter, on
+purpose. Confusing "you have not read this" with "you do not have this" wastes
+exactly the weeks a reader has least of.
+
+```bash
+node scripts/scan-blueprint.mjs "path/to/CCDA Study" --verbose
+```
+
+## Regulations cited
+
+The corpus index is keyed by *term*, and a citation is not a term. `21 CFR Part
+11 section 11.10` is a **provision** — and [src/lib/quiz.ts](src/lib/quiz.ts)
+deliberately throws provisions away (`isStructuralReference`), because "Section
+____" is a lookup rather than a fact. So the thing these documents argue about
+most was the one thing nothing in the app could show.
+
+The request that led here was an inline drawer: click a cross-reference, read it
+beside the prose. Counting the corpus first said no. Of ~356 cross-references
+across 255,000 words, the great majority name a regulation — 21 CFR Part 11,
+Part 312, Part 56, ICH E6 — and of those only E6 is in the library, so a drawer
+would have nothing to open on most clicks. The local ones are worse: every GCDMP
+chapter has its own `Table 1`, so a resolver would jump confidently to the wrong
+table most of the time. And a drawer is something you look at, while the audio
+keeps moving.
+
+What the count *did* reveal is worth having. **Part 11 is discussed by nine of
+the eleven documents.** Four chapters describing one rule from four angles is
+exactly what is hard to assemble by reading them one at a time, and it is what
+the exam asks about.
+
+### Refusing rather than guessing
+
+Same rule as the blueprint matcher, for the same reason — an invented citation
+looks exactly like a real one, in the one panel whose entire job is to say where
+a rule is discussed.
+
+- **A regulation must be named.** A bare `section 5.0` is ambiguous between ICH
+  E6’s quality management section and the fifth section of the document being
+  read, and nothing in the sentence settles it. The provision is only ever read
+  from the text *following* a named regulation.
+- **A bare `Part N` is read only for parts on a list.** `\bPart \d+\b` matches
+  "part 1, subpart J of this chapter" forty times inside Part 11’s own scope
+  list, and "Part 3 of the data management plan" everywhere else.
+- **URLs are inert.** The GCDMP bibliography links a page whose filename is
+  `45cfr164`. A real reference to the HIPAA Security Rule, and not one anybody
+  can act on — admit it and every link in the corpus becomes a candidate.
+- **A number following a regulation is not automatically a provision.** `Part 11
+  section 11.10` is; `Part 11 1998 amendments` is a date.
+
+Ranking is by how many *documents* cite a rule, not how often. A rule quoted
+forty times inside its own text says less than one four chapters disagree about.
+
+```bash
+node scripts/scan-citations.mjs "path/to/CCDA Study" --verbose
+```
+
+The asserted numbers are all precision. Recall is reported and the gap is meant
+to be wide: 287 of the corpus’s bare section references are left uncovered,
+because reading them as citations would fill the index with references nobody
+made.
+
+## Parking an intrusive thought
+
+Reading dense guidance surfaces thoughts that have nothing to do with it — an
+errand, a work thing, a question about something three chapters back. Ignoring
+one means ruminating on it; switching windows to write it down ends the session.
+
+The scratchpad was already most of the answer: capture is one keystroke, and
+typing in it counts as a presence check, so writing something down never
+triggers the vigilance pill. What it had no answer for was a thought that is not
+*about the text*. Enter commits it untagged, which puts it in the flow graph’s
+note lane — so the tangent lands in the middle of the argument being built. And
+the intercept shows the section’s captures beside the summary box, which means a
+stray thought about the car insurance was on screen at the single most demanding
+moment in the app.
+
+So `/p`, alongside `/e` `/m` `/o`. A parked node is stored with the rest — it
+survives a reload and keeps the token it was dropped at, so the reader can get
+back to where they were — and it is absent from every surface where the reader
+is thinking about the document: the list, the graph, the counts, the chain, the
+captures. It never attaches to the open chain and never becomes the next head,
+because splicing "renew the car insurance" into entity → mechanism → output is
+the exact thing this prevents.
+
+A count in the pad’s header opens a drawer with the parked thoughts, each a link
+back to where it interrupted. Deliberately nothing else: no tag, no chain, no
+place in the graph. A parked thought that grew features would start competing
+for the attention it exists to protect.
+
+## How far the next stop is
+
+The structure map now carries one line: `≈250w to a spot check · ≈1,400w to a
+summary`.
+
+The request was a countdown — "1m 20s until next summary" — and a ticking clock
+is the wrong shape for it. A number that moves on its own in the field of view
+is a thing to watch instead of the text, which is the one behaviour this app is
+built to avoid; the presence pill sits in a corner for exactly that reason.
+Distance in words is the same information with none of the pull: it is in a
+panel the reader opens on purpose, and it does not tick.
+
+**Both rungs are reported.** Naming only the summary would be true and
+misleading — the cadence check comes round every 250 tokens, so a reader told
+"1,400 words to the next summary" will in fact be stopped four or five times
+before then, and would rightly stop believing the number.
+
+Neither figure is a promise, and the tooltip says so. A stretch with nothing
+worth asking about slides the window on instead of stopping, and nothing can
+know that in advance. The summary figure walks forward for a boundary that would
+*actually* arm an intercept — not into furniture the engine steps over, and not
+out of a section whose summary is already written — because both of those would
+send the reader hunting for a stop that never comes.
+
+Seeking resets the spot-check figure to the full interval, which is correct:
+jumping over text is not reading it.
+
+## Dictating a summary
+
+The intercept is the ladder’s most expensive rung and the only one that asks for
+manual output from someone twenty minutes into a purely auditory task. Speaking
+it is the obvious win, and the obvious win has a trap in it that nothing else
+here would catch.
+
+**A recognizer does not know this vocabulary.** Said aloud, `CDISC` comes back as
+"see disk", `eCRF` as "e see are eff", `SDTM` as "ess dee tee em". The reader
+gives a correct summary, the grader is handed a garbled one and returns
+`off_track` — a false failure on the rung that costs the most to redo, which
+teaches the reader the grader is unreliable, and after that the whole
+enforcement ladder is theatre.
+
+So the transcript is reconciled against the vocabulary the section actually
+contains before anyone sees it ([src/lib/dictation.ts](src/lib/dictation.ts)).
+
+Three rules keep the corrector from being worse than the recognizer it repairs —
+because a mangled word is visible and a substituted one is not:
+
+- **Scoped to the section.** Nothing outside the acronyms *this section
+  contains* is ever substituted in. The tokens already carry them, so it is a
+  lookup rather than a guess. "See disk" becomes `CDISC` in a chapter about data
+  standards and stays "see disk" everywhere else.
+- **Derived, not guessed.** Forms are generated from the acronym: as written,
+  and spelled out through a fixed table of letter names. `SPOKEN_AS` holds the
+  handful said as words rather than spelled — a list, because the alternative is
+  a pronunciation model and a wrong one substitutes words nobody said.
+- **Declared.** Every substitution is shown, struck through, over the text that
+  produced it, and the box stays editable.
+
+Two defects came out of running it. Collapsing adjacent duplicate consonants
+made "uses see disk" and "see disk" the same skeleton, so the longest-window
+match rewrote three words as `CDISC` and ate the verb. And dropping every vowel
+made `eCRF` and `CRF` indistinguishable, so the longer one — registered first —
+took both; the leading vowel is kept now, which is what a phonetic key normally
+does anyway.
+
+The honest limits: it is Chrome-only, Chrome sends the audio to Google, and
+three-letter acronyms with few consonants (`EDC`, `SAE`) reduce to skeletons too
+short to key on safely — they are repaired only when the recognizer already
+returned something close to the written form. The button is absent where no
+recognizer exists rather than present and inert.
+
 ## The corpus index
 
 Nine guidelines on one subject were nine separate reading sessions with no thread
@@ -946,8 +1169,10 @@ views. Click any word to seek there.
 
 **Kinetic scratchpad** — type an idea and end it with `/e`, `/m` or `/o` to commit it
 instantly as an Entity / Mechanism / Output node. No Enter, no mouse; the audio never
-has to stop. `Enter` alone commits an untagged note. Nodes remember the section and
-word they were captured at, and clicking their section label seeks back there.
+has to stop. `Enter` alone commits an untagged note, and `/p` parks a thought that has
+nothing to do with the text — stored, retrievable, and kept out of the map entirely (see
+*Parking an intrusive thought*). Nodes remember the section and word they were captured
+at, and clicking their section label seeks back there.
 
 **The captures are a graph.** Tagging said what *kind* of thing each note was and
 nothing about how they connect, so "the sponsor delegates data review to the CRO, which
@@ -1112,6 +1337,9 @@ Three things the browser forces:
 | `Esc` | Stop |
 | `V` | Answer the presence check |
 | `1`–`4` | Answer a grid check |
+
+In the scratchpad, a trailing `/e` `/m` `/o` commits a tagged node, `/p` parks an
+off-topic thought, and `Enter` commits an untagged one.
 
 Transport keys go inert while you are typing and while an intercept or a check is open.
 

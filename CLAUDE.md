@@ -27,7 +27,7 @@ decision; test against it rather than against invented samples.
 | Remote | https://github.com/masinobi/Focus-Parse (**private**) |
 | Demo | https://claude.ai/code/artifact/bb5b76a5-5b7d-4a52-abdd-324313fc7d08 (private) |
 | Stack | Next.js 14 App Router · TypeScript · Tailwind · shadcn/ui · Zustand · IndexedDB · Web Speech · Web Audio · pdf.js |
-| Corpus | `<corpus folder>` — eight PDFs and one markdown guide. That is the nine documents every figure in this file refers to; a ninth PDF was a broken duplicate with no text layer and has been deleted. **Plus, since 24 Aug 2026, a `SQL Practice - Trial Screening` subfolder**: a feasibility screen and two drill sets in T-SQL against a Synthea extract, with the CSVs beside them. It is not part of the nine and no figure above counts it — `scan-sql` is the report that reads it. |
+| Corpus | `<corpus folder>` — **ten PDFs and one markdown guide, as of 26 Aug 2026.** It was eight PDFs for most of this project’s life; `21 CFR Part 11` and `E6(R2) good clinical practice` were added on 26 Aug 2026, *during* the seventh round — which is how two probe assumptions that had nothing to do with the app came apart at once. Figures elsewhere in this file state the corpus they were measured on. **Plus, since 24 Aug 2026, a `SQL Practice - Trial Screening` subfolder**: a feasibility screen and two drill sets in T-SQL against a Synthea extract, with the CSVs beside them. It is not part of the eleven and no figure counts it — `scan-sql` is the report that reads it. |
 | Past sessions | `the Claude Code transcript folder for this project` |
 
 **Stored shapes carry four independent version numbers.** Bump the wrong one and
@@ -370,6 +370,47 @@ already in a browser only if the PDF is ingested again. This is not a defect
 worse trade), but it is the difference between a fix that propagates silently
 and one that has to be asked for.
 
+**26. A name is matched exactly, or listed, or not at all.** Two modules now
+map external names onto this corpus — `blueprint-coverage.ts` for GCDMP chapter
+titles, `citations.ts` for regulations — and neither is allowed a similarity
+score. The counterexample is in the handbook: it carries both *Assuring Data
+Quality* and *Measuring Data Quality*, one word apart, and only the second is on
+the exam blueprint. Every edit-distance or trigram metric pairs them, and the
+failure is silent in both directions at once — the reader is told they covered a
+chapter they never opened, and the real gap never appears. Fuzzy matching is
+used in exactly one place, as an *alarm*: `scan-blueprint` flags any corpus title
+within an edit or two that did **not** match, so a missing alias is adjudicated
+rather than absorbed. Three tables carry the decisions — `ALIASES` (this *is*
+that chapter), `RESEMBLES` (related, never counted), `EXCLUDED` (examined and
+ruled out) — and a name in two of them is an authoring error the tests catch.
+
+**27. A parked thought is stored and is nowhere.** `FlowNode.parked` keeps an
+intrusive thought out of the list, the graph, the counts, the chain and the
+intercept’s captures, while still being persisted with the token it was dropped
+at. It is deliberately not a `LogicTag`: the point is that it is *outside* the
+argument being built. It must never attach to the open chain or become the next
+head — splicing "renew the car insurance" into entity → mechanism → output is the
+whole thing this prevents — and, like `links`, it is optional, so every node
+already on disk reads back without it and that has to mean "not parked".
+
+**28. A dictated summary is repaired only from the section’s own vocabulary.**
+A recognizer returns "see disk" for `CDISC` and "e see are eff" for `eCRF`, and
+an uncorrected transcript fails a correct summary on the ladder’s most expensive
+rung. But a corrector is more dangerous than the recognizer it repairs, because
+a mangled word is visible and a substituted one is not. So nothing outside the
+acronyms *this section contains* is ever substituted in, the forms matched are
+derived from the acronym rather than guessed at, and every substitution is
+declared on screen over the text that produced it.
+
+**29. No source file may contain a control character.** Not style — three live
+rules in this codebase were silently dead because a stray byte had replaced the
+backslash escape they were written with: `pdf.ts`’s front-matter rule, `parse.ts`’s
+doubled-terminator rule, and a URL mask in `citations.ts`. Each compiled, ran,
+and matched nothing. `source-hygiene.test.ts` walks `src` and `scripts` and is
+the only thing that sees it; TypeScript compiles it, ESLint passes it, and a diff
+shows an empty space. See the working-practice note in "Outstanding" for the
+mechanism that keeps producing them.
+
 ## How to verify work here
 
 Unit tests would not have caught most of the real bugs in this project. What has
@@ -476,7 +517,70 @@ drill files yield **one step each**. They are almost entirely prose in block
 comments, which is the correct outcome — essentially all of the stepping lands
 on the feasibility screen.
 
-**The probe has a third path.** `probe-ui.mjs` drives the stepper in Playwright,
+`node scripts/scan-blueprint.mjs "<folder>" --verbose` is the one report here
+whose answer can be "no, and no amount of reading will fix it". It matches the
+transcribed exam blueprint against the library and prints what the exam names
+that the corpus does not have. Current state on the eleven: 18 chapters named,
+15 verified by a perfect reading, **3 absent** — `Metrics for Clinical Trials`,
+`Reports and Metrics`, `Vendor Selection and Management (Released 2021)` — and 0
+on all five must-be-zero lines. The alarm to watch is "unadjudicated near
+misses": a corpus title within an edit or two of a chapter name that did not
+match is a missing alias, a missing resemblance, or a decision nobody has
+written down. It found one on its first run (`m) Data Privacy`, a lettered
+run-in sub-heading inside the DCI chapter — two hundred words, not the
+twenty-page chapter) and that is now recorded in `EXCLUDED` with the reason.
+
+`node scripts/scan-citations.mjs "<folder>" --verbose` runs the citation
+recogniser over the corpus. Current state: **376 citations, 21 regulations**, 0
+on all four must-be-zero lines. `21 CFR Part 11` is cited 118 times across 9 of
+the 11 documents. The precision checks are the asserted ones; recall is
+*reported* and the gap is meant to be wide — 287 bare section references are
+left uncovered on purpose, because a bare "section 5.0" is ambiguous between a
+provision of E6 and the fifth section of whatever is being read. Also read the
+"parts refused" line: the whitelist in `PARTS` is what stops `\bPart \d+\b`
+matching "part 1, subpart J of this chapter" forty times inside Part 11 itself,
+and what it rejects is printed rather than swallowed.
+
+**The probe now has seven paths**, four of them added in the seventh round: the
+parking lot, blueprint coverage, the citation index, and the summary intercept
+with dictation. Three things about the new ones are worth knowing before
+touching that file.
+
+*The intercept is portalled.* `document.body.innerText` does **not** return the
+dialog’s text, so a check written against innerText reports a perfectly working
+intercept as missing. Read it out of `document.querySelector("[role=dialog]")`.
+Half an hour went into diagnosing an app that was fine.
+
+*Reaching an intercept needs a fixture shaped for it.* A section arms one only
+at `MIN_INTERCEPT_WORDS` (60) or more, so the fixture’s **second** section has to
+be long while the first stays short enough to read through in seconds. Playback
+does advance under headless Chromium — three Windows SAPI voices are present —
+at roughly 115 wpm.
+
+*Dictation is driven by replacing the recognizer constructor* with one that
+reads from a script, via `addInitScript`. Everything downstream of the
+constructor is the app’s own code, including the vocabulary repair. What that
+cannot cover is the microphone and what Chrome actually returns for these words.
+
+**A contrast assertion, because rendering is not the same as being visible.**
+The "has minimum standards" badge used `text-destructive`, which in dark mode is
+the token `0 62.8% 30.6%` — a dark red meant to sit *behind* text. It rendered,
+it was in the tree, every structural check passed, and at 10px it measured
+1.86:1. The probe now flattens the translucent layers behind it and asserts a
+real WCAG ratio (13.91:1 now). Same lesson as the clipped `JOIN`s, third
+component: nothing in the DOM says a human cannot see this.
+
+**Two probe assumptions came apart when the corpus grew**, neither about the
+app, both on the same day the reader dropped in two new PDFs. `getByRole("button",
+{name: "Play"})` matches accessible names by *substring*, every word in the
+reader pane is a `role="button"` span for click-to-seek, and the new smallest PDF
+says "display" seven times — nine matches, strict-mode violation, dead probe.
+And the exam path asserted exactly 20 questions, which was the old sample
+document’s yield rather than a claim about anything; it now reads the paper’s own
+denominator. **A probe that hard-codes a number measured from whichever file
+happened to be smallest is testing the corpus, not the app.**
+
+**The stepper’s path** — the third of the seven — drives it in Playwright,
 and the assertion that matters could not have been written at the DOM level: the
 spans existing, the classes applying and the counter incrementing would all be
 equally true of a stepper that played clauses top to bottom. What it asserts is
@@ -666,7 +770,7 @@ exam across the whole corpus** · **an acronym drill over the whole
 vocabulary** · **a coverage map that reports what has been verified rather than
 how far the caret got** · **a kept exam history with a repeat-miss report** ·
 **an exam date that caps every review interval at half the time remaining** ·
-**a T-SQL stepper that reads a query in the order it is evaluated**.
+**a T-SQL stepper that reads a query in the order it is evaluated** · **blueprint coverage, which measures the library against the published exam outline rather than against itself** · **a citation index over the regulations the corpus argues about** · **`/p` to park an intrusive thought without it entering the map** · **the distance to the next enforced stop, in words** · **dictating a summary, with the document’s own acronyms put back into the transcript**.
 
 Four of those are one idea, and reading them separately misses the point: grid
 interrogation, cloze spot checks, the presence check and the retrieval queue.
@@ -689,6 +793,15 @@ series and a date, and the app had neither: a marked paper died with its dialog,
 and the scheduler did not know the exam existed. See "Exam history" and "The
 exam date" in the README.
 
+**Blueprint coverage is the only account in this app that is not closed.**
+Every other one measures the corpus against itself — how much was read, what was
+verified, which terms recur — so the one question none of them can reach is
+whether the corpus is *enough*. That is the only number here more reading cannot
+move, and on this library it is three: `Metrics for Clinical Trials` and
+`Reports and Metrics`, neither of which exists in the 2013 GCDMP edition, and
+`Vendor Selection and Management (Released 2021)`, which carries minimum
+standards.
+
 The coverage map is the fourth thing that belongs to the enforcement-ladder
 idea above, and arguably the point of it. The ladder was already producing
 per-section evidence — a summary, a grid pass, a marked spot check — and
@@ -705,9 +818,10 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed on `main`. Nine commits across the fourth, fifth
-and sixth rounds are **local and not yet pushed** — pushing is outward-facing
-and has not been asked for.
+Everything here is committed on `main`. The first six rounds were pushed on
+26 Aug 2026 when the reader asked; the **seventh round’s commits are local and
+unpushed**, because pushing is outward-facing and permission for one batch does
+not carry to the next.
 
 **Where the last session left it.** Four rounds have landed. The first three
 were the feature trio (entity index, node linking, adaptive difficulty), the
@@ -759,13 +873,63 @@ diff. **Three** of its assertions could not go red, all found by breaking them
 on purpose — including the scanner's headline check, which rebuilt each
 statement from its own step spans and so could never fail.
 
-**A working-practice note that has now cost time three times.** Edits to these
-files are applied by scripted string replacement, and a replacement that does
-not match is silent. It has produced: a `parse.ts` fence hook that was never
-installed while everything around it was, a feature-inventory line that stayed
-stale for a whole round, and — worst — a `git checkout -- .` in a recovery
-script that reverted every tracked file of an in-progress change. **Assert on
-every replacement, and never run a bulk checkout to recover one file.**
+The seventh round took five features at once, at the reader’s direction, after
+they asked which of a list of five suggestions were worth building. Four were
+reshaped rather than built as pitched, and the reshaping was the work:
+
+- **Blueprint coverage** was the recommendation, and it is the only thing here
+  that can tell the reader to go and *find* something. Transcribed rather than
+  parsed — the study guide’s domain tables are rotated and extraction
+  interleaves the chapter names with task text, so a heuristic yields a
+  plausible blueprint, and a domain missing two chapters reads exactly like a
+  domain that only had four.
+- **The cross-reference drawer became a citation index.** Counting the corpus
+  first said no to the drawer: ~356 cross-references, of which the great
+  majority name a regulation that is not in the library, and the local ones are
+  worse — every GCDMP chapter has its own `Table 1`. What the count *did* reveal
+  was that Part 11 is discussed by nine of the eleven documents, which the
+  entity index structurally cannot see.
+- **The countdown became a distance.** A ticking clock in the field of view is a
+  thing to watch instead of the text, which is why the vigilance pill sits in a
+  corner. Both rungs are reported, because naming only the summary is true and
+  misleading — the cadence check interrupts four or five times inside the same
+  stretch.
+- **The parking lot became a tag**, because the scratchpad was already most of
+  one. The gap was real and small: an untagged capture lands in the graph’s note
+  lane, and the intercept shows the section’s captures *beside the summary box*,
+  so a stray thought was on screen at the app’s most demanding moment.
+- **Dictation was built as pitched**, with the piece the pitch did not mention:
+  the recognizer does not know this vocabulary, and an uncorrected transcript
+  fails a correct summary. See invariant 28.
+
+**Adaptive contrast boosting was declined and should stay declined.** It was the
+fifth suggestion and the reader excluded it. The reason to keep it excluded is
+that it cannot be verified: every other rung leaves evidence a scanner can
+count, and a display that changes itself on a guess about attention has no
+green that can go red. It is the one thing in this file that would violate the
+whole verification practice below.
+
+**Two bugs found sideways, both pre-existing, both invisible in a diff.** A
+stray control byte had replaced the backslash escape in `pdf.ts`’s front-matter
+rule and `parse.ts`’s doubled-terminator rule, killing both. Reviving the first
+drops three journal citation lines that were being promoted to headings — the
+EDC chapters go 39/65/44 to 38/64/43, the corpus from 1,052 recovered headings
+to 1,048 and 1,147 accountable sections to 1,146. See invariant 29.
+
+**A working-practice note that has now cost time five times, and the mechanism
+is finally identified.** Edits to these files are applied by scripted string
+replacement, and two things go wrong silently. A replacement that does not match
+is a no-op — which produced a `parse.ts` fence hook that was never installed
+while everything around it was, a feature-inventory line stale for a whole
+round, and a `git checkout -- .` in a recovery script that reverted every
+tracked file of an in-progress change. **And a Bash heredoc collapses `\\` to
+`\`**, so a Python string written as `'\\b'` arrives as `'\b'` and Python turns
+it into a backspace. That is where every control character in invariant 29 came
+from, including three planted *during* the seventh round — one of which
+disabled a probe assertion that went on passing. **Assert on every replacement;
+build backslashes with `chr(92)` or write the edit script to a file rather than
+piping it through a heredoc; never run a bulk checkout to recover one file; and
+read the test summary before committing, not after.**
 
 The reader is currently working through *Electronic Data Capture — Study
 Implementation and Start-up*. Documents already in their browser rebuild
@@ -778,27 +942,36 @@ Done and not to be redone: the five-item feature list's items 1 and 2 (backup,
 mock exam), the entity index / node linking / adaptive difficulty trio, the two
 defects (grid results surviving a reload, voice persistence), journal furniture,
 column recovery, the coverage map, the words-per-minute control, the acronym
-drill, wrapped headings, the exam history, the exam-date horizon, and the T-SQL
-stepper. The backlog below is what is left — which, of the original list, is
-nothing.
+drill, wrapped headings, the exam history, the exam-date horizon, the T-SQL
+stepper, and the seventh round’s five: blueprint coverage, the citation index,
+the parking-lot tag, the distance to the next stop, and dictation with vocabulary
+repair. The backlog below is what is left — which, of everything ever suggested,
+is one item and one deliberate refusal.
 
-**Suggested and not built, in the order they were pitched.** The reader took the
-first two. The third is the one worth returning to: the coverage map answers
-"of the material I have, what have I been held to" and *structurally cannot*
-answer "of what the exam tests, do I have material at all". Everything in this
-app is document-shaped and the exam is domain-shaped, so a whole weighted domain
-could be missing and nothing here would ever say so. A coarse version — the CCDA
-content outline entered by hand, sections tagged to domains, weight against
-corpus words against verified words — is buildable, but the honest risk is
-invariant 20's: a sloppy mapping produces confident wrong percentages, which is
-worse than no map. The trustworthy part is the rows with weight and *no words*;
-the percentages are not. The fourth was a one-key "that sounded wrong" marker
-during reading, which stamps the current chunk and section into an exportable
-list — cheap, and justified by this project's own history of vague complaints
-turning out to be real parser defects (twice). Deliberately declined:
-hands-free/commute mode, which sounds the most attractive and is the most
-expensive, because the whole enforcement ladder assumes a dialog and speech
-recognition fails hardest on exactly the acronyms this corpus is made of.
+**Suggested and not built.** Of the two lists ever pitched, one item remains
+and one is refused.
+
+*Remaining:* the one-key **"that sounded wrong" marker** during reading, which
+stamps the current chunk and section into an exportable list. Cheap, and
+justified by this project’s own history — twice a vague complaint about the
+reading turned out to be a real parser defect (interleaved columns, wrapped
+headings), and both times the reader had no way to record *where* it felt wrong.
+
+*Refused, twice, for different reasons:* **hands-free/commute mode** sounds the
+most attractive and is the most expensive, because the whole enforcement ladder
+assumes a dialog — and recognition fails hardest on exactly the acronyms this
+corpus is made of, which the seventh round now has measurements for. And
+**adaptive contrast boosting**, which the reader excluded and which should stay
+excluded: see the seventh-round notes above for why an unverifiable display rule
+is the one feature that would undercut the practice this whole file describes.
+
+*Built after being pitched as something else:* the blueprint-coverage item was
+carried in this section for two rounds with the warning that "a sloppy mapping
+produces confident wrong percentages, which is worse than no map". That warning
+shaped the thing that got built — hence invariant 26, and hence the panel
+reporting *absent chapters* as its headline rather than a percentage. The
+percentages it does show are per-domain counts of chapters, not weights; the
+guide does not publish question weights and the panel says so.
 
 **Nothing is left of the original feature list.** The T-SQL stepper was the last
 of it and shipped in the sixth round. The note that used to sit here said the
@@ -822,6 +995,37 @@ not carry.
 
 Most of these are deliberate trade-offs with the reasoning attached; the four
 marked *candidate* are things that could actually be fixed.
+
+- Blueprint coverage matches a chapter to a *section title*, and a section is
+  whatever the parser called one. A twenty-word stub whose heading happens to
+  read `Data Privacy` counts as the Data Privacy chapter being partly read. The
+  panel prints the word count beside every chapter, which is the honest
+  mitigation; a minimum-size threshold would be an invented constant.
+- Blueprint coverage says nothing about *weight*. The study guide lists tasks
+  per domain and no question weights, so the panel counts tasks and refuses to
+  imply more. A domain with fifteen tasks is not necessarily worth more marks.
+- The ICH GCP topics are listed and not mapped to E6 chapters. The guide pairs
+  them in a two-column table whose cells are both multi-line, and extraction
+  interleaves them irrecoverably — a guessed pairing would read exactly like a
+  real one. *candidate*, if the mapping is ever worth transcribing by hand.
+- The citation index reads regulations, not local cross-references. "See Table
+  1" and "section 5.0 of the protocol" are deliberately left out: the first is
+  ambiguous across chapters that each have a Table 1, the second between a
+  provision of E6 and a section of the document being read. `scan-citations`
+  prints how many bare references that leaves uncovered (287 of 376) so the
+  decision stays visible.
+- Dictation is Chrome-only and sends audio to Google. The button is absent where
+  no recognizer exists rather than present and inert, and the tooltip says where
+  the audio goes — but it is on by presence, not by an explicit setting.
+  *candidate*, if the reader wants it behind a toggle.
+- The microphone path itself is unverified. The probe replaces the recognizer
+  constructor with a scripted one, so everything downstream is the app’s own
+  code — but what Chrome actually returns for "CDISC" spoken aloud has never
+  been measured, and `SPOKEN_AS` is a considered guess at it.
+- Three-letter acronyms with few consonants cannot be sound-matched safely.
+  `EDC` and `SAE` reduce to skeletons too short to key on, so they are only
+  repaired when the recognizer already returned something close to the written
+  form. Lowering the threshold would start rewriting ordinary prose.
 
 - Mock exam papers are only as good as the cloze carriers underneath them. The
   cross-reference filter catches "Section ____ states"; it does not catch a
