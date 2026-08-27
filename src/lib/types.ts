@@ -158,6 +158,21 @@ export interface FlowNode {
    * assume an array. Kept acyclic — see `linkNodes`.
    */
   links?: string[];
+  /**
+   * A thought that surfaced while reading and has nothing to do with the text.
+   *
+   * Not a tag and deliberately not part of `LogicTag`: the point of a parked
+   * note is that it is *outside* the logic the reader is building. It never
+   * joins a chain, never draws in the graph, and never appears in the captures
+   * shown beside the summary box — which was the worst of it, because a stray
+   * thought about the shopping was on screen at the single most demanding
+   * moment in the app.
+   *
+   * Optional for the same reason as `links`: sessions carry no schema version,
+   * so every node written before this reads back `undefined`, which must mean
+   * "not parked" rather than crash.
+   */
+  parked?: boolean;
 }
 
 /**

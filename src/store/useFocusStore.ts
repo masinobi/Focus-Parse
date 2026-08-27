@@ -262,7 +262,11 @@ interface FocusState {
   lapseVigilance: () => void;
   clearLapse: () => void;
 
-  addNode: (text: string, tag: LogicTag | null) => void;
+  /**
+   * Commit a capture. `parked` marks it as an intrusive thought rather than a
+   * piece of the argument — see `FlowNode.parked`.
+   */
+  addNode: (text: string, tag: LogicTag | null, parked?: boolean) => void;
   retagNode: (id: string, tag: LogicTag | null) => void;
   removeNode: (id: string) => void;
   /** Draw an edge. Refused if it would close a cycle. */
@@ -854,18 +858,28 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       },
     })),
 
-  addNode: (text, tag) => {
+  addNode: (text, tag, parked = false) => {
     const trimmed = text.trim();
     if (!trimmed) return;
     const { doc, tokenIndex, chainHead, nodes } = get();
     const node: FlowNode = {
       id: `n_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
-      tag,
+      tag: parked ? null : tag,
       text: trimmed,
       section: doc?.tokens[tokenIndex]?.section ?? 0,
       tokenIndex,
       createdAt: Date.now(),
+      ...(parked ? { parked: true } : {}),
     };
+
+    // A parked thought is off-topic by definition, so it must not attach to the
+    // open chain and must not become the next head. Letting it do either would
+    // splice "renew the car insurance" into the middle of the argument the
+    // reader is building, which is the whole thing this exists to prevent.
+    if (parked) {
+      set((s) => ({ nodes: [...s.nodes, node] }));
+      return;
+    }
 
     // Capturing into an open chain attaches to it and then hands the chain on,
     // so entity → mechanism → output is three ordinary captures and no extra
@@ -990,6 +1004,24 @@ export const useFocusStore = create<FocusState>((set, get) => ({
 }));
 
 /** Section index for a token, used to keep the sidebar and notes in sync. */
+/**
+ * The nodes that are part of the reading, which is not all of them.
+ *
+ * Parked thoughts are stored beside the real captures — they have to survive a
+ * reload, and they carry the token they were dropped at so the reader can get
+ * back to where they were. What they must never do is appear anywhere the
+ * reader is thinking *about the document*: the graph, the list, or the summary
+ * box's captures. One predicate, so a new surface cannot forget.
+ */
+export function readingNodes(nodes: FlowNode[]): FlowNode[] {
+  return nodes.filter((n) => !n.parked);
+}
+
+/** The opposite half, for the drawer that hands them back. */
+export function parkedNodes(nodes: FlowNode[]): FlowNode[] {
+  return nodes.filter((n) => n.parked);
+}
+
 export function sectionOfToken(doc: ParsedDoc | null, tokenIndex: number): number {
   return doc?.tokens[tokenIndex]?.section ?? 0;
 }

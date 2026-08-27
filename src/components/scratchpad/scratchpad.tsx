@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CornerDownLeft, Link2, ListTree, Network, PenLine, X } from "lucide-react";
+import { CornerDownLeft, Inbox, Link2, ListTree, Network, PenLine, X } from "lucide-react";
 
 import { FlowGraph } from "@/components/scratchpad/flow-graph";
 import { FlowNodeCard, TAG_META } from "@/components/scratchpad/flow-node-card";
@@ -10,16 +10,32 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { LogicTag } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { useFocusStore } from "@/store/useFocusStore";
+import { parkedNodes, readingNodes, useFocusStore } from "@/store/useFocusStore";
 
-/** `/e`, `/m`, `/o` at the end of the buffer, preceded by a space or nothing. */
-const TAG_TRIGGER = /(^|\s)\/(e|m|o)$/i;
+/** `/e`, `/m`, `/o`, `/p` at the end of the buffer, preceded by a space or nothing. */
+const TAG_TRIGGER = /(^|\s)\/(e|m|o|p)$/i;
 
 const TRIGGER_TO_TAG: Record<string, LogicTag> = {
   e: "entity",
   m: "mechanism",
   o: "output",
 };
+
+/**
+ * The fourth trigger, and the only one that is not a tag.
+ *
+ * Reading dense guidance surfaces thoughts that have nothing to do with it —
+ * an errand, a work thing, a question about something three chapters back.
+ * Ignoring one means ruminating on it; switching windows to write it down ends
+ * the session. Both cost more than the thought is worth.
+ *
+ * `/p` drops it out of the way in the same keystroke as everything else here,
+ * and because typing in this pad already counts as a presence check, parking a
+ * thought never triggers the vigilance pill either. What it does not do is join
+ * the chain or draw in the graph: the whole point is that it is *not* part of
+ * the argument being built.
+ */
+const PARK_TRIGGER = "p";
 
 /**
  * Kinetic re-encoding workspace. Capture is deliberately one-keystroke-cheap:
@@ -32,9 +48,18 @@ export function Scratchpad() {
   const listRef = React.useRef<HTMLDivElement>(null);
 
   const [mode, setMode] = React.useState<"list" | "graph">("list");
+  const [showParked, setShowParked] = React.useState(false);
 
   const doc = useFocusStore((s) => s.doc);
-  const nodes = useFocusStore((s) => s.nodes);
+  const stored = useFocusStore((s) => s.nodes);
+  /**
+   * Everything below works on the reading nodes only. Parked thoughts are still
+   * in `stored` — they have to survive a reload and they keep the token they
+   * were dropped at — but they are not part of the argument, so they are not
+   * part of the list, the graph, the counts or the chain.
+   */
+  const nodes = React.useMemo(() => readingNodes(stored), [stored]);
+  const parked = React.useMemo(() => parkedNodes(stored), [stored]);
   const chainHead = useFocusStore((s) => s.chainHead);
   const addNode = useFocusStore((s) => s.addNode);
   const removeNode = useFocusStore((s) => s.removeNode);
@@ -46,9 +71,9 @@ export function Scratchpad() {
   const unlinkNodes = useFocusStore((s) => s.unlinkNodes);
 
   const commit = React.useCallback(
-    (text: string, tag: LogicTag | null) => {
+    (text: string, tag: LogicTag | null, parked = false) => {
       if (!text.trim()) return;
-      addNode(text, tag);
+      addNode(text, tag, parked);
       setDraft("");
     },
     [addNode]
@@ -66,9 +91,11 @@ export function Scratchpad() {
 
     if (match) {
       const body = value.slice(0, value.length - match[0].length);
-      const tag = TRIGGER_TO_TAG[match[2].toLowerCase()];
+      const key = match[2].toLowerCase();
+      const parked = key === PARK_TRIGGER;
+      const tag = parked ? null : TRIGGER_TO_TAG[key];
       if (body.trim()) {
-        commit(body, tag);
+        commit(body, tag, parked);
         return;
       }
       // Trigger typed with nothing to tag: drop it rather than leaving "/e".
@@ -126,6 +153,24 @@ export function Scratchpad() {
           {nodes.length} {nodes.length === 1 ? "node" : "nodes"}
         </span>
 
+        {parked.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowParked((v) => !v)}
+            aria-pressed={showParked}
+            className={cn(
+              "flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] tabular-nums",
+              showParked
+                ? "border-primary/50 bg-primary/10 text-foreground"
+                : "text-muted-foreground hover:bg-accent"
+            )}
+            title="Thoughts you parked while reading"
+          >
+            <Inbox className="h-3 w-3" />
+            {parked.length} parked
+          </button>
+        )}
+
         <div className="ml-auto flex items-center gap-1.5">
           <div className="mr-1 flex items-center gap-0.5">
             {(
@@ -165,6 +210,44 @@ export function Scratchpad() {
         </div>
       </div>
 
+      {/* The drawer that hands them back.
+          Deliberately a list of plain text with a way to delete and a way to
+          jump to where it was dropped, and deliberately nothing else — no tag,
+          no chain, no place in the graph. A parked thought that grew features
+          would start competing for the attention it exists to protect. */}
+      {showParked && parked.length > 0 && (
+        <div className="fp-scroll max-h-48 shrink-0 overflow-y-auto border-b bg-background/40 px-4 py-3">
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            Parked while reading. Not part of the map.
+          </p>
+          <ul className="space-y-1.5">
+            {parked.map((node) => (
+              <li key={node.id} className="flex items-start gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => seekToken(node.tokenIndex)}
+                  className="min-w-0 flex-1 rounded px-1 py-0.5 text-left hover:bg-accent"
+                  title={`Back to ${sectionTitle(node.section)}`}
+                >
+                  <span className="block">{node.text}</span>
+                  <span className="block truncate text-[10px] text-muted-foreground">
+                    {sectionTitle(node.section)}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeNode(node.id)}
+                  className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  aria-label="Delete parked note"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {mode === "graph" ? (
         <div className="min-h-0 flex-1">
           <FlowGraph
@@ -199,6 +282,12 @@ export function Scratchpad() {
                   Enter
                 </kbd>
                 <span>Untagged note</span>
+              </p>
+              <p className="flex items-center gap-2">
+                <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-[10px]">
+                  /p
+                </kbd>
+                <span>Park an off-topic thought</span>
               </p>
             </div>
           </div>
@@ -259,7 +348,7 @@ export function Scratchpad() {
           value={draft}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="Type the idea, then /e, /m or /o to commit it as a node…"
+          placeholder="Type the idea, then /e, /m or /o to commit it — or /p to park it…"
           spellCheck={false}
           className="min-h-[72px] resize-none bg-background text-sm leading-relaxed"
         />

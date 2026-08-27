@@ -25,7 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type { Verdict } from "@/lib/graders/types";
 import { cn } from "@/lib/utils";
-import { useFocusStore } from "@/store/useFocusStore";
+import { readingNodes, useFocusStore } from "@/store/useFocusStore";
 
 /** A summary shorter than this is a keystroke, not a recall. */
 const MIN_WORDS = 4;
@@ -92,7 +92,11 @@ export function InterceptDialog() {
   const valid = words >= MIN_WORDS;
 
   const sectionNodes = React.useMemo(
-    () => nodes.filter((n) => n.section === intercept.section),
+    // `readingNodes` first: a thought parked mid-section is not evidence of
+    // having understood the section, and putting it on screen beside the
+    // summary box is the single worst moment to hand the reader back their own
+    // distraction.
+    () => readingNodes(nodes).filter((n) => n.section === intercept.section),
     [nodes, intercept.section]
   );
 

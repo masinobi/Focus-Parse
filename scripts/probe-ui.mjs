@@ -454,6 +454,94 @@ check("no clause is clipped out of view", clipped.steps === 0, `${clipped.steps}
 
 await page.screenshot({ path: "scripts/.probe-sql.png" });
 
+/* ---- The parking lot ------------------------------------------------- *
+ *
+ * The claim is a negative one and it is spread over four surfaces: a parked
+ * thought is stored, and is nowhere the reader is thinking about the document.
+ * Every one of those surfaces reads from the same `nodes` array, so the way
+ * this breaks is that one of them forgets to filter — and a unit test on the
+ * predicate would not notice, because the predicate would still be correct.
+ */
+console.log(`
+=== parking lot ===`);
+
+await page.setViewportSize({ width: 1280, height: 900 });
+await page.locator("button[aria-pressed]", { hasText: "List" }).click();
+await page.waitForTimeout(300);
+
+// A real capture first, with the chain open. Parking against an empty pad
+// would pass every check below trivially -- "the count did not move" is true of
+// zero, and "the chain is untouched" is true when there is no chain -- and the
+// first version of this path did exactly that, reporting 0 vs 0.
+await capture("Records must be attributable", "/e");
+await page.locator('button[aria-label="Chain from here"]').first().click();
+await page.waitForTimeout(200);
+
+const headerCount = async () =>
+  Number(
+    ((await page.getByText(/^\d+ nodes?$/).first().textContent()) ?? "0").replace(
+      /\D/g,
+      ""
+    )
+  );
+const nodesBefore = await headerCount();
+check("the pad has something to protect", nodesBefore === 1, `${nodesBefore} nodes`);
+
+await capture("Renew the car insurance before Friday", "/p");
+
+const park = await page.evaluate(() => {
+  const text = document.body.innerText;
+  return {
+    badge: (text.match(/(\d+) parked/) ?? [])[1],
+    inList: /Renew the car insurance/.test(text),
+    chaining: /Chaining from/.test(text)
+      ? (text.match(/Chaining from\s*(.+)/) ?? [])[1]
+      : null,
+  };
+});
+const nodesAfter = await headerCount();
+
+check("a parked thought is stored", park.badge === "1", `${park.badge ?? "no"} parked`);
+check(
+  "a parked thought stays out of the map",
+  !park.inList,
+  park.inList ? "it rendered in the list" : "absent from the list"
+);
+check(
+  "the chain still points at the real capture",
+  (park.chaining ?? "").includes("attributable"),
+  `chaining from "${park.chaining ?? "nothing"}"`
+);
+check(
+  "the node count did not move",
+  nodesAfter === nodesBefore && nodesBefore > 0,
+  `${nodesBefore} before, ${nodesAfter} after`
+);
+
+// The drawer hands it back.
+await page.locator("button", { hasText: /\d+ parked/ }).first().click();
+await page.waitForTimeout(250);
+const backAgain = /Renew the car insurance/.test(
+  await page.evaluate(() => document.body.innerText)
+);
+check(
+  "the drawer hands the thought back",
+  backAgain,
+  backAgain ? "recovered" : "the drawer did not show it"
+);
+
+// And it is still absent from the graph.
+await page.locator("button[aria-pressed]", { hasText: "Graph" }).click();
+await page.waitForTimeout(400);
+const graphText = await page.evaluate(
+  () => document.querySelector(".fp-scroll.h-full.overflow-auto")?.textContent ?? ""
+);
+check(
+  "a parked thought never draws in the graph",
+  !/Renew the car insurance/.test(graphText) && /attributable/.test(graphText),
+  /attributable/.test(graphText) ? "the real node drew, the parked one did not" : "the graph is empty"
+);
+
 /* ---- Blueprint coverage --------------------------------------------- *
  *
  * The fourth path. Everything else this probe drives reports on the corpus;
