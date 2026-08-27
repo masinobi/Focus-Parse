@@ -88,8 +88,45 @@ export const ACRONYMS: Record<string, Acronym> = {
   IDMC: { expansion: "independent data monitoring committee", category: "safety" },
 };
 
-/** Longest key first, so "eCRF" is preferred over "CRF" on a prefix scan. */
+/**
+ * Longest key first. Nothing here scans prefixes any more, but the order still
+ * decides which key claims a plural form if two ever produce the same one.
+ */
 const KEYS = Object.keys(ACRONYMS).sort((a, b) => b.length - a.length);
+
+/**
+ * Every key, and every plural or possessive form of one, as a single lookup.
+ *
+ * This was a linear scan: 56 keys per token, with three template literals
+ * allocated per key to test the plural forms. Over the full GCDMP's 136,645
+ * tokens that is 7.6 million comparisons and 23 million throwaway strings, and
+ * it measured at 10% of the entire document-open profile in the browser.
+ *
+ * Exactness is what makes the swap safe rather than merely faster. The scan
+ * returned on the first key matching *either* exactly or as a variant, so the
+ * order only matters if some token could exact-match one key and variant-match
+ * another. A variant is its key plus a suffix, so a variant match implies the
+ * key is shorter than the token while an exact match implies it is the same
+ * length: no token can do both. Exact first, then variants, is the same
+ * function. `acronyms.test.ts` holds the old scan and asserts they agree.
+ */
+const EXACT = new Set(KEYS);
+const VARIANTS = new Map<string, string>();
+for (const key of KEYS) {
+  for (const variant of [key + "s", key + "'s", key + "’s"]) {
+    if (!VARIANTS.has(variant)) VARIANTS.set(variant, key);
+  }
+}
+
+/**
+ * Every key carries at least one capital, so a token with none cannot match and
+ * does not need the shell regex run over it. Most of a document is that case,
+ * and the regex is the remaining cost once the scan is gone. Safe because the
+ * characters the shell strips are non-alphanumeric by construction, so the
+ * token has a capital exactly when its core does.
+ */
+const HAS_CAPITAL = /[A-Z]/;
+const SHELL = /^([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9]*)$/;
 
 export interface AcronymMatch {
   key: string;
@@ -108,23 +145,18 @@ export interface AcronymMatch {
  * typo or a fragment, and lowercasing would badge ordinary words like "pi".
  */
 export function matchAcronym(token: string): AcronymMatch | null {
-  const shell = /^([^A-Za-z0-9]*)(.*?)([^A-Za-z0-9]*)$/.exec(token);
+  if (!HAS_CAPITAL.test(token)) return null;
+
+  const shell = SHELL.exec(token);
   if (!shell) return null;
 
   const [, lead, core, trail] = shell;
   if (!core) return null;
 
-  for (const key of KEYS) {
-    if (core === key) {
-      return { key, lead, trail, acronym: ACRONYMS[key] };
-    }
-    // Plural or possessive: "eCRFs", "CRF's".
-    if (core === `${key}s` || core === `${key}'s` || core === `${key}’s`) {
-      return { key, lead, trail, acronym: ACRONYMS[key] };
-    }
-  }
+  const key = EXACT.has(core) ? core : VARIANTS.get(core);
+  if (key === undefined) return null;
 
-  return null;
+  return { key, lead, trail, acronym: ACRONYMS[key] };
 }
 
 /** The string handed to the synthesizer for a token: expanded if recognised. */
