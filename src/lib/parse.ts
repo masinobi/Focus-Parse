@@ -21,9 +21,12 @@ const MAX_CHUNK_CHARS = 180;
  * the separate speech string, per-token speech offsets and clause indices.
  * Version 4 marks journal furniture and records which sections are pacing
  * checkpoints of a larger one — both are on `Section`, and stored documents
- * have to be rebuilt to gain them.
+ * have to be rebuilt to gain them. Version 7 marks the front of a book as
+ * furniture, which is the same kind of change: the flag is computed at parse
+ * time, so a document already in the library keeps the old one until it is
+ * rebuilt.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * Sections shorter than this do not arm a cognitive intercept. Stopping a
@@ -341,6 +344,51 @@ const TRAILING_FURNITURE =
 const FRONT_MATTER_SECTIONS = 6;
 
 /**
+ * A table of contents, and nothing else.
+ *
+ * Anchored at both ends on purpose. "Contents of the Data Management Plan" is
+ * the kind of heading this corpus is full of, and everything above one of those
+ * is the chapter, not the front of a book.
+ */
+const CONTENTS_HEADING = /^(table of )?contents$/i;
+
+/**
+ * How deep a table of contents may sit and still be the front of the book.
+ *
+ * The full GCDMP's is the ninth heading; the exam study guide's is the fourth.
+ * Past a dozen, a heading called "Contents" is something else and the rule
+ * would be swallowing the document to explain it.
+ */
+const CONTENTS_WITHIN_SECTIONS = 12;
+
+/**
+ * Last section of the front matter, or -1 where there is no front matter to
+ * find.
+ *
+ * A book puts its table of contents after the cover, the title page, the
+ * copyright and the revision history, and before the text. That is a
+ * convention rather than a heuristic, which is why this reaches for it instead
+ * of trying to recognise a cover page by what it says: the full GCDMP's opens
+ * with "Good Clinical Data" and "Management Practices" — its title, broken
+ * across two centred lines and recovered as two chapters — then an edition
+ * line, the society's name, and the whole lot again on the next page. Nothing
+ * in that text says "cover"; its position does.
+ *
+ * The wrapped-heading repair cannot help here and should not be made to. It
+ * joins a heading that ran out of measure, which it detects by the first line
+ * reaching the right edge of the text block. A cover title is centred, so it
+ * reaches nothing, and the join correctly declines. Rejoining it would only
+ * produce one junk chapter in place of two.
+ */
+function frontMatterEnd(sections: Section[]): number {
+  const limit = Math.min(sections.length, CONTENTS_WITHIN_SECTIONS);
+  for (let i = 0; i < limit; i++) {
+    if (CONTENTS_HEADING.test(sections[i].title.trim())) return i;
+  }
+  return -1;
+}
+
+/**
  * An author list or a self-citation, used as a heading.
  *
  * Two signals only, both of which prose does not produce. A citation marker
@@ -362,9 +410,14 @@ function looksLikeFrontMatter(title: string): boolean {
 
 /** Which sections are the artefact rather than the guidance. */
 function markFurniture(sections: Section[]): Section[] {
+  // Inclusive: the contents list is itself a page of headings and numbers, and
+  // reading it aloud is the clearest case of furniture in the document.
+  const frontMatter = frontMatterEnd(sections);
+
   return sections.map((section) => {
     const title = section.title.trim();
     const furniture =
+      section.i <= frontMatter ||
       TRAILING_FURNITURE.test(title) ||
       (section.i < FRONT_MATTER_SECTIONS && looksLikeFrontMatter(title));
     // A section playback will never reach on its own must not also demand a

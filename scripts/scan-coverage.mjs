@@ -59,6 +59,7 @@ execFileSync(
 
 const load = createRequire(import.meta.url);
 const { buildCoverage, nextToVerify } = load(join(out, "coverage.js"));
+const { firstContentToken } = load(join(out, "parse.js"));
 const { buildGridQuestion } = load(join(out, "quiz.js"));
 const { parseDocument } = load(join(out, "parse.js"));
 const { assemble, isBoldFont } = load(join(out, "pdf.js"));
@@ -197,6 +198,39 @@ let corpusFreshVerified = 0;
 let corpusMuteGrids = 0;
 let corpusGrids = 0;
 
+/**
+ * Where each document actually starts speaking, and how much it skips to do it.
+ *
+ * The full GCDMP used to open by reading its own cover aloud — "Good Clinical
+ * Data. Management Practices. October 2013 Edition." — because the title is
+ * centred across two lines and both halves came back as chapters. The exam
+ * study guide did the same with "CCDA Exam" and "Study Guide". Neither showed
+ * up in any count in this file: those are real sections, they are reachable,
+ * they verify, and a perfect reading still scored 100%. What was wrong is that
+ * they are not the document.
+ *
+ * The opening is **reported, not asserted**. The obvious assertion — that
+ * playback does not start on furniture — cannot fail: `firstContentToken` is
+ * defined as the first non-furniture section, so it restates its own
+ * implementation. Written, run against the rule reverted, and found still green;
+ * it is a report instead because a human reading this list can see a cover in it
+ * and a tautology can see nothing.
+ *
+ * The share cap below is the opposite failure — a front-matter rule that
+ * over-reaches and skips the document — and it is **not exercised by this
+ * corpus**, so a green there is not evidence either. Tried: unanchoring the
+ * contents pattern and removing its depth cap together, which is the worst this
+ * rule can do, and the number stayed at 0 because no heading in these twelve
+ * documents begins with "contents" except the two real ones. It is kept for a
+ * corpus that does, and reported as unproven rather than counted as a pass.
+ *
+ * The rule itself is held by `front-matter.test.ts`, on a fixture, where all
+ * three of its parts have been confirmed able to fail.
+ */
+const FRONT_MATTER_SHARE_CAP = 0.15;
+let corpusOverReach = 0;
+const openings = [];
+
 for (const file of readdirSync(dir).filter((f) => /\.(pdf|md)$/i.test(f))) {
   const path = join(dir, file);
   const source = /\.pdf$/i.test(file)
@@ -225,6 +259,16 @@ for (const file of readdirSync(dir).filter((f) => /\.(pdf|md)$/i.test(f))) {
     gridAttempts: {},
     clozeChecks: {},
   });
+
+  const start = firstContentToken(doc);
+  const opening = doc.sections.find((s) => s.tokenStart <= start && s.tokenEnd > start);
+  const share = doc.wordCount ? start / doc.wordCount : 0;
+  if (share > FRONT_MATTER_SHARE_CAP) corpusOverReach += 1;
+  openings.push(
+    `${file.replace(/\.(pdf|md)$/i, "").slice(0, 42).padEnd(42)} ` +
+      `skips ${String(start).padStart(5)}w (${(share * 100).toFixed(1)}%) ` +
+      `then opens on "${(opening?.title ?? "?").trim().slice(0, 38)}"`
+  );
 
   const stuck = perfect.sections.filter((s) => s.words > 0 && s.state !== "verified");
   corpusUnreachable += stuck.length;
@@ -274,6 +318,12 @@ console.log(
 console.log(
   `  tables no question can be built from: ${corpusMuteGrids} of ${corpusGrids}`
 );
+console.log(
+  `  documents skipping more than ${FRONT_MATTER_SHARE_CAP * 100}% as front matter: ` +
+    `${corpusOverReach}   (0, but this corpus cannot make it anything else)`
+);
+console.log(`\n=== where each document starts speaking ===`);
+for (const line of openings) console.log(`  ${line}`);
 console.log(
   `
   The second line is the control. A perfect reading reaching 100% means

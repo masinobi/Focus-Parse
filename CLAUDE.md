@@ -878,10 +878,42 @@ rows to 28 ("minimum standards"), 32 ("privacy") or 2 ("sae"). It filters the
 *displayed* rows, not `doc.sections`: a heading split into six pacing
 checkpoints is six sections and one row.
 
-**The first six rows of this document are title-page wreckage** — "Good Clinical
-Data", "Management Practices", "October 2013 Edition", then the same two again.
-The heading recovery is reading a cover page as five chapters. Cosmetic, visible
-in `scripts/.probe-filter.png`, and not looked at.
+**It opened by reading its own cover aloud, and that is fixed.** "Good Clinical
+Data. Management Practices. October 2013 Edition." — the title, centred across
+two lines and recovered as two chapters, then the edition line, the society, and
+the whole cover again on the next page. The exam study guide did the same with
+"CCDA Exam" and "Study Guide".
+
+**The fix is the convention, not the text.** A book puts its table of contents
+after the cover, the title page and the copyright, and before the text, so
+everything up to and including a heading that is exactly "Contents" is front
+matter. Nothing on those pages says "cover"; their position does. Two guards,
+both load-bearing and both break-proven: the title must match *exactly*, because
+"Contents of the Data Management Plan" is the kind of heading this corpus is full
+of; and it must fall in the first twelve sections, because past that a heading
+called "Contents" is something else.
+
+The wrapped-heading repair cannot help here and should not be made to. It joins a
+heading that ran out of measure, detected by the first line reaching the right
+edge of the text block — and a cover title is *centred*, so it reaches nothing and
+the join correctly declines. Rejoining it would produce one junk chapter instead
+of two.
+
+Effect, measured across all twelve documents: **exactly two changed.** The GCDMP
+marks 9 more sections as furniture and now opens on "Executive Summary" instead
+of "Good Clinical Data"; the exam study guide marks 4 and opens on "1 CCDA Exam
+Domains and Tasks". The other ten are byte-identical. `SCHEMA_VERSION` went to 7,
+because the flag is computed at parse time and a document already in the library
+would otherwise keep the old one.
+
+**The obvious scanner assertion for this cannot fail, and is not used.** "Playback
+does not start on furniture" restates `firstContentToken`, which is *defined* as
+the first non-furniture section. It was written, run against the rule reverted,
+and found still green. `scan-coverage` reports where each document starts speaking
+instead — a human reading that list can see a cover in it. The share cap beside it
+is honest about being unexercised: unanchoring the pattern *and* removing the
+depth cap, the worst this rule can do, still leaves it at 0, because no heading in
+these twelve documents begins with "contents" except the two real ones.
 
 **A gap the measurements do not cover.** `useSpeechEngine`'s stall watchdog
 recovers from one failure only — the engine silently dropping an utterance and
