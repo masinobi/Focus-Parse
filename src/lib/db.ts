@@ -9,6 +9,7 @@ import {
 } from "./backup";
 import type { CoverageUnit } from "./blueprint-coverage";
 import { citationsInDocument, type CitationSite } from "./citations";
+import { comparePhrase, type DocComparison } from "./compare";
 import { buildCoverage } from "./coverage";
 import { horizonDays, loadDeadline } from "./deadline";
 import { buildEntityIndex, ENTITY_SCHEMA, type DocEntityIndex } from "./entities";
@@ -491,6 +492,33 @@ export const db = {
       );
     }
     return out;
+  },
+
+  /**
+   * What every stored guideline says about one phrase.
+   *
+   * Same shape and same argument as `citationSites`: one `getAll()` over the
+   * document store, then a single pass over the tokens, and nothing cached.
+   * A derived store was the obvious design and the corpus ruled it out — the
+   * entity index holds capitalized noun phrases, and the terms worth comparing
+   * across guidelines are lowercase prose. "Audit trail" is in ten of the
+   * twelve stored documents and indexed in none of them. See `compare.ts`.
+   *
+   * `null` for a query with no matchable words, so the caller can tell an
+   * unasked question from an unanswered one.
+   */
+  async comparePhrase(phrase: string): Promise<DocComparison[] | null> {
+    const docs = await safe(
+      tx<ParsedDoc[]>(DOCS, "readonly", (s) => s.getAll() as IDBRequest<ParsedDoc[]>),
+      []
+    );
+    // A stale document has the wrong token shape, and re-parsing the corpus on
+    // every keystroke is not a search box. It comes back when the reader next
+    // opens it, exactly as in `blueprintUnits`.
+    return comparePhrase(
+      docs.filter((d) => d.schema === SCHEMA_VERSION),
+      phrase
+    );
   },
 
   /* ---- Backup and restore ---------------------------------------------- */

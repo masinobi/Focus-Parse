@@ -1,8 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { ArrowLeft, Library, Loader2, Network, Search, TriangleAlert } from "lucide-react";
+import {
+  ArrowLeft,
+  Columns2,
+  Library,
+  Loader2,
+  Network,
+  Search,
+  TriangleAlert,
+} from "lucide-react";
 
+import { ComparePanel } from "@/components/compare-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ACRONYMS } from "@/lib/acronyms";
@@ -43,6 +52,14 @@ export function CorpusIndex({ onBack }: CorpusIndexProps) {
   const [query, setQuery] = React.useState("");
   const [kind, setKind] = React.useState<KindFilter>("all");
   const [sharedOnly, setSharedOnly] = React.useState(true);
+  /**
+   * The phrase being compared, or `null` for the index itself.
+   *
+   * A sub-view rather than another home-screen mode. There are eight of those
+   * already, and comparison is not a ninth thing to do with the corpus — it is
+   * what the corpus view was for.
+   */
+  const [comparing, setComparing] = React.useState<string | null>(null);
 
   const loadDoc = useFocusStore((s) => s.loadDoc);
   const hydrateSession = useFocusStore((s) => s.hydrateSession);
@@ -100,6 +117,17 @@ export function CorpusIndex({ onBack }: CorpusIndexProps) {
   };
 
   const truncated = (indexes ?? []).reduce((sum, i) => sum + i.truncated, 0);
+
+  if (comparing !== null) {
+    return (
+      <ComparePanel
+        phrase={comparing}
+        onPhrase={setComparing}
+        onBack={() => setComparing(null)}
+        onOpen={open}
+      />
+    );
+  }
 
   if (indexes === null) {
     return (
@@ -168,16 +196,53 @@ export function CorpusIndex({ onBack }: CorpusIndexProps) {
           <Network className="h-3.5 w-3.5" />
           Shared
         </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 gap-1.5"
+          onClick={() => setComparing(query.trim())}
+          title="Read one phrase across every document at once"
+        >
+          <Columns2 className="h-3.5 w-3.5" />
+          Compare
+        </Button>
       </div>
 
       <div className="fp-scroll flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-4">
           {filtered.length === 0 ? (
-            <p className="py-16 text-center text-sm text-muted-foreground">
-              {entities.length === 0
-                ? "No documents indexed yet. Read something first."
-                : "Nothing matches that."}
-            </p>
+            <div className="py-16 text-center">
+              <p className="text-sm text-muted-foreground">
+                {entities.length === 0
+                  ? "No documents indexed yet. Read something first."
+                  : `Nothing is indexed under “${query.trim()}”.`}
+              </p>
+
+              {/* The dead end this index has always had, now with a way out of
+                  it. Only capitalized names are indexed, so an ordinary
+                  lowercase term — "audit trail" is in ten of the twelve
+                  documents and indexed in none — lands here and reads as
+                  "the corpus does not cover this". It does. */}
+              {entities.length > 0 && query.trim() && (
+                <>
+                  <p className="mx-auto mt-2 max-w-md text-xs text-muted-foreground">
+                    Only capitalized names are indexed. A term the guidelines write
+                    in lowercase — “audit trail”, “database lock” — is in the text
+                    but never in this list.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 gap-1.5"
+                    onClick={() => setComparing(query.trim())}
+                  >
+                    <Columns2 className="h-3.5 w-3.5" />
+                    Search the documents for “{query.trim()}”
+                  </Button>
+                </>
+              )}
+            </div>
           ) : (
             <div className="divide-y rounded-md border">
               {filtered.slice(0, MAX_ROWS).map((entity) => (
@@ -186,6 +251,7 @@ export function CorpusIndex({ onBack }: CorpusIndexProps) {
                   entity={entity}
                   lapses={weak[entity.key]?.lapses ?? 0}
                   onOpen={open}
+                  onCompare={setComparing}
                 />
               ))}
             </div>
@@ -215,10 +281,12 @@ function EntityRow({
   entity,
   lapses,
   onOpen,
+  onCompare,
 }: {
   entity: CorpusEntity;
   lapses: number;
   onOpen: (docId: string, tokenIndex: number) => void;
+  onCompare: (phrase: string) => void;
 }) {
   const expansion = entity.kind === "acronym" ? ACRONYMS[entity.key]?.expansion : undefined;
 
@@ -265,6 +333,20 @@ function EntityRow({
             <span className="ml-1 tabular-nums opacity-70">{d.count}</span>
           </button>
         ))}
+
+        {/* Only where there is something to compare it against. One document
+            saying a term is not a disagreement between guidelines. */}
+        {entity.docs.length > 1 && (
+          <button
+            type="button"
+            onClick={() => onCompare(entity.display)}
+            title={`Read every mention of ${entity.display} side by side`}
+            className="flex items-center gap-1 rounded border border-dashed px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+          >
+            <Columns2 className="h-3 w-3" />
+            Compare
+          </button>
+        )}
       </div>
     </div>
   );

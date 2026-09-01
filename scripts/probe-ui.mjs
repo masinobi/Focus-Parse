@@ -1377,6 +1377,243 @@ check(
     : `${back.readAhead} words still marked read ahead of the caret`
 );
 
+/* ---- Home screen reachability --------------------------------------- *
+ *
+ * `items-center` on a scrolling flex container centres the content and then
+ * clips whatever overflows above the scroll origin — and that part cannot be
+ * scrolled back to, because the scrollbar is already at zero. Every DOM-level
+ * fact about the home screen stays true while this is broken: the buttons
+ * exist, they have labels, they are not `display: none`, and `scrollHeight`
+ * even reports a smaller number than the content actually needs.
+ *
+ * Measured before the fix, at five documents: the corpus index and the exam
+ * date could not be brought into view at any scroll position, and the content
+ * began 352px above the top of its own scroller. The reader has twelve
+ * documents.
+ *
+ * So the assertion is reachability, not visibility: every control must be
+ * fully inside the scroller at *some* scroll offset.
+ */
+console.log(`
+=== home screen reachability ===`);
+
+for (let i = 1; i <= 5; i++) {
+  await loadMarkdown(`Reach probe ${i}.md`, `# Chapter ${i}
+
+The audit trail is reviewed before the database is locked.`);
+}
+
+await page.locator("header").getByRole("button", { name: "New" }).click();
+await page.waitForTimeout(1000);
+
+const reach = await page.evaluate(() => {
+  const scroller = document.querySelector(".overflow-y-auto");
+  const max = scroller.scrollHeight - scroller.clientHeight;
+  const box = scroller.getBoundingClientRect();
+  const labels = [...document.querySelectorAll("button")]
+    .map((b) => (b.innerText || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  const unreachable = [];
+  for (const label of new Set(labels)) {
+    let seen = false;
+    for (let top = 0; top <= max + 1; top += 50) {
+      scroller.scrollTop = Math.min(top, max);
+      const el = [...document.querySelectorAll("button")].find(
+        (b) => (b.innerText || "").replace(/\s+/g, " ").trim() === label
+      );
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.top >= box.top - 1 && r.bottom <= box.bottom + 1) {
+        seen = true;
+        break;
+      }
+    }
+    if (!seen) unreachable.push(label.slice(0, 40));
+  }
+  // Back to the origin *before* measuring it. The sweep above leaves the
+  // scroller wherever the last control happened to come into view, and
+  // reading the offset there says nothing about where the content starts.
+  scroller.scrollTop = 0;
+  const above = Math.round(
+    scroller.firstElementChild.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+  );
+  return { controls: new Set(labels).size, unreachable, above };
+});
+
+check(
+  "every home-screen control can be scrolled to",
+  reach.unreachable.length === 0,
+  reach.unreachable.length === 0
+    ? `${reach.controls} controls, all reachable`
+    : `unreachable: ${reach.unreachable.join(", ")}`
+);
+check(
+  "the home screen does not start above its own scroll origin",
+  reach.above >= 0,
+  `content begins ${reach.above}px from the top of the scroller`
+);
+
+/* ---- Cross-document comparison -------------------------------------- *
+ *
+ * The panel quotes a sentence out of one document and marks the phrase inside
+ * it, and the mark is placed by character offsets computed in a different
+ * module from the one that produced the sentence. Every DOM-level fact about
+ * that would be just as true of a mark in the wrong place — the <mark> exists,
+ * it has text in it, the quotation is a real sentence from a real document.
+ *
+ * So the assertion is that the marked text *is the phrase that was searched
+ * for*. That is the on-screen form of the check `scan-compare` makes offline,
+ * and it is the one an offset bug cannot survive.
+ *
+ * The other half is the dead end. Only capitalized names are indexed, so an
+ * ordinary lowercase term reaches an empty corpus index and reads as "not in
+ * these documents" — measured: "audit trail" is in ten of the twelve corpus
+ * documents and indexed in none. The escape out of that empty state has to be
+ * there, and has to work.
+ */
+console.log(`
+=== cross-document comparison ===`);
+
+const COMPARE_A = `# Electronic Records
+
+Persons who use closed systems shall employ secure, computer-generated,
+time-stamped audit trails. The audit trail shall record the operator entry and
+the date. Audit trail documentation shall be retained.
+
+# Electronic Signatures
+
+A signature shall be linked to its respective record so that it cannot be
+excised, copied or otherwise transferred.`;
+
+const COMPARE_B = `# Database Closure
+
+The audit trail should be reviewed before the database is locked, and the
+review recorded.
+
+# Metrics for Data Quality
+
+Quality is measured against the plan agreed at the start of the study.`;
+
+const COMPARE_C = `# Vendor Selection
+
+Oversight of the vendor is retained by the sponsor, and the sponsor may not
+delegate it.
+
+# Contracting
+
+A contract states the deliverables and the acceptance criteria for each.`;
+
+await loadMarkdown("Part 11 probe.md", COMPARE_A);
+await loadMarkdown("GCDMP probe.md", COMPARE_B);
+await loadMarkdown("Vendor probe.md", COMPARE_C);
+
+await page.locator("header").getByRole("button", { name: "New" }).click();
+await page.getByRole("button", { name: /Corpus index/ }).click();
+await page.getByLabel("Search the corpus index").waitFor({ timeout: 60_000 });
+
+// The dead end: a lowercase prose term is in every document and in no index.
+await page.getByLabel("Search the corpus index").fill("audit trail");
+await page.waitForTimeout(400);
+const escape = page.getByRole("button", { name: /Search the documents for/ });
+check(
+  "a lowercase term finds nothing in the index and offers the documents instead",
+  await escape.isVisible(),
+  "empty index state carries the way out"
+);
+
+await escape.click();
+await page.getByLabel("Phrase to compare across documents").waitFor({ timeout: 30_000 });
+await page.waitForTimeout(1200);
+
+const compared = await page.evaluate(() => {
+  const marks = [...document.querySelectorAll("mark")];
+  const cards = [...document.querySelectorAll("button")].filter((b) =>
+    b.querySelector("mark")
+  );
+  const titles = [...document.querySelectorAll("div")]
+    .map((d) => (d.firstElementChild && d.firstElementChild.textContent) || "")
+    .filter((t) => /probe\.md$/.test(t.trim()));
+  return {
+    marked: marks.map((m) => m.textContent.trim()),
+    quotes: cards.map((b) => (b.innerText || "").replace(/\s+/g, " ").trim()),
+    bodyText: document.body.innerText,
+  };
+});
+
+check(
+  "every mark is the phrase that was searched for",
+  compared.marked.length > 0 &&
+    compared.marked.every((m) => /^audit trails?$/i.test(m)),
+  `${compared.marked.length} marks: ${JSON.stringify(compared.marked.slice(0, 4))}`
+);
+
+// A heading match is quoted as itself and labelled as such, so it is exempt
+// from needing surrounding prose — the label is what carries the meaning.
+const prose = compared.quotes.filter((q) => !/a section of its own/.test(q));
+check(
+  "every prose mark sits inside more sentence than itself",
+  prose.length > 0 &&
+    prose.every((q) => /audit trails?/i.test(q)) &&
+    prose.every((q) => q.replace(/audit trails?/i, "").trim().length > 20),
+  `${prose.length} prose quotations, ${
+    compared.quotes.length - prose.length
+  } headings, shortest prose ${Math.min(
+    ...prose.map((q) => q.split(/\s+/).length)
+  )} words`
+);
+
+check(
+  "both documents that say it are shown",
+  /Part 11 probe/.test(compared.bodyText) && /GCDMP probe/.test(compared.bodyText),
+  "two guidelines side by side"
+);
+
+check(
+  "the document that never says it is not shown",
+  !/Vendor probe/.test(compared.bodyText),
+  "silent documents dropped rather than listed empty"
+);
+
+await page.screenshot({ path: "scripts/.probe-compare.png", fullPage: false });
+
+// A paraphrase must be refused on screen, not only in the unit tests. The
+// phrase here is the reversal rather than a reworded one: measured over the
+// corpus, "sponsor oversight" IS present -- E6(R3) carries it as a heading and
+// "oversight by the sponsor" as a sentence -- so the obvious example would have
+// asserted something false.
+await page.getByLabel("Phrase to compare across documents").fill("trail audit");
+await page.waitForTimeout(1200);
+const refused = await page.evaluate(() => document.body.innerText);
+check(
+  "a paraphrase is refused rather than approximated",
+  /No document says/.test(refused),
+  /No document says/.test(refused)
+    ? "'trail audit' does not find 'audit trail' — order is part of the phrase"
+    : `still showing: ${JSON.stringify(refused.replace(/\s+/g, " ").slice(0, 200))}`
+);
+
+// And the quotation is a way into the document, not just a picture of one.
+await page.getByLabel("Phrase to compare across documents").fill("audit trail");
+await page.waitForTimeout(1200);
+await page.locator("button:has(mark)").first().click();
+await page.getByRole("button", { name: "Play", exact: true }).waitFor({ timeout: 120_000 });
+await page.waitForTimeout(600);
+const landed = await page.evaluate(() => {
+  const active = document.querySelector(".fp-word-active");
+  const at = active ? Number(active.getAttribute("data-token")) : -1;
+  const around = [...document.querySelectorAll("span[data-token]")]
+    .filter((w) => Math.abs(Number(w.dataset.token) - at) < 4)
+    .map((w) => w.textContent)
+    .join(" ");
+  return { at, around };
+});
+check(
+  "clicking a quotation opens that document at that sentence",
+  landed.at >= 0 && /audit/i.test(landed.around),
+  `token ${landed.at}: ${JSON.stringify(landed.around.slice(0, 40))}`
+);
+
 /* ---- Report -------------------------------------------------------- */
 
 check("no console errors", consoleErrors.length === 0, consoleErrors[0] ?? "");
@@ -1387,7 +1624,7 @@ console.log(`\n=== probe ===`);
 console.log(`  document: ${sample.f} (${Math.round(sample.size / 1024)}KB)`);
 console.log(`  clock at first question: ${clockAtStart ?? "—"}`);
 console.log(
-  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter (.png, in scripts/)`
+  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter, .probe-compare (.png, in scripts/)`
 );
 console.log(`  failures: ${failures.length}   (must be 0)`);
 if (failures.length) {
