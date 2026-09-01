@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "study": "next build && next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "postinstall": "node scripts/copy-pdf-worker.mjs",
@@ -17,7 +18,8 @@
     "scan-sql": "node scripts/scan-sql.mjs",
     "scan-blueprint": "node scripts/scan-blueprint.mjs",
     "scan-citations": "node scripts/scan-citations.mjs",
-    "scan-compare": "node scripts/scan-compare.mjs"
+    "scan-compare": "node scripts/scan-compare.mjs",
+    "scan-perf": "node scripts/scan-perf.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

@@ -6,10 +6,33 @@ word-level highlight to the audio, and refuses to let you coast past a section
 boundary without restating what you just heard.
 
 ```bash
-npm run dev
+npm run study
 ```
 
 Then open http://localhost:3000 and hit **Load the sample**.
+
+**Use `npm run study` to read, not `npm run dev`.** It builds once and serves the
+production bundle. On the 524-page GCDMP the difference is not cosmetic — across
+several three-run measurements on one machine:
+
+| | `npm run dev` | `npm run study` |
+|---|---|---|
+| time to open | 7.6–11.8s | **3.8–5.8s** |
+| longest unbroken freeze | 3.6–6.0s | **1.9–2.8s** |
+| main thread blocked per 20s of playback | 0.89–1.41s | **0.31–0.47s** |
+| memory | 210–215MB | **111–112MB** |
+
+Ranges, not points, because the spread between runs on one build is wide enough
+to swallow a careless comparison — the memory figure is the only one that barely
+moves. Measure your own with `npm run scan-perf "<corpus folder>"` against
+whichever server is running.
+
+React's development build ships `validateProperty`, `warnOnInvalidKey` and the
+rest of its diagnostics, and a document that lays out 135,000 word spans pays
+for every one of them. `npm run dev` remains the right command for working *on*
+FocusParse — it just costs roughly twice to three times as much to read with.
+
+If you switch back to `npm run dev` after a build, delete `.next` first.
 
 ## Stack
 

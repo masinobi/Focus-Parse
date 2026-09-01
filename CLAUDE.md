@@ -837,7 +837,9 @@ compendium, and it is **6.7x larger than the next biggest**:
 
 The reader said the audio froze on it and sometimes the browser with it. It is
 the document that finds anything in the app that scales with document size, and
-two things did. Both are fixed; a third is not, and is the reason to read this.
+two things did. Both are fixed. A third looked unfixable and turned out to be
+mostly an artefact of measuring the development build -- which is the reason to
+read this.
 
 **How to measure it, and what the numbers mean.** Drive the real app and read
 the main thread, because every candidate cause here is invisible in the source:
@@ -849,13 +851,19 @@ the main thread, because every candidate cause here is invisible in the source:
   `TaskOtherDuration` — the last being paint, compositing and DOM work. Four
   hypotheses died on that split alone.
 - **The control is the same document in RSVP**, which plays identically with no
-  flow in the pane. Idle on the same page is 0.28s of task time per 20s; RSVP
-  playing is 3.0s; the flow playing is 7.8s. Without those two the flow's number
-  means nothing.
+  flow in the pane. Without it, and without the idle control beside it, the
+  flow's number means nothing. `npm run scan-perf` does all of this, and
+  asserts that the control is really a control -- see below, because it was
+  not, twice.
+- **Say which build every number came from.** The three bullets above were
+  written against `npm run dev` and the figures quoted in this section used to
+  be dev figures presented as the app's. They are about three times the
+  production ones.
 
 **Do not measure with a Playwright role query.** Waiting on
 `getByRole("button", {name: "Play"})` reported this document as taking **95
-seconds** to open. It takes 13. Every word is a `role="button"` span for
+seconds** to open. It takes 12 in dev and under 4 in production. Every word is
+a `role="button"` span for
 seek-on-click, so the accessible-name scan walks 135,000 candidates and the
 probe's own wait was most of what it measured.
 
@@ -868,31 +876,61 @@ React to discover that one had changed; it now reuses the previous element for
 every block whose relation to the caret has not moved, which halved the blocked
 time. Neither of these is dev-mode-only.
 
-**What is still wrong.** The remaining cost is the size of the DOM and nothing
-else. Switching this document to RSVP removes **408,901 nodes**; the flow's
-extra 4.8s per 20s of playback is 3.7s of `TaskOtherDuration` against 0.5s of
-layout and 0.4s of script. Micro-optimizations do not touch it — dropping
-`role="button"` from every word, turning all four anchors off, and disabling the
-auto-scroll effect entirely were each measured and each moved it by little or
-nothing. Opening the document still blocks the main thread for **one unbroken
-7.2 seconds** while those nodes are built.
+**What is still wrong, and how much: measure the build you are in.** The
+figures above were all taken against `npm run dev`, and the conclusion drawn
+from them for a whole round -- that the remaining cost is the DOM, that only a
+design change can touch it, and that the change is the reader's to make -- was
+wrong, because React's development build is most of it. `npm run scan-perf`
+opens this document three times in each view against whatever is on :3000.
+Same machine, same document, three runs each:
 
-The only real fix is to stop putting every word of a 524-page book in the DOM at
-once, and that collides with a deliberate decision recorded in `reader-pane.tsx`
-— *"every block stays in the DOM, so scrolling, find-in-page and scroll-into-view
-all behave normally"*. Rendering distant blocks as plain text instead of word
-spans would cut the node count by about three, and would cost per-word
-click-to-seek, acronym badges and bionic lead-bolding everywhere except near the
-caret. **That is a decision about how the reader looks, not a bug fix, so it is
-the reader's to make.**
+| | `npm run dev` | production | flow's own share, production |
+|---|---|---|---|
+| open | 7.6-11.8s | 3.8-5.8s | 0.8-2.5s |
+| longest unbroken block | 3.6-6.0s | 1.9-2.8s | 1.0-2.0s |
+| blocked per 20s of playback | 0.89-1.41s | 0.31-0.47s | 0.28-0.45s |
+| JS heap | 210-215MB | 111-112MB | 83-84MB |
+| nodes | 419,642 | 419,645 | 408,981 |
 
-**Dev mode inflates the open, not the playback.** The load profile is thick with
-`validateProperty`, `defineKeyPropWarningGetter` and `warnOnInvalidKey`, all
-stripped from a production build. The 7.2s figure is therefore an upper bound and
-the production number is unknown — measuring it needs `npm run build`, which
-fights the dev server (see Environment traps). The playback numbers are much less
-exposed: the React share is small there and `TaskOtherDuration` is browser work
-that production does not make cheaper.
+**Ranges, and they matter.** Two three-run measurements of the same build an
+hour apart differed by 50% on the open, and the machine had 3.7GB of 15.7GB
+free at the time. The first dev/production pair taken here was not
+back-to-back and made the open look 3.1x better in production; measured
+back-to-back it is 1.45x. The playback ratio (about 3x) and the heap ratio
+(1.9x) survive that treatment; the open ratio does not. **Take the pair
+back-to-back or do not quote it.**
+
+So the reader's recorded 7.2-second freeze is a **2-to-3-second** freeze on the
+production bundle, and the flow's own contribution is **one to two seconds of
+open, once, and about 1.5% of playback wall time**. That does not buy a design
+change. Rendering distant blocks as plain text would still cut the node count
+by about three and still cost per-word click-to-seek, acronym badges and bionic
+lead-bolding away from the caret -- for a second or two, once, on the largest
+document in the corpus. **Not worth it, and the reason it ever looked worth it
+is that nobody had measured the build the reader would actually study in.**
+
+What *was* worth doing is one line of README. It said `npm run dev`, so that is
+what the reader was reading a 524-page book in, at roughly three times the cost
+of `npm run study`. The DOM was never the lever; the build was.
+
+**The control is the whole measurement, and it broke silently twice.** Every
+number here is a difference against the same document in RSVP -- identical
+parse, identical audio, no flow in the pane. The first version of `scan-perf`
+switched to RSVP *after* opening the book, so both arms measured a flow-mode
+open and reported them as identical: 4,791ms against 4,962ms, a clean result
+meaning nothing. The second attempt picked its document by file size and
+profiled an image-heavy EDC chapter instead of the GCDMP. So the script now
+asserts its own control -- the RSVP arm must lay out **zero** word spans on a
+warm-up document before the book is opened, the flow arm must lay out some, and
+the two arms must build different DOMs -- and exits non-zero if any of those
+fail. Confirmed by removing the view switch: it reports "CONTROL BROKEN" and
+exits 1. **Timings stay a report**; run-to-run variance is about a third and a
+threshold over that would fail for the weather.
+
+**Do not measure with a Playwright role query, and do not pick the document by
+file size.** Both traps are live in this corpus. The role query is recorded
+above. The file-size one is quieter: the largest *file* here is a 3.8MB EDC
+chapter full of images, while the GCDMP is 2.4MB and 6.7x more text.
 
 **The map is 755 rows, and that was its own problem.** Not performance —
 navigation. Every other document in the corpus is twelve to seventy-eight rows;
