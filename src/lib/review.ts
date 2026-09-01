@@ -56,6 +56,28 @@ export interface ReviewItem {
   acronym?: string;
   /** Section this came from, for grouping in the queue. */
   section?: number;
+  /**
+   * The reader was shown the section's own vocabulary before writing this.
+   *
+   * A summary written against a blank page is free recall; one written after
+   * three nouns were put on screen is cued recall, and they are not the same
+   * evidence. The anchors exist because the blank page is where a reader with
+   * executive dysfunction stalls out — but a scaffold that goes unrecorded
+   * quietly inflates every downstream judgement of the same sentence: the
+   * grader's `missed` list shrinks, and the self-grade at review is made
+   * against a sentence whose nouns were supplied.
+   *
+   * So it is written down, the way `gridAttempts` writes down attempts spent.
+   * It does *not* change what is owed. The reader cannot un-see the anchors,
+   * and a debt that cannot be discharged is worse than no debt at all —
+   * invariant 20. Coverage counts a cued summary exactly as it counts any
+   * other; only the record of how it was produced differs.
+   *
+   * Optional for the reason `FlowNode.links` is: every item already on disk
+   * predates this and reads back `undefined`, which must mean "not cued"
+   * rather than crash.
+   */
+  cued?: boolean;
 
   ease: number;
   /** Current interval in days. Sub-day intervals are held as 0. */

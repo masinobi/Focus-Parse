@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowLeft, Check, Eye, Layers, Loader2, X } from "lucide-react";
+import { ArrowLeft, Check, Eye, Layers, LifeBuoy, Loader2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -401,6 +401,18 @@ function SummaryReview({
             What you wrote at the intercept
           </p>
           <p className="mt-1.5 text-sm leading-relaxed">{item.answer}</p>
+
+          {/* The self-grade is the only place this sentence is ever judged,
+              and it is judged by the reader. They have to know it was written
+              with the section's nouns already on screen, or they will grade a
+              cued recall as a free one. `undefined` on everything written
+              before the anchors existed, which reads as "not cued". */}
+          {item.cued && (
+            <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <LifeBuoy className="h-3 w-3 shrink-0" />
+              You had the section&rsquo;s terms on screen when you wrote this.
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -110,3 +110,50 @@ describe("termKey", () => {
     expect(termKey("e-CRF")).toBe("e-crf");
   });
 });
+
+/**
+ * The cued flag is not scheduling data — it changes no interval and no ease.
+ * It is provenance, and provenance is worth nothing if it does not survive the
+ * trip. A summary answered three times over six weeks must still say it was
+ * written with the section's nouns on screen, because the self-grade at every
+ * one of those sittings is made against the same sentence.
+ */
+describe("cued provenance", () => {
+  it("survives being scheduled", () => {
+    const item = seeded({ kind: "summary", cued: true });
+    expect(item.cued).toBe(true);
+    const next = scheduleReview(item, QUALITY.good, NOW, null);
+    expect(next.cued).toBe(true);
+  });
+
+  it("survives a lapse and a relearn", () => {
+    let item = seeded({ kind: "summary", cued: true });
+    for (const q of [QUALITY.again, QUALITY.hard, QUALITY.good, QUALITY.easy]) {
+      item = scheduleReview(item, q, NOW, null);
+      expect(item.cued).toBe(true);
+    }
+  });
+
+  it("reads as not cued on everything written before it existed", () => {
+    // No item on disk carries this field. `undefined` must mean free recall
+    // rather than crash — the same contract as `FlowNode.links`.
+    const legacy = seeded({ kind: "summary" });
+    expect(legacy.cued).toBeUndefined();
+    expect(scheduleReview(legacy, QUALITY.good, NOW, null).cued).toBeUndefined();
+  });
+
+  it("changes no interval", () => {
+    const free = scheduleReview(seeded({ kind: "summary" }), QUALITY.good, NOW, null);
+    const cued = scheduleReview(
+      seeded({ kind: "summary", cued: true }),
+      QUALITY.good,
+      NOW,
+      null
+    );
+    expect({ ease: cued.ease, days: cued.intervalDays, due: cued.dueAt }).toEqual({
+      ease: free.ease,
+      days: free.intervalDays,
+      due: free.dueAt,
+    });
+  });
+});

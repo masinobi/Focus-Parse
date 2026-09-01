@@ -1056,7 +1056,115 @@ if (opened) {
       "nothing declared"
   );
 
+  /* The anti-paralysis scaffold.
+   *
+   * The intercept is non-dismissible by design, which is the whole value of it
+   * and also where a reader can sit in front of an empty box with the material
+   * still in their head and no way in. The anchors are the section's own nouns
+   * -- never a sentence, never anything that could be copied out as an answer.
+   *
+   * What has to be true on screen is that they came from *this* section and
+   * that the help was counted. A cued recall recorded as a free one quietly
+   * inflates every later judgement of the same sentence: the grader's "missed"
+   * list shrinks and the self-grade weeks later is made against a sentence
+   * whose nouns were supplied.
+   */
+  const stuck = page.getByRole("button", { name: /Stuck\?/ });
+  check(
+    "a section with named terms offers a way out of the blank page",
+    await stuck.isVisible(),
+    "the anchors are on offer"
+  );
+
+  await stuck.click();
+  await page.waitForTimeout(400);
+  const scaffold = await page.evaluate(() => {
+    const dialog = document.querySelector("[role=dialog]");
+    // Selected by an explicit hook, not by matching text. `find` over every
+    // div returns the outermost ancestor containing the phrase -- which is the
+    // whole dialog -- and every assertion below then passes on the dictation
+    // transcript rather than on the anchors. It did, first time round.
+    const panel = dialog.querySelector("[data-anchor-panel]");
+    if (!panel) return null;
+    const chips = [...panel.querySelectorAll("[data-anchor]")].map((c) =>
+      (c.textContent || "").trim()
+    );
+    return { chips, text: (panel.textContent || "").replace(/\s+/g, " ") };
+  });
+
+  // Exactly the two acronyms the summarized section contains, and nothing
+  // else. "Some of them are right" is not the claim: the fixture's *other*
+  // section carries MedDRA and CDISC, and drawing anchors from the whole
+  // document instead of the section slips CDISC in here -- which is a term
+  // the reader is being asked to summarize a section that never used. A
+  // `some` check passes straight through that; this one does not.
+  const OWN = ["CRF", "EDC"];
+  check(
+    "the anchors are the section's own terms and no others",
+    scaffold !== null &&
+      scaffold.chips.length > 0 &&
+      scaffold.chips.every((c) => OWN.includes(c)),
+    scaffold ? JSON.stringify(scaffold.chips) : "no panel"
+  );
+
+  check(
+    "nothing offered is long enough to be an answer",
+    scaffold !== null &&
+      scaffold.chips.every((c) => c.split(/\s+/).length <= 8) &&
+      !/\./.test(scaffold.chips.join("")),
+    scaffold
+      ? `longest ${Math.max(...scaffold.chips.map((c) => c.split(/\s+/).length))} words`
+      : "no panel"
+  );
+
+  check(
+    "the help says it was counted",
+    scaffold !== null && /cued recall/i.test(scaffold.text),
+    "the cost is stated where the choice is made"
+  );
+
   await page.screenshot({ path: "scripts/.probe-intercept.png", fullPage: true });
+
+  // And it must survive the trip to disk, because the self-grade weeks later
+  // is the only place this sentence is ever judged.
+  await page.locator("[role=dialog] textarea").fill(
+    "The section argued that identifiers must be removed before any transfer."
+  );
+  await page.getByRole("button", { name: /Log it and resume/ }).click();
+  await page.waitForTimeout(1500);
+
+  const stored = await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        const req = indexedDB.open("focusparse");
+        req.onsuccess = () => {
+          const all = req.result
+            .transaction("reviews", "readonly")
+            .objectStore("reviews")
+            .getAll();
+          all.onsuccess = () =>
+            resolve(
+              all.result.map((r) => ({ kind: r.kind, cued: r.cued ?? null }))
+            );
+          all.onerror = () => resolve([]);
+        };
+        req.onerror = () => resolve([]);
+      })
+  );
+
+  const summaries = stored.filter((r) => r.kind === "summary");
+  check(
+    "the summary is filed as a cued recall",
+    summaries.length > 0 && summaries.some((r) => r.cued === true),
+    `${summaries.length} summaries, ${
+      summaries.filter((r) => r.cued === true).length
+    } cued`
+  );
+  check(
+    "nothing that never saw an anchor is marked as though it had",
+    stored.filter((r) => r.kind !== "summary").every((r) => r.cued !== true),
+    `${stored.length - summaries.length} auto-graded items, none cued`
+  );
 }
 
 /* ---- Structure filter ------------------------------------------------ *

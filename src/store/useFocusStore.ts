@@ -239,7 +239,12 @@ interface FocusState {
   stepSentence: (delta: number) => void;
 
   armIntercept: (section: number, resumeChunk: number) => void;
-  submitSummary: (text: string) => void;
+  /**
+   * `cued` records that the reader revealed the section's anchors first. It
+   * changes the retrieval record, not what the section owes — see
+   * `ReviewItem.cued`.
+   */
+  submitSummary: (text: string, cued?: boolean) => void;
   abandonIntercept: () => void;
 
   armGridCheck: (block: number, resumeChunk: number) => void;
@@ -640,7 +645,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       intercept: { open: true, section, resumeChunk },
     }),
 
-  submitSummary: (text) => {
+  submitSummary: (text, cued = false) => {
     const { intercept, doc } = get();
     if (intercept.section === null || !doc) return;
 
@@ -679,6 +684,9 @@ export const useFocusStore = create<FocusState>((set, get) => ({
           answer: summary,
           context: `${section.wordCount.toLocaleString()} words`,
           section: section.i,
+          // Written down rather than inferred later. Nothing downstream can
+          // tell a cued sentence from a free one by reading it.
+          cued,
         },
         QUALITY.good
       );

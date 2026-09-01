@@ -6,6 +6,7 @@ import {
   Check,
   Eye,
   EyeOff,
+  LifeBuoy,
   Loader2,
   Mic,
   MicOff,
@@ -25,12 +26,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { ACRONYMS } from "@/lib/acronyms";
+import { sectionAnchors, type Anchor } from "@/lib/anchors";
+import { db } from "@/lib/db";
 import {
   recognitionCtor,
   reconcile,
   transcriptOf,
   type Correction,
 } from "@/lib/dictation";
+import type { DocEntityIndex } from "@/lib/entities";
 import type { Verdict } from "@/lib/graders/types";
 import { cn } from "@/lib/utils";
 import { readingNodes, useFocusStore } from "@/store/useFocusStore";
@@ -110,6 +115,17 @@ export function InterceptDialog() {
   const [verdict, setVerdict] = React.useState<Verdict | null>(null);
   const [checkError, setCheckError] = React.useState<string | null>(null);
 
+  /**
+   * The anchors, and whether they have been asked for.
+   *
+   * `stuck` is not presentation state. It rides along with the summary into
+   * the retrieval queue, because a sentence written after three nouns went on
+   * screen is cued recall and the queue has to know which kind of evidence it
+   * is holding. See `ReviewItem.cued`.
+   */
+  const [stuck, setStuck] = React.useState(false);
+  const [entityIndex, setEntityIndex] = React.useState<DocEntityIndex | null>(null);
+
   const [listening, setListening] = React.useState(false);
   const [corrections, setCorrections] = React.useState<Correction[]>([]);
   const [micError, setMicError] = React.useState<string | null>(null);
@@ -149,6 +165,7 @@ export function InterceptDialog() {
       setCheckError(null);
       setCorrections([]);
       setMicError(null);
+      setStuck(false);
       committedRef.current = "";
     }
   }, [intercept.open, intercept.section]);
@@ -192,6 +209,36 @@ export function InterceptDialog() {
     return [...found];
   }, [doc, section]);
 
+  /**
+   * The stored index for this document, for the named things half of the
+   * anchors. Loaded when the dialog opens rather than with the document: it is
+   * one small record, and nothing needs it until the reader is stuck.
+   *
+   * A null result is a working state, not a failure — `sectionAnchors` falls
+   * back to the acronyms tagged on the tokens, which need no store at all.
+   */
+  React.useEffect(() => {
+    if (!intercept.open || !doc || entityIndex?.docId === doc.id) return;
+    let live = true;
+    void db
+      .listEntityIndexes()
+      .then((list) => {
+        if (live) setEntityIndex(list.find((i) => i.docId === doc.id) ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [intercept.open, doc, entityIndex]);
+
+  const anchors: Anchor[] = React.useMemo(
+    () =>
+      doc && intercept.section !== null
+        ? sectionAnchors(doc, intercept.section, entityIndex)
+        : [],
+    [doc, intercept.section, entityIndex]
+  );
+
   const stopListening = React.useCallback(() => {
     recognizerRef.current?.stop();
     recognizerRef.current = null;
@@ -229,7 +276,7 @@ export function InterceptDialog() {
     setTouched(true);
     stopListening();
     if (!valid) return;
-    submitSummary(text);
+    submitSummary(text, stuck);
   };
 
   const check = async () => {
@@ -361,6 +408,22 @@ export function InterceptDialog() {
               </button>
             )}
 
+            {/* Absent when the section named nothing, on the same principle as
+                the mic button above: a button that does nothing is worse than
+                no button. Measured over the corpus's 847 intercept-arming
+                sections, 9% land there. */}
+            {anchors.length > 0 && !stuck && (
+              <button
+                type="button"
+                onClick={() => setStuck(true)}
+                className="flex items-center gap-1.5 rounded border px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                title="Show the terms this section used. Recorded with your answer, because it makes this a cued recall."
+              >
+                <LifeBuoy className="h-3 w-3" />
+                Stuck?
+              </button>
+            )}
+
             {sectionNodes.length > 0 && (
               <button
                 type="button"
@@ -397,6 +460,48 @@ export function InterceptDialog() {
                 </span>
               ))}
             </p>
+          )}
+
+          {/* Nouns, never a sentence. Nothing here can be copied out as an
+              answer — the claim about them is still the reader's to make. And
+              it says plainly that it was counted, so the help is a choice made
+              with its cost visible rather than a freebie. */}
+          {stuck && anchors.length > 0 && (
+            <div
+              data-anchor-panel
+              className="mt-3 rounded-md border border-dashed bg-muted/20 p-3"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                This section talked about
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {anchors.map((anchor) => {
+                  // Badged in the colour it already wears in the text, so the
+                  // reader recognises it rather than reading it fresh.
+                  const category =
+                    anchor.kind === "acronym"
+                      ? ACRONYMS[anchor.label]?.category
+                      : undefined;
+                  return (
+                    <span
+                      key={anchor.label}
+                      data-anchor={anchor.kind}
+                      className={
+                        category
+                          ? cn("fp-badge", `fp-badge-${category}`)
+                          : "rounded border bg-background px-1.5 py-0.5 text-xs"
+                      }
+                    >
+                      {anchor.label}
+                    </span>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Not the answer — what it is <em>for</em> is still yours to say.
+                Logged with this summary as a cued recall.
+              </p>
+            </div>
           )}
 
           {showCaptures && sectionNodes.length > 0 && (
