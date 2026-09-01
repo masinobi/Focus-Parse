@@ -1059,6 +1059,225 @@ if (opened) {
   await page.screenshot({ path: "scripts/.probe-intercept.png", fullPage: true });
 }
 
+/* ---- Structure filter ------------------------------------------------ *
+ *
+ * The map is one row per heading, which is a glance for most of this corpus and
+ * 755 rows for the full GCDMP. What makes a plain list of matches useless at
+ * that size is that the headings repeat: every one of its 39 chapters has a
+ * "Scope", a "Minimum Standards" and a "Recommended Standard Operating
+ * Procedures". So the assertion that matters is not that filtering narrows the
+ * list -- it is that each surviving row says which chapter it is in, and that
+ * those labels differ.
+ *
+ * The fixture is three chapters sharing three heading names: the same ambiguity
+ * at a size a probe can assert exactly. It is also over the row count at which
+ * the box appears at all, and its first two chapters alone are under it, so both
+ * sides of that threshold are covered.
+ */
+console.log(`
+=== structure filter ===`);
+
+const FILTER_CHAPTERS = [
+  `# Data Privacy
+
+Personal data of study participants must be protected throughout the trial.
+
+## Scope
+
+This chapter covers the handling of personal data across the study lifecycle.
+
+## Minimum Standards
+
+Redact personal data before transfer and record who authorized the transfer.
+
+## Lab Data
+
+Laboratory results arrive from outside the sponsor and carry identifiers.
+
+## Data Transfers
+
+Every transfer is specified, tested against a sample, and reconciled.
+
+## Computer and Network Security
+
+Access is granted by role and reviewed whenever a role changes.
+
+## Recommended Standard Operating Procedures
+
+A procedure for redaction, one for transfer, and one for breach reporting.`,
+  `# Vendor Selection and Management
+
+A vendor is selected against stated criteria and managed against a contract.
+
+## Scope
+
+This chapter covers selection, qualification, oversight and closeout.
+
+## Minimum Standards
+
+Qualify the vendor before selection and audit against the signed plan.
+
+## Assessing Need
+
+Decide what work leaves the sponsor before deciding who will do it.
+
+## Request for Proposal
+
+The proposal states the deliverables, the timeline and the acceptance test.
+
+## Qualification Audit
+
+The audit happens before the contract is signed, not after the work starts.
+
+## Oversight Meetings
+
+Oversight is a standing meeting with a written record and an action list.
+
+## Study Closeout Oversight
+
+Closeout returns the data, the documentation and the outstanding queries.
+
+## Recommended Standard Operating Procedures
+
+A procedure for selection, one for qualification, and one for closeout.`,
+  `# Serious Adverse Event Data Reconciliation
+
+Safety and clinical hold the same events in two systems and must agree.
+
+## Scope
+
+This chapter covers reconciliation between the safety and clinical databases.
+
+## Minimum Standards
+
+Reconcile at agreed intervals and before every interim analysis and lock.
+
+## Reconciliation Frequency
+
+Frequency follows enrolment rate rather than the calendar.
+
+## Fields Compared
+
+Onset date, term, seriousness, outcome and causality are compared every time.
+
+## Discrepancy Resolution
+
+A discrepancy is owned by one group and closed with a documented decision.
+
+## Recommended Standard Operating Procedures
+
+A procedure for frequency, one for comparison and one for resolution.`
+];
+
+/** Load markdown straight through the app's own file input. */
+async function loadMarkdown(name, text) {
+  await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+  await page.waitForTimeout(2000);
+  await page.setInputFiles('input[type="file"][accept*="pdf"]', {
+    name,
+    mimeType: "text/markdown",
+    buffer: Buffer.from(text, "utf8"),
+  });
+  await page.getByRole("button", { name: "Play", exact: true }).waitFor({ timeout: 120_000 });
+}
+
+const filterBox = () => page.getByLabel("Filter sections by name");
+const mapRows = () => page.locator("aside nav button").count();
+/** Each row flattened to one line, so a chapter label shows up in its text. */
+const mapText = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll("aside nav button")].map((b) =>
+      (b.innerText || "").replace(/\s+/g, " ").trim()
+    )
+  );
+
+await loadMarkdown("Filter probe short.md", FILTER_CHAPTERS.slice(0, 2).join("\n\n"));
+const shortRows = await mapRows();
+check(
+  "a map short enough to read has no filter box",
+  shortRows > 0 && (await filterBox().count()) === 0,
+  `${shortRows} rows, no box`
+);
+
+await loadMarkdown("Filter probe.md", FILTER_CHAPTERS.join("\n\n"));
+const allRows = await mapRows();
+check(
+  "a longer map gets one, and it counts the rows",
+  (await filterBox().count()) === 1 &&
+    (await filterBox().getAttribute("placeholder")) === `Filter ${allRows} sections`,
+  `${allRows} rows -- ${await filterBox().getAttribute("placeholder")}`
+);
+
+await filterBox().fill("minimum standards");
+await page.waitForTimeout(300);
+const repeated = await mapText();
+check(
+  "a heading every chapter shares comes back once per chapter",
+  repeated.length === 3 && repeated.every((t) => /Minimum Standards/.test(t)),
+  `${repeated.length} rows`
+);
+check(
+  "and each one says which chapter it is in",
+  new Set(repeated.map((t) => t.split("Minimum Standards")[0].trim())).size === 3,
+  JSON.stringify(repeated.map((t) => t.split("Minimum Standards")[0].trim()))
+);
+
+await filterBox().fill("privacy");
+await page.waitForTimeout(300);
+const chapterRows = await mapText();
+check(
+  "a chapter's name brings the chapter and its headings",
+  chapterRows.length === 7 &&
+    /Data Privacy/.test(chapterRows[0]) &&
+    chapterRows.some((t) => /Lab Data/.test(t)) &&
+    !chapterRows.some((t) => /Assessing Need/.test(t)),
+  `${chapterRows.length} rows, none of them from another chapter`
+);
+
+/*
+ * The refusal. A heading one word away from a real one must return nothing --
+ * the rule the blueprint matcher is held to, for the same reason: a match the
+ * reader cannot explain is worse than no match. Any similarity scoring added
+ * here turns this green into a list.
+ */
+await filterBox().fill("maximum standards");
+await page.waitForTimeout(300);
+const missText = await page.locator("aside nav").innerText();
+check(
+  "a near miss matches nothing, and says so rather than showing an empty list",
+  (await mapRows()) === 0 && /Nothing in this document is called/.test(missText),
+  missText.replace(/\s+/g, " ").slice(0, 46)
+);
+
+await filterBox().fill("qualification audit");
+await page.waitForTimeout(300);
+await page.locator("aside nav button").first().click();
+await page.waitForTimeout(500);
+const seeked = await page.evaluate(() => {
+  const active = document.querySelector(".fp-word-active");
+  const at = active ? Number(active.getAttribute("data-token")) : -1;
+  const around = [...document.querySelectorAll("span[data-token]")]
+    .filter((w) => Math.abs(Number(w.dataset.token) - at) < 6)
+    .map((w) => w.textContent)
+    .join(" ");
+  return { at, around };
+});
+check(
+  "clicking a filtered row seeks to that heading",
+  seeked.at > 0 && /Qualification Audit/i.test(seeked.around),
+  `token ${seeked.at}: ${JSON.stringify(seeked.around.slice(0, 44))}`
+);
+
+await page.getByLabel("Clear the filter").click();
+await page.waitForTimeout(300);
+check(
+  "clearing gives the whole map back",
+  (await mapRows()) === allRows,
+  `${await mapRows()} rows`
+);
+
+await page.screenshot({ path: "scripts/.probe-filter.png", fullPage: false });
+
 /* ---- Reading highlight ---------------------------------------------- *
  *
  * The flow hands React the *same element object* for every block whose
@@ -1168,7 +1387,7 @@ console.log(`\n=== probe ===`);
 console.log(`  document: ${sample.f} (${Math.round(sample.size / 1024)}KB)`);
 console.log(`  clock at first question: ${clockAtStart ?? "—"}`);
 console.log(
-  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept (.png, in scripts/)`
+  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter (.png, in scripts/)`
 );
 console.log(`  failures: ${failures.length}   (must be 0)`);
 if (failures.length) {

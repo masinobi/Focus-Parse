@@ -7,13 +7,16 @@ import {
   CircleDot,
   PanelLeftClose,
   PanelLeftOpen,
+  Search,
   SquarePen,
   Table2,
   Target,
+  X,
 } from "lucide-react";
 
 import { EditableTitle } from "@/components/editable-title";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
   buildCoverage,
@@ -23,6 +26,7 @@ import {
   type SectionCoverage,
 } from "@/lib/coverage";
 import { contentWordCount, formatDuration } from "@/lib/parse";
+import { chapterTitles, searchOutline } from "@/lib/section-search";
 import type { Section } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { CLOZE_INTERVAL_TOKENS, useFocusStore } from "@/store/useFocusStore";
@@ -61,6 +65,15 @@ interface RowProps {
   clozeWindows: number;
   /** Blanks recalled as a share of blanks asked, or -1 where none were. */
   recall: number;
+  /**
+   * The chapter this row sits under, shown only while the map is filtered.
+   *
+   * Off the filter it would be noise — the indentation already says it, and it
+   * would add a line to all 755 rows. On the filter it is the difference
+   * between a usable result and twenty-five identical ones: every chapter of
+   * the GCDMP has a "Minimum Standards".
+   */
+  chapter?: string | null;
   onSeek: (index: number) => void;
 }
 
@@ -89,6 +102,7 @@ const SectionRow = React.memo(function SectionRow({
   gridsPassed,
   clozeWindows,
   recall,
+  chapter,
   onSeek,
 }: RowProps) {
   return (
@@ -124,14 +138,21 @@ const SectionRow = React.memo(function SectionRow({
             <span className="block h-3 w-3 rounded-full border border-border" />
           )}
         </span>
-        <span
-          className={cn(
-            "min-w-0 flex-1 text-sm leading-snug",
-            section.level <= 1 ? "font-medium" : "font-normal",
-            state === "done" && "text-muted-foreground"
+        <span className="min-w-0 flex-1">
+          {chapter && (
+            <span className="block truncate text-[10px] uppercase tracking-wide text-muted-foreground/70">
+              {chapter}
+            </span>
           )}
-        >
-          {section.baseTitle ?? section.title}
+          <span
+            className={cn(
+              "block text-sm leading-snug",
+              section.level <= 1 ? "font-medium" : "font-normal",
+              state === "done" && "text-muted-foreground"
+            )}
+          >
+            {section.baseTitle ?? section.title}
+          </span>
         </span>
       </div>
 
@@ -210,8 +231,20 @@ const SectionRow = React.memo(function SectionRow({
  * every row says what it owed and what has been answered, and the header says
  * where the remaining time should go.
  */
+/**
+ * Row count from which the filter is worth its 44 pixels.
+ *
+ * The panel already stacks a title block, a coverage block and a next-to-verify
+ * button above the list, and on a twelve-row map a fourth control would push
+ * the list itself below the fold to save nothing. Ten of the twelve documents
+ * in this corpus are under this; the GCDMP is 755 rows and two chapters are in
+ * the sixties.
+ */
+const SEARCH_FROM_ROWS = 20;
+
 export function StructureSidebar() {
   const [open, setOpen] = React.useState(true);
+  const [query, setQuery] = React.useState("");
 
   const doc = useFocusStore((s) => s.doc);
   const tokenIndex = useFocusStore((s) => s.tokenIndex);
@@ -263,6 +296,14 @@ export function StructureSidebar() {
         : null,
     [doc, tokenIndex, lastCheckToken, summaries]
   );
+
+  // A filter is about one document. Carrying it across would open the next one
+  // on an empty map with no visible reason, and the box is only rendered on
+  // long documents, so the reader might not even be shown the cause.
+  const docId = doc?.id;
+  React.useEffect(() => {
+    setQuery("");
+  }, [docId]);
 
   if (!doc || !coverage) return null;
 
@@ -327,6 +368,24 @@ export function StructureSidebar() {
     });
     return acc;
   }, []);
+
+  /**
+   * The filter, over the rows as they are displayed rather than over
+   * `doc.sections`.
+   *
+   * That distinction is the whole reason this sits here and not in the store: a
+   * heading split into six pacing checkpoints is six sections and one row, and
+   * filtering the sections would return the same title six times. `rows` has
+   * already folded them.
+   */
+  const outline = rows.map((row) => ({
+    title: row.section.baseTitle ?? row.section.title,
+    level: row.section.level,
+  }));
+  const chapters = chapterTitles(outline);
+  const hits = searchOutline(outline, query);
+  const searchable = rows.length >= SEARCH_FROM_ROWS;
+  const shown = hits ?? outline.map((_, i) => i);
 
   if (!open) {
     return (
@@ -483,8 +542,58 @@ export function StructureSidebar() {
         </div>
       )}
 
+      {searchable && (
+        <div className="border-b px-3 py-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                // The global transport handler already ignores inputs, so this
+                // is only about not letting Escape reach anything else on its
+                // way out — in the box, Escape means "clear", not "stop".
+                event.stopPropagation();
+                setQuery("");
+              }}
+              placeholder={`Filter ${rows.length} sections`}
+              aria-label="Filter sections by name"
+              className="h-8 pl-7 pr-7 text-xs"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Clear the filter"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {hits !== null && hits.length > 0 && (
+            <p
+              className="mt-1.5 text-[11px] text-muted-foreground"
+              title="A heading matches on its own name or on its chapter's, so typing a chapter name brings the whole chapter back rather than one row."
+            >
+              {hits.length} of {rows.length} sections
+            </p>
+          )}
+        </div>
+      )}
+
       <nav className="fp-scroll flex-1 overflow-y-auto py-2">
-        {rows.map((row) => {
+        {hits?.length === 0 && (
+          <p className="px-3 py-6 text-center text-xs leading-relaxed text-muted-foreground">
+            Nothing in this document is called{" "}
+            <span className="font-medium text-foreground">{query.trim()}</span>.
+            <br />
+            The filter matches the words in a heading, not their sense.
+          </p>
+        )}
+        {shown.map((index) => {
+          const row = rows[index];
           const isCurrent =
             currentSection >= row.section.i && currentSection <= row.lastIndex;
           // `tokenEnd` is exclusive and the caret cannot exceed the last
@@ -513,6 +622,7 @@ export function StructureSidebar() {
               gridsPassed={folded.gridsPassed}
               clozeWindows={folded.clozeWindows}
               recall={folded.recall}
+              chapter={hits ? chapters[index] : null}
               onSeek={seekSection}
             />
           );
