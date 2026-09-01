@@ -865,6 +865,24 @@ fights the dev server (see Environment traps). The playback numbers are much les
 exposed: the React share is small there and `TaskOtherDuration` is browser work
 that production does not make cheaper.
 
+**The map is 755 rows, and that was its own problem.** Not performance —
+navigation. Every other document in the corpus is twelve to seventy-eight rows;
+this one is 39 chapters and 716 headings inside them, and the headings repeat:
+all 39 chapters carry a "Scope", a "Minimum Standards", a "References" and a
+"Recommended Standard Operating Procedures". A filter that only listed matching
+titles would have answered "minimum standards" with 28 identical rows, so
+`section-search.ts` labels every hit with its chapter and matches a row on its
+own title *or* its chapter's — which is also what makes typing a chapter name
+open the chapter rather than return one row. Real queries take the map from 755
+rows to 28 ("minimum standards"), 32 ("privacy") or 2 ("sae"). It filters the
+*displayed* rows, not `doc.sections`: a heading split into six pacing
+checkpoints is six sections and one row.
+
+**The first six rows of this document are title-page wreckage** — "Good Clinical
+Data", "Management Practices", "October 2013 Edition", then the same two again.
+The heading recovery is reading a cover page as five chapters. Cosmetic, visible
+in `scripts/.probe-filter.png`, and not looked at.
+
 **A gap the measurements do not cover.** `useSpeechEngine`'s stall watchdog
 recovers from one failure only — the engine silently dropping an utterance and
 going idle, which it catches by testing `!synth.speaking && !synth.pending`. If
@@ -898,7 +916,7 @@ exam across the whole corpus** · **an acronym drill over the whole
 vocabulary** · **a coverage map that reports what has been verified rather than
 how far the caret got** · **a kept exam history with a repeat-miss report** ·
 **an exam date that caps every review interval at half the time remaining** ·
-**a T-SQL stepper that reads a query in the order it is evaluated** · **blueprint coverage, which measures the library against the published exam outline rather than against itself** · **a citation index over the regulations the corpus argues about** · **`/p` to park an intrusive thought without it entering the map** · **the distance to the next enforced stop, in words** · **dictating a summary, with the document’s own acronyms put back into the transcript** · **a grader that asks whether the summary reached the *why*, and says when the section gives none**.
+**a T-SQL stepper that reads a query in the order it is evaluated** · **blueprint coverage, which measures the library against the published exam outline rather than against itself** · **a citation index over the regulations the corpus argues about** · **`/p` to park an intrusive thought without it entering the map** · **the distance to the next enforced stop, in words** · **dictating a summary, with the document’s own acronyms put back into the transcript** · **a grader that asks whether the summary reached the *why*, and says when the section gives none** · **a name filter over the structure map, which labels every hit with the chapter it is in**.
 
 Four of those are one idea, and reading them separately misses the point: grid
 interrogation, cloze spot checks, the presence check and the retrieval queue.
