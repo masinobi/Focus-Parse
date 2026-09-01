@@ -996,9 +996,9 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed on `main`, and everything through the seventh round
-is pushed. The **eighth round’s commits are local and unpushed**, because pushing
-is outward-facing and permission for one batch does not carry to the next.
+Everything here is committed and pushed on `main`, through the eighth round.
+Permission to push is asked for each batch: it is outward-facing, and one grant
+does not carry to the next.
 
 **Where the last session left it.** Four rounds have landed. The first three
 were the feature trio (entity index, node linking, adaptive difficulty), the
