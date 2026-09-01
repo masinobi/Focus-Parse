@@ -1063,7 +1063,7 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed and pushed on `main`, through the ninth round.
+Everything here is committed and pushed on `main`, through the tenth round.
 Permission to push is asked for each batch: it is outward-facing, and one grant
 does not carry to the next.
 
@@ -1454,6 +1454,40 @@ E6(R3), and "Oversight by the sponsor" is a sentence in the same document. It
 was written into a unit fixture, then into a probe fixture, then into the
 panel's own explanatory copy, where it would have shipped as an illustration
 the app itself disproves. The copy now states the rule and gives no example.
+
+**The tenth round closed the last performance item by not doing it.** The
+reader asked about the DOM-size cost. The recorded conclusion -- that it is the
+DOM and nothing else, and that only a design change trading away per-word
+seek, acronym badges and bionic bolding could touch it -- was drawn entirely
+from `npm run dev` numbers. Production is two to three times cheaper across the
+board and halves the heap, and the flow's own share of the production cost is
+one to two seconds of open, once, plus about 1.5% of playback wall time. The
+design change is off the table. What shipped instead was `npm run study` and a
+README that no longer sends the reader to the development build to read a
+524-page book in. See "What a long document costs".
+
+**The lesson is narrower than "measure first", because that was being done.**
+Every dev figure in that section was honestly measured against a real control.
+The gap was never saying *which build*, so a set of true statements about
+`npm run dev` sat in this file for a round reading as statements about the app.
+**Name the build, the machine and the corpus beside any timing, or it will be
+read as a property of the code.**
+
+**Three ways a control can be a control and measure nothing**, all hit while
+writing `scan-perf`, all of which returned clean numbers:
+
+- Switching the view *after* opening the document, so both arms measure a
+  flow-mode open. It reported 4,791ms against 4,962ms and looked like a finding.
+- Picking the document by file size. The largest *file* in this corpus is an
+  image-heavy EDC chapter; the GCDMP is smaller on disk and 6.7x more text.
+- Comparing two arms measured an hour apart. That made the open look 3.1x
+  better in production; back-to-back it is 1.45x, and two runs of the same
+  build an hour apart differed by 50% with 3.7GB of 15.7GB free.
+
+`scan-perf` now asserts the first two (zero word spans in the RSVP arm before
+the book opens, some in the flow arm, different DOMs between them) and exits
+non-zero when they fail. The third is a note, because nothing in the script can
+see it. **A timing without its pair taken back-to-back is not a comparison.**
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid
 anywhere in the user's PDFs** — the phrase appears seven times but always as
