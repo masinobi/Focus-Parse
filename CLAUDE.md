@@ -455,6 +455,23 @@ paper threw out "Section ____ states" while the check firing every 250 words
 asked it, 72 times across 2,774 blanks. When a fairness rule is added to one
 check, look for the other rung that should also be refusing it.
 
+**32. Help offered at an intercept is recorded with the answer.** The "Stuck?"
+anchors hand a reader the section's own nouns, which turns free recall into
+cued recall. `ReviewItem.cued` travels with the summary so the self-grade weeks
+later -- the only place that sentence is ever judged -- knows which it is
+holding. It changes no interval, no ease and nothing about what the section
+owes: the reader cannot un-see the anchors, and a debt that cannot be
+discharged is invariant 20's whole complaint. If another rung ever offers help,
+it needs the same field, for the same reason `gridAttempts` counts attempts.
+
+**33. Anchors come from the section, never from the document.** A term the
+section did not use, handed to the reader at the one moment they are being
+asked what the section said, is the app putting words in their mouth --
+invariant 28's argument, in a second place. Acronyms are read off the tokens of
+`tokenStart..tokenEnd`; index entries qualify only if their `sections` list
+names this one, which is also what keeps a *stale* index from contributing an
+acronym the section no longer contains.
+
 ## How to verify work here
 
 Unit tests would not have caught most of the real bugs in this project. What has
@@ -515,6 +532,18 @@ indexed — 126 of those entities were author names out of bibliographies.) Both
 absorbed into a name, single words needing to out-number their own lowercase form
 — exist because the first run over the corpus led with "Department", "Health",
 "Human Services", "Data" and "Management".
+
+`node scripts/scan-compare.mjs "<folder>" --verbose` drives `compare.ts` over
+the corpus for twelve exam-relevant phrases. Its headline check slices every
+quotation at the offsets the panel renders with, which is the only place
+`parse.ts` and `compare.ts` are made to agree -- reaching for `speechOffset`
+instead of `offset`, invariant 1 exactly, turns it red at 17. It also prints
+what the entity index would have found for the same phrases, which is the
+measurement the feature was redesigned around and is a *report*, not an
+assertion: what the index carries is a property of the corpus. Three further
+guards live below a line marked "cannot currently fail" -- they were written as
+must-be-zeros and found, by breaking the module, to be restating their own
+implementation.
 
 `node scripts/scan-headings.mjs "<folder>" --verbose` reports heading recovery
 and the wrapped-heading join. Current state on the real nine: 1,032 headings,
@@ -948,7 +977,7 @@ exam across the whole corpus** · **an acronym drill over the whole
 vocabulary** · **a coverage map that reports what has been verified rather than
 how far the caret got** · **a kept exam history with a repeat-miss report** ·
 **an exam date that caps every review interval at half the time remaining** ·
-**a T-SQL stepper that reads a query in the order it is evaluated** · **blueprint coverage, which measures the library against the published exam outline rather than against itself** · **a citation index over the regulations the corpus argues about** · **`/p` to park an intrusive thought without it entering the map** · **the distance to the next enforced stop, in words** · **dictating a summary, with the document’s own acronyms put back into the transcript** · **a grader that asks whether the summary reached the *why*, and says when the section gives none** · **a name filter over the structure map, which labels every hit with the chapter it is in**.
+**a T-SQL stepper that reads a query in the order it is evaluated** · **blueprint coverage, which measures the library against the published exam outline rather than against itself** · **a citation index over the regulations the corpus argues about** · **`/p` to park an intrusive thought without it entering the map** · **the distance to the next enforced stop, in words** · **dictating a summary, with the document’s own acronyms put back into the transcript** · **a grader that asks whether the summary reached the *why*, and says when the section gives none** · **a name filter over the structure map, which labels every hit with the chapter it is in** · **one phrase read across every guideline at once, quoted in context** · **the section's own nouns on request when the summary box is a blank page, recorded as a cued recall**.
 
 Four of those are one idea, and reading them separately misses the point: grid
 interrogation, cloze spot checks, the presence check and the retrieval queue.
@@ -996,7 +1025,8 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed and pushed on `main`, through the eighth round.
+Everything here is committed on `main`, through the ninth round; the ninth is
+committed but **not yet pushed**.
 Permission to push is asked for each batch: it is outward-facing, and one grant
 does not carry to the next.
 
@@ -1320,6 +1350,73 @@ marked *candidate* are things that could actually be fixed.
 - The stepper knows clause order, not semantics. It will confidently step a
   query that does not run.
 - Scanned PDFs with no text layer are rejected rather than OCR'd.
+
+**The ninth round** was two features the reader chose off a list of four, after
+being told which were worth building and why. Both were reshaped before they
+were built, and in both cases the reshaping came from a measurement taken
+first.
+
+- **Cross-guideline comparison** was pitched as a side-by-side built on the
+  entity index. The index is the wrong substrate and the corpus says so
+  plainly: "audit trail" is in ten of the twelve stored documents and indexed
+  in *none* of them, because the extraction takes capitalized noun phrases and
+  the terms worth comparing are lowercase prose. Same for "adverse event"
+  (ten), "serious adverse event" (nine), "database lock" and "protocol
+  deviation" (eight each). A panel on the index would have looked right and
+  been silent on every comparison the exam actually asks. It is a phrase search
+  over the token stream instead — the shape `citationSites` already uses, and
+  its docstring already argues for. **The measurement cost one command and
+  changed the design; take it before building on a derived store.**
+- **The intercept anchors** were pitched as unconditional scaffolding. Handing
+  a reader the section's top terms turns free recall into cued recall, and the
+  same sentence is later graded by an AI that reports what was `missed` and
+  self-graded by the reader weeks afterwards. Both judgements get quietly
+  better for a reason that has nothing to do with recall. So it is opt-in and
+  it is recorded — invariant 32.
+
+**A live bug fell out of the probe rather than out of the feature.** The home
+screen centres its content in a scrolling flex container, which clips whatever
+overflows *above* the scroll origin and leaves it unreachable. Measured at five
+documents: the content began 352px above the top of its own scroller, the
+container under-reported `scrollHeight` by exactly that much, and the corpus
+index and the exam date could not be brought into view at any scroll offset.
+The reader has twelve documents. It had been shipping for most of this
+project's life and every previous probe passed, because they all drove a home
+screen with one document on it. `probe-ui` now asserts *reachability* — every
+control visible at some scroll offset — rather than visibility.
+
+**Four assertions written this round could not go red**, all found by breaking
+things on purpose, and the two worst were in the probe rather than in the code:
+
+- The anchor panel was selected by matching its text, and `find` over every
+  `div` returns the outermost ancestor holding the phrase — the whole dialog.
+  All three on-screen assertions were passing on the dictation transcript.
+  **Select by an explicit hook, never by text, when the thing being asserted is
+  containment.**
+- "Some of the anchors are the section's own" survived drawing anchors from the
+  entire document, which put a term from a chapter the reader was not being
+  asked about in front of them. A `some` check cannot catch a leak; only an
+  exact set can.
+- The anchor cap was never reached by a fixture with three anchors in it, and
+  the ordering claim could not tell "most used" from "alphabetically first" in
+  a section with one acronym.
+
+**And three more were downgraded rather than kept.** `scan-compare` prints
+"site pointing outside its document", "site with an empty carrier sentence" and
+"document reporting fewer than it kept" below a line saying they cannot
+currently fail — each restates its own implementation, the same mistake as the
+eighth round's "documents that open by reading their own cover". They are kept
+because they stop being tautologies the moment the surrounding code changes,
+and printed apart because a green that cannot go red must not be counted
+alongside greens that can.
+
+**Fixtures were wrong three times, and each was caught by the assertion
+failing rather than by review.** "Sponsor oversight" was used as the worked
+example of a paraphrase the search would refuse — it is a *heading* in ICH
+E6(R3), and "Oversight by the sponsor" is a sentence in the same document. It
+was written into a unit fixture, then into a probe fixture, then into the
+panel's own explanatory copy, where it would have shipped as an illustration
+the app itself disproves. The copy now states the rule and gives no example.
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid
 anywhere in the user's PDFs** — the phrase appears seven times but always as
