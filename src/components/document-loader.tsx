@@ -213,8 +213,17 @@ export function DocumentLoader() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center overflow-y-auto p-8">
-      <div className="w-full max-w-2xl">
+    /* `items-center` on a scrolling flex container centres the content and then
+       clips whatever overflows *above* the scroll origin, which cannot be
+       scrolled back to. It looked fine for most of this project's life because
+       the home screen was short. Measured at five documents: six controls —
+       the corpus index, the mock exam, the citation index, blueprint coverage,
+       the acronym drill and the exam date — sat above the top of the scroller
+       with the scrollbar already at its end, and no gesture could reach them.
+       `flex-col` plus `my-auto` centres the same way while collapsing the
+       margin when there is nothing spare, which is the difference. */
+    <div className="flex h-full flex-col items-center overflow-y-auto p-8">
+      <div className="my-auto w-full max-w-2xl">
         <div className="mb-8 flex items-center gap-2.5">
           <AudioLines className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-semibold tracking-tight">FocusParse</h1>
