@@ -1025,8 +1025,7 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed on `main`, through the ninth round; the ninth is
-committed but **not yet pushed**.
+Everything here is committed and pushed on `main`, through the ninth round.
 Permission to push is asked for each batch: it is outward-facing, and one grant
 does not carry to the next.
 
