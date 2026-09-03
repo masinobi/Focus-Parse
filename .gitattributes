@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Batch files are run by cmd.exe, which is not reliably happy with LF-only
+# scripts. `text=auto` alone leaves that to whatever `core.autocrlf` the
+# machine happens to have set, so pin it: these check out CRLF everywhere.
+*.cmd text eol=crlf
+*.bat text eol=crlf

@@ -5,11 +5,18 @@ markdown or plain-text document; FocusParse paces it with speech synthesis, lock
 word-level highlight to the audio, and refuses to let you coast past a section
 boundary without restating what you just heard.
 
+On Windows, double-click **`Study FocusParse.cmd`**. It builds only when
+something has actually changed, serves the production bundle, and opens the
+browser once the server really answers — about 2 seconds when the build is
+already current, about a minute when it is not. Close the window to stop.
+
+Or, from a terminal:
+
 ```bash
 npm run study
 ```
 
-Then open http://localhost:3000 and hit **Load the sample**.
+Then hit **Load the sample**.
 
 **Use `npm run study` to read, not `npm run dev`.** It builds once and serves the
 production bundle. On the 524-page GCDMP the difference is not cosmetic — across
