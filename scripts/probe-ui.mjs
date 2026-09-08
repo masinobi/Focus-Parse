@@ -1430,6 +1430,95 @@ check(
 
 await page.screenshot({ path: "scripts/.probe-filter.png", fullPage: false });
 
+/* -----------------------------------------------------------------------
+ * The GCDMP tier.
+ *
+ * The exam asks "which of the following is a minimum standard" as a question
+ * format, and a chapter lays its two tiers out as consecutive sections that
+ * are indistinguishable once the text is being read aloud.
+ *
+ * What has to hold on screen: the badge is on the tier section and on nothing
+ * else, the filter narrows to it, and the tier is read off the *heading*. That
+ * last one is the assertion with teeth — this fixture writes "must" and
+ * "should" throughout its ordinary sections too, so a rule reading the prose
+ * would badge several of them and this would go red.
+ * --------------------------------------------------------------------- */
+console.log(`
+=== the GCDMP tier ===`);
+
+/** Every map row carrying a tier badge, with the row's own title. */
+const tierRows = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll("aside nav button")]
+      .map((row) => {
+        const badge = [...row.querySelectorAll("span")].find((s) =>
+          /^(minimum|best practice)$/i.test((s.textContent || "").trim())
+        );
+        if (!badge) return null;
+        const title = (row.innerText || "").split(String.fromCharCode(10))[0].trim();
+        return { title, badge: (badge.textContent || "").trim() };
+      })
+      .filter(Boolean)
+  );
+
+const badged = await tierRows();
+check(
+  "every Minimum Standards section carries the badge",
+  badged.length === 3 && badged.every((b) => /minimum/i.test(b.badge)),
+  `${badged.length} badged: ${JSON.stringify(badged.map((b) => b.badge))}`
+);
+check(
+  "and nothing else does",
+  badged.length > 0 && badged.every((b) => /Minimum Standards/i.test(b.title)),
+  JSON.stringify(badged.map((b) => b.title).slice(0, 4))
+);
+
+const tierButton = page.getByLabel("Show only minimum standard sections");
+check("the map offers a tier filter", (await tierButton.count()) === 1);
+
+await tierButton.click();
+await page.waitForTimeout(300);
+const filteredRows = await mapRows();
+const filteredTitles = await mapText();
+check(
+  "filtering to the tier leaves only its sections",
+  filteredRows === 3 && filteredTitles.every((t) => /Minimum Standards/i.test(t)),
+  `${filteredRows} rows`
+);
+check(
+  "and says how much of the map it is showing",
+  /3 of \d+/.test(await page.locator("aside").innerText()),
+  "count shown beside the control"
+);
+
+await tierButton.click();
+await page.waitForTimeout(300);
+check(
+  "pressing it again gives the whole map back",
+  (await mapRows()) === allRows,
+  `${await mapRows()} rows`
+);
+
+/* The reading pane carries it too, on the heading rather than on the prose. */
+const paneTiers = await page.evaluate(() =>
+  [...document.querySelectorAll("[data-tier]")].map((el) => ({
+    tier: el.getAttribute("data-tier"),
+    heading: (el.parentElement?.innerText || "").replace(/\s+/g, " ").trim(),
+  }))
+);
+check(
+  "the reading pane marks the tier on its heading",
+  paneTiers.length > 0 && paneTiers.every((t) => t.tier === "minimum"),
+  `${paneTiers.length} marked`
+);
+check(
+  "and puts it on the heading, not on a paragraph",
+  paneTiers.every((t) => /Minimum Standards/i.test(t.heading)),
+  JSON.stringify(paneTiers.map((t) => t.heading).slice(0, 2))
+);
+
+await page.screenshot({ path: "scripts/.probe-tier.png", fullPage: false });
+
 /* ---- Reading highlight ---------------------------------------------- *
  *
  * The flow hands React the *same element object* for every block whose
@@ -2017,7 +2106,7 @@ console.log(`\n=== probe ===`);
 console.log(`  document: ${sample.f} (${Math.round(sample.size / 1024)}KB)`);
 console.log(`  clock at first question: ${clockAtStart ?? "—"}`);
 console.log(
-  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter, .probe-compare, .probe-table, .probe-sweep (.png, in scripts/)`
+  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter, .probe-compare, .probe-table, .probe-tier, .probe-sweep (.png, in scripts/)`
 );
 console.log(`  failures: ${failures.length}   (must be 0)`);
 if (failures.length) {

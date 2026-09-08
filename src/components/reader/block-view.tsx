@@ -4,8 +4,32 @@ import * as React from "react";
 
 import { ACRONYMS } from "@/lib/acronyms";
 import { bionicSplit } from "@/lib/parse";
+import { TIER_LABEL, type Tier } from "@/lib/tiers";
 import type { Block, ParsedDoc } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+/**
+ * The tier mark beside a section heading in the reading pane.
+ *
+ * Inline and small on purpose. It is a fact about the document, not a state of
+ * the reader, so it must not compete with the caret or the clause spotlight —
+ * the two things on this page that are allowed to move the eye.
+ */
+function TierBadge({ tier }: { tier: Tier }) {
+  return (
+    <span
+      data-tier={tier}
+      className={cn(
+        "ml-2 select-none align-middle rounded px-1.5 py-0.5 font-sans text-[10px] font-medium uppercase tracking-wide",
+        tier === "minimum"
+          ? "bg-primary/15 text-primary"
+          : "bg-muted text-muted-foreground"
+      )}
+    >
+      {TIER_LABEL[tier]}
+    </span>
+  );
+}
 
 interface BlockViewProps {
   doc: ParsedDoc;
@@ -167,6 +191,19 @@ const BlockViewImpl = ({
     }
   }
 
+  /**
+   * The tier this heading declares, where it declares one.
+   *
+   * Rendered beside the heading rather than over the prose, because the tier
+   * *is* the heading — every sentence under it carries it, and a badge on each
+   * one would be noise that says the same thing forty times. `blockStart` keeps
+   * it on the heading that opened the section rather than on every heading
+   * inside it.
+   */
+  const section = doc.sections[block.section];
+  const tier =
+    section?.tier && section.blockStart === block.i ? section.tier : null;
+
   switch (block.kind) {
     case "h1":
       return (
@@ -176,6 +213,7 @@ const BlockViewImpl = ({
           className="mb-4 mt-10 scroll-mt-24 font-sans text-2xl font-bold tracking-tight first:mt-0"
         >
           {words}
+          {tier && <TierBadge tier={tier} />}
         </h1>
       );
     case "h2":
@@ -186,6 +224,7 @@ const BlockViewImpl = ({
           className="mb-3 mt-9 scroll-mt-24 font-sans text-xl font-semibold tracking-tight first:mt-0"
         >
           {words}
+          {tier && <TierBadge tier={tier} />}
         </h2>
       );
     case "h3":
@@ -196,6 +235,7 @@ const BlockViewImpl = ({
           className="mb-2 mt-7 scroll-mt-24 font-sans text-base font-semibold uppercase tracking-wide text-muted-foreground first:mt-0"
         >
           {words}
+          {tier && <TierBadge tier={tier} />}
         </h3>
       );
     case "li":

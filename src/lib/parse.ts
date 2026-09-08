@@ -1,6 +1,7 @@
 import { matchAcronym, spokenForm } from "./acronyms";
 import { foldPipeTables } from "./md-tables";
 import { flattenGrid, stepText, type GridData, type GridStep } from "./tables";
+import { tierOf, type Tier } from "./tiers";
 import {
   isSqlFence,
   sqlSpeechFor,
@@ -27,9 +28,11 @@ const MAX_CHUNK_CHARS = 180;
  * time, so a document already in the library keeps the old one until it is
  * rebuilt. Version 8 reads markdown pipe tables as grids, which turns rows
  * that were paragraphs into `table` blocks with steps — every chunk, token and
- * word count in a document containing one changes.
+ * word count in a document containing one changes. Version 9 records
+ * `Section.tier`, which like `furniture` is computed at parse time, so a
+ * document already in the library keeps its untagged sections until rebuilt.
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /**
  * Sections shorter than this do not arm a cognitive intercept. Stopping a
@@ -862,6 +865,12 @@ export function parseDocument(source: string, fileName?: string): ParsedDoc {
         (seed.level === 1 || seed.level === 2) &&
         tokenEnd - tokenStart >= MIN_INTERCEPT_WORDS,
       ...(seed.baseTitle ? { baseTitle: seed.baseTitle, part: seed.part } : {}),
+      // Read off the heading. A checkpoint slice inherits the tier of the
+      // heading it was cut from, which `baseTitle` carries -- otherwise a long
+      // Minimum Standards block would be tagged on its first sixth only.
+      ...(tierOf(seed.baseTitle ?? seed.title)
+        ? { tier: tierOf(seed.baseTitle ?? seed.title) as Tier }
+        : {}),
     };
   });
 

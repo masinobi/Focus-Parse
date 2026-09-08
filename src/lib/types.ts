@@ -1,5 +1,6 @@
 import type { SqlStep } from "./sql";
 import type { GridData, GridStep } from "./tables";
+import type { Tier } from "./tiers";
 
 export type LogicTag = "entity" | "mechanism" | "output";
 
@@ -123,6 +124,14 @@ export interface Section {
    */
   baseTitle?: string;
   part?: number;
+  /**
+   * The GCDMP tier this section's own heading declares, where it declares one.
+   *
+   * Read off the heading and never inferred from the prose -- see `tiers.ts`
+   * for the counts that rule the modal-verb version out. Absent on the ~93% of
+   * sections that are ordinary content.
+   */
+  tier?: Tier;
 }
 
 export interface ParsedDoc {

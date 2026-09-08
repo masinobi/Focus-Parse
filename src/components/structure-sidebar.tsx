@@ -27,6 +27,7 @@ import {
 } from "@/lib/coverage";
 import { contentWordCount, formatDuration } from "@/lib/parse";
 import { chapterTitles, searchOutline } from "@/lib/section-search";
+import { TIER_LABEL, type Tier } from "@/lib/tiers";
 import type { Section } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { CLOZE_INTERVAL_TOKENS, useFocusStore } from "@/store/useFocusStore";
@@ -170,6 +171,21 @@ const SectionRow = React.memo(function SectionRow({
             skipped
           </span>
         )}
+        {section.tier && (
+          <span
+            className={cn(
+              "rounded px-1 text-[10px] uppercase tracking-wide",
+              TIER_TONE[section.tier].on
+            )}
+            title={
+              section.tier === "minimum"
+                ? "The guide gives this chapter minimum standards, and this is them. “Which of the following is a minimum standard” is a question format."
+                : "Best practices: recommended, not required. The exam tests the boundary."
+            }
+          >
+            {TIER_SHORT[section.tier]}
+          </span>
+        )}
         {summary !== "n/a" && !section.furniture && (
           <span
             className={cn(
@@ -242,9 +258,42 @@ const SectionRow = React.memo(function SectionRow({
  */
 const SEARCH_FROM_ROWS = 20;
 
+/**
+ * How a tier reads in a badge and in the filter.
+ *
+ * Short, because the badge sits in a row that already carries a word count, a
+ * duration and up to three other marks. "Minimum" alone is unambiguous next to
+ * "Best" and neither is a word this corpus uses for anything else at this size.
+ */
+const TIER_SHORT: Record<Tier, string> = {
+  minimum: "minimum",
+  best: "best practice",
+};
+
+/**
+ * Deliberately not red and green.
+ *
+ * The tier is not a pass or a failure, and the map already spends
+ * `text-destructive` on "read but never checked" and `text-output` on
+ * "verified". A tier badge in either colour would read as a verdict on the
+ * reader rather than a fact about the document.
+ */
+const TIER_TONE: Record<Tier, { on: string }> = {
+  minimum: { on: "bg-primary/15 text-primary" },
+  best: { on: "bg-muted-foreground/15 text-muted-foreground" },
+};
+
 export function StructureSidebar() {
   const [open, setOpen] = React.useState(true);
   const [query, setQuery] = React.useState("");
+  /**
+   * Show only one GCDMP tier, or all of them.
+   *
+   * Composed with the text filter rather than replacing it: "minimum standards
+   * in the vendor chapter" is the question this is for, and either control
+   * alone answers half of it.
+   */
+  const [tierFilter, setTierFilter] = React.useState<Tier | null>(null);
 
   const doc = useFocusStore((s) => s.doc);
   const tokenIndex = useFocusStore((s) => s.tokenIndex);
@@ -385,7 +434,26 @@ export function StructureSidebar() {
   const chapters = chapterTitles(outline);
   const hits = searchOutline(outline, query);
   const searchable = rows.length >= SEARCH_FROM_ROWS;
-  const shown = hits ?? outline.map((_, i) => i);
+
+  /**
+   * Which tiers this document declares at all.
+   *
+   * The control is absent rather than present-and-empty where a document has
+   * none: ICH E6, 21 CFR Part 11 and the reader's own notes carry no GCDMP
+   * tier headings, and a filter that can only ever return nothing is worse
+   * than no filter. Same argument as `SEARCH_FROM_ROWS`.
+   *
+   * Computed plainly rather than memoized: this function has an early return
+   * above it, so a hook here would be a conditional one, and `outline`,
+   * `chapters` and `hits` beside it are all plain passes over the same rows.
+   */
+  const tiersPresent = new Set<Tier>();
+  for (const row of rows) if (row.section.tier) tiersPresent.add(row.section.tier);
+
+  const byText = hits ?? outline.map((_, i) => i);
+  const shown = tierFilter
+    ? byText.filter((i) => rows[i]?.section.tier === tierFilter)
+    : byText;
 
   if (!open) {
     return (
@@ -583,7 +651,45 @@ export function StructureSidebar() {
         </div>
       )}
 
+      {tiersPresent.size > 0 && (
+        <div className="flex items-center gap-1.5 border-b px-3 py-2">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Tier
+          </span>
+          {(["minimum", "best"] as Tier[])
+            .filter((tier) => tiersPresent.has(tier))
+            .map((tier) => (
+              <button
+                key={tier}
+                type="button"
+                onClick={() => setTierFilter(tierFilter === tier ? null : tier)}
+                aria-pressed={tierFilter === tier}
+                aria-label={`Show only ${TIER_LABEL[tier]} sections`}
+                className={cn(
+                  "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide transition-colors",
+                  tierFilter === tier
+                    ? TIER_TONE[tier].on
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {TIER_SHORT[tier]}
+              </button>
+            ))}
+          {tierFilter && (
+            <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
+              {shown.length} of {rows.length}
+            </span>
+          )}
+        </div>
+      )}
+
       <nav className="fp-scroll flex-1 overflow-y-auto py-2">
+        {tierFilter && shown.length === 0 && hits?.length !== 0 && (
+          <p className="px-3 py-6 text-center text-xs leading-relaxed text-muted-foreground">
+            No {TIER_LABEL[tierFilter]} section here
+            {query.trim() ? " matches that filter too" : ""}.
+          </p>
+        )}
         {hits?.length === 0 && (
           <p className="px-3 py-6 text-center text-xs leading-relaxed text-muted-foreground">
             Nothing in this document is called{" "}

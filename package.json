@@ -19,7 +19,8 @@
     "scan-blueprint": "node scripts/scan-blueprint.mjs",
     "scan-citations": "node scripts/scan-citations.mjs",
     "scan-compare": "node scripts/scan-compare.mjs",
-    "scan-perf": "node scripts/scan-perf.mjs"
+    "scan-perf": "node scripts/scan-perf.mjs",
+    "scan-tiers": "node scripts/scan-tiers.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
