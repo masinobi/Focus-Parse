@@ -1766,6 +1766,97 @@ check(
   `token ${landed.at}: ${JSON.stringify(landed.around.slice(0, 40))}`
 );
 
+/* -----------------------------------------------------------------------
+ * A markdown table, in the browser.
+ *
+ * The reader's own study notes are mostly tables — `CCDA Discriminator
+ * Matrix.md` is 86 table rows out of 148 lines — and until the parser learned
+ * to fold a pipe table they arrived as paragraphs of pipes: read aloud as
+ * "pipe Attributable pipe Who recorded the data pipe", and invisible to the
+ * one check built to ask exactly what those tables are for.
+ *
+ * The unit tests assert the parse. This asserts what the reader sees, which is
+ * a different claim: a grid that parses correctly and renders as pipes anyway
+ * is still the defect.
+ * --------------------------------------------------------------------- */
+console.log(`
+=== a markdown table ===`);
+
+const TABLE_FIXTURE = `# Week 1
+
+Cover the right column and state the distinguishing variable out loud.
+
+| Term | What it actually means |
+|---|---|
+| **Attributable** | Who recorded the data |
+| **Contemporaneous** | Recorded at the time of the activity |
+| **Original** | First capture, not a copy |
+
+That is the whole of the first week.
+`;
+
+await loadMarkdown("Discriminator probe.md", TABLE_FIXTURE);
+
+const gridEntry = page.locator("[data-grid-entry]");
+check(
+  "a pipe table arrives as a grid, not as paragraphs",
+  (await gridEntry.count()) === 1,
+  `${await gridEntry.count()} grid entries`
+);
+check(
+  "and it says how many steps it flattened to",
+  /3 rows . 2 columns/.test(await gridEntry.first().innerText()) &&
+    /3 steps/.test(await gridEntry.first().innerText()),
+  (await gridEntry.first().innerText()).replace(/\s+/g, " ")
+);
+
+const readerText = await page.evaluate(
+  () => document.querySelector("main")?.innerText ?? ""
+);
+check(
+  "no pipe survives into what the reader sees",
+  !readerText.includes("|"),
+  readerText.includes("|") ? "a pipe is still on screen" : "none"
+);
+check(
+  "and neither do the asterisks the terms were bolded with",
+  !readerText.includes("**"),
+  readerText.includes("**") ? "bold markers still on screen" : "none"
+);
+check(
+  "the prose around the table is untouched",
+  /distinguishing variable out loud/.test(readerText) &&
+    /whole of the first week/.test(readerText),
+  "both paragraphs present"
+);
+
+await gridEntry.first().click();
+await page.waitForTimeout(800);
+
+const card = await page.evaluate(() => {
+  const text = document.body.innerText.replace(/\s+/g, " ");
+  return {
+    // The card upper-cases its row label in CSS, and `innerText` reports it
+    // that way, so this one is deliberately case-insensitive.
+    row: /attributable/i.test(text),
+    column: /What it actually means/.test(text),
+    value: /Who recorded the data/.test(text),
+    counter: /1 \/ 3/.test(text),
+  };
+});
+check(
+  "playing it shows one card naming its row, column and value",
+  card.row && card.column && card.value,
+  `row ${card.row}, column ${card.column}, value ${card.value}`
+);
+check(
+  "and the sequence says where it ends",
+  card.counter,
+  card.counter ? "1 / 3" : "no counter"
+);
+
+await page.screenshot({ path: "scripts/.probe-table.png" });
+
 /* ---- Repairing the queue -------------------------------------------- *
  *
  * Fixing the intercept rule stops new summaries of two-word headings being
@@ -1926,7 +2017,7 @@ console.log(`\n=== probe ===`);
 console.log(`  document: ${sample.f} (${Math.round(sample.size / 1024)}KB)`);
 console.log(`  clock at first question: ${clockAtStart ?? "—"}`);
 console.log(
-  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter, .probe-compare, .probe-sweep (.png, in scripts/)`
+  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter, .probe-compare, .probe-table, .probe-sweep (.png, in scripts/)`
 );
 console.log(`  failures: ${failures.length}   (must be 0)`);
 if (failures.length) {

@@ -1,4 +1,5 @@
 import { matchAcronym, spokenForm } from "./acronyms";
+import { foldPipeTables } from "./md-tables";
 import { flattenGrid, stepText, type GridData, type GridStep } from "./tables";
 import {
   isSqlFence,
@@ -24,9 +25,11 @@ const MAX_CHUNK_CHARS = 180;
  * have to be rebuilt to gain them. Version 7 marks the front of a book as
  * furniture, which is the same kind of change: the flag is computed at parse
  * time, so a document already in the library keeps the old one until it is
- * rebuilt.
+ * rebuilt. Version 8 reads markdown pipe tables as grids, which turns rows
+ * that were paragraphs into `table` blocks with steps — every chunk, token and
+ * word count in a document containing one changes.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * Sections shorter than this do not arm a cognitive intercept. Stopping a
@@ -536,7 +539,9 @@ function withPacingCheckpoints(
  */
 export function parseDocument(source: string, fileName?: string): ParsedDoc {
   const normalized = source.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
-  const lines = normalized.split("\n");
+  // Pipe tables become `fp-grid` fences before the line loop sees them, so the
+  // one grid path serves both a PDF's recovered table and a typed markdown one.
+  const lines = foldPipeTables(normalized.split("\n"), cleanInline, GRID_FENCE);
 
   const pending: PendingBlock[] = [];
   const sectionSeeds: { title: string; level: 0 | 1 | 2 | 3; blockStart: number }[] = [];

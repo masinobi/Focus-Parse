@@ -43,8 +43,8 @@ const chunksOf = (doc: ParsedDoc, kind: string) =>
 describe("grid speech", () => {
   it("reaches the parser as a table block with steps", () => {
     // Without this the assertions below pass against a document that has no
-    // grid in it at all, which is exactly what a plain markdown pipe table
-    // produces — the parser does not recognise one.
+    // grid in it at all — which used to be exactly what a plain markdown pipe
+    // table produced, before the parser learned to fold one. See `md-tables.ts`.
     const doc = gridDoc(GRID);
     const table = doc.blocks.find((b) => b.kind === "table");
     expect(table).toBeDefined();
