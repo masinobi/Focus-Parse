@@ -24,7 +24,8 @@
  * Quality` when they read `Assuring Data Quality`, and the real chapter never
  * shows as missing.
  *
- * So matching is **exact after normalization, or listed in `ALIASES`**. A title
+ * So matching is **exact after normalization, or listed in `ALIASES`** (or, for
+ * a title standing as a whole document, in `DOCUMENT_ALIASES`). A title
  * that matches nothing is reported as unmatched rather than attached to its
  * closest neighbour. That makes the report boring to maintain and impossible to
  * be quietly wrong about, which is the correct trade for a number the reader
@@ -37,6 +38,7 @@
  */
 
 import { DOMAINS, STANDARDS_CHAPTERS, type DomainId } from "./blueprint";
+import { MIN_INTERCEPT_WORDS } from "./parse";
 
 /* ------------------------------------------------------------------ *
  * Normalization
@@ -85,6 +87,41 @@ export const ALIASES: Record<string, string> = {
 };
 
 /**
+ * Aliases that apply only to a title standing as a whole *document*.
+ *
+ * One entry, and it exists because the corpus holds two different chapters
+ * whose titles are identical after normalization. The guide's section 2 gives
+ * separate minimum standards for
+ *
+ *     Vendor Selection and Management                  (guide p38)
+ *     Vendor Selection and Management (Released 2021)  (guide p40)
+ *
+ * and they are not the same list. What p38 calls a minimum standard —
+ * "document the sponsor's process and support functions ... evaluate and
+ * qualify" — the 2021 release demotes to its Table 2, *Best Practices*. A
+ * reader who studied one and answered from the other is wrong in exactly the
+ * way "which of the following is a minimum standard" is designed to catch.
+ *
+ * The corpus PDF is provably the 2021 release, on two independent counts:
+ * its citation block reads "Amatya S, Edgerton D. Vendor Selection and
+ * Management. Journal of the Society for Clinical Data Management. 2021;
+ * 1(1)", and its Table 1 Minimum Standards opens "Sponsors should assess a
+ * vendor's Quality Management System and deem it appropriate prior to
+ * receiving goods or services" — which is the guide's p40 list verbatim, not
+ * p38's.
+ *
+ * It cannot be keyed by title, because normalization folds `&` into `and` and
+ * the two spellings collapse onto one key. Document versus section is the
+ * distinction that survives: the 2021 release is a standalone article, and the
+ * 2013 chapter exists only as a heading inside the GCDMP handbook. That is a
+ * fact about this reader's corpus rather than a general rule, which is why it
+ * is a separate table with the evidence attached.
+ */
+export const DOCUMENT_ALIASES: Record<string, string> = {
+  "vendor selection and management": "Vendor Selection and Management (Released 2021)",
+};
+
+/**
  * Titles that resemble a blueprint chapter and are not it.
  *
  * Never coverage. Shown to the reader because in every case there is a real
@@ -103,9 +140,6 @@ export const ALIASES: Record<string, string> = {
 export const RESEMBLES: Record<string, string[]> = {
   "Metrics for Clinical Trials": ["Metrics in Clinical Data Management"],
   "Reports and Metrics": ["Metrics in Clinical Data Management"],
-  "Vendor Selection and Management (Released 2021)": [
-    "Vendor Selection and Management",
-  ],
   "Electronic Data Capture--Concepts and Study Start-up": [
     "Electronic Data Capture-Study Implementation and Start-up",
     "Electronic Data Capture-Selecting an EDC System",
@@ -180,6 +214,31 @@ const INDEX = chapterIndex();
  */
 export function matchChapter(title: string): string | null {
   return INDEX.get(normalizeTitle(title)) ?? null;
+}
+
+/** Normalized document-alias key to the blueprint's own spelling. */
+const DOCUMENT_INDEX = new Map(
+  Object.entries(DOCUMENT_ALIASES).map(([alias, name]) => [
+    normalizeTitle(alias),
+    name,
+  ])
+);
+
+/**
+ * The blueprint chapter a corpus title is, given where the title stands.
+ *
+ * Identical to `matchChapter` for a section. A whole document consults
+ * `DOCUMENT_ALIASES` first, which is the only place the two can differ.
+ */
+export function matchUnitChapter(
+  title: string,
+  isDocument: boolean
+): string | null {
+  if (isDocument) {
+    const aliased = DOCUMENT_INDEX.get(normalizeTitle(title));
+    if (aliased) return aliased;
+  }
+  return matchChapter(title);
 }
 
 /** Normalized resemblance title to the chapters that claim it. */
@@ -299,24 +358,43 @@ function stateOf(words: number, read: number, verified: number): ChapterState {
  * The one subtlety is double counting. A standalone chapter PDF produces a
  * document-level unit *and* section-level units, and its sections are the
  * chapter's own headings — so if both matched, the chapter's word count would
- * be inflated by however much of itself it names. The rule is that section
- * matches win within a document: the document-level unit is used only when no
- * section of that document matched the same chapter.
+ * be inflated by however much of itself it names. Within one document and one
+ * chapter the two are therefore exclusive: either the sections are counted or
+ * the document is, never both.
+ *
+ * Which one wins used to be decided by existence alone — any section match at
+ * all suppressed the document — and that is wrong whenever the section is the
+ * document's own title repeated as a running heading. `Vendor Selection &
+ * Management.pdf` carries such a heading, four words long, and it was
+ * suppressing the 8,377-word document behind it: the chapter reported as
+ * *verified on eight words*. The same shape hit every standalone chapter PDF
+ * in the corpus.
+ *
+ * So a section outranks the document it is in only when it is a section rather
+ * than a heading, at `MIN_INTERCEPT_WORDS` — the floor the intercept, the
+ * coverage map and the queue sweep already share. A shorter match still counts
+ * as coverage (it is how a handbook's chapter headings are found at all), it
+ * just no longer throws away the document it sits inside.
  */
 export function buildBlueprintCoverage(units: CoverageUnit[]): BlueprintCoverage {
   const byChapter = new Map<string, CoverageUnit[]>();
   const resemblingBy = new Map<string, CoverageUnit[]>();
 
-  /** docId + chapter pairs already claimed by a section-level unit. */
+  /** docId + chapter pairs claimed by a section big enough to be one. */
   const claimedBySection = new Set<string>();
+  /** docId + chapter pairs the whole-document unit will be counted for. */
+  const claimedByDocument = new Set<string>();
+
+  const key = (unit: CoverageUnit, chapter: string) =>
+    `${unit.docId} ${normalizeTitle(chapter)}`;
 
   const matched: { unit: CoverageUnit; chapter: string }[] = [];
   for (const unit of units) {
-    const chapter = matchChapter(unit.title);
+    const chapter = matchUnitChapter(unit.title, unit.section === null);
     if (chapter) {
       matched.push({ unit, chapter });
-      if (unit.section !== null) {
-        claimedBySection.add(`${unit.docId} ${normalizeTitle(chapter)}`);
+      if (unit.section !== null && unit.words >= MIN_INTERCEPT_WORDS) {
+        claimedBySection.add(key(unit, chapter));
       }
     }
     for (const near of resembledChapters(unit.title)) {
@@ -324,15 +402,23 @@ export function buildBlueprintCoverage(units: CoverageUnit[]): BlueprintCoverage
     }
   }
 
+  // Settled before anything is counted, because the two rules below are each
+  // other's condition: the document is used when no real section claimed the
+  // chapter, and a heading is dropped when the document is used instead.
   for (const { unit, chapter } of matched) {
-    // A whole-document match yields to any section of that same document that
-    // matched the same chapter, or the chapter counts its own contents twice.
-    if (
-      unit.section === null &&
-      claimedBySection.has(`${unit.docId} ${normalizeTitle(chapter)}`)
-    ) {
-      continue;
-    }
+    if (unit.section !== null) continue;
+    if (claimedBySection.has(key(unit, chapter))) continue;
+    claimedByDocument.add(key(unit, chapter));
+  }
+
+  for (const { unit, chapter } of matched) {
+    const pair = key(unit, chapter);
+    // A whole-document match yields to a real section of that same document,
+    // or the chapter counts its own contents twice.
+    if (unit.section === null && claimedBySection.has(pair)) continue;
+    // And a heading too short to be a section yields to the document it names,
+    // for the same reason in the other direction.
+    if (unit.section !== null && claimedByDocument.has(pair)) continue;
     byChapter.set(chapter, [...(byChapter.get(chapter) ?? []), unit]);
   }
 

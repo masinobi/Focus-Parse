@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import { DOMAINS, STANDARDS_CHAPTERS } from "./blueprint";
 import {
   ALIASES,
+  DOCUMENT_ALIASES,
   EXCLUDED,
   RESEMBLES,
   allChapters,
   buildBlueprintCoverage,
   isExcluded,
   matchChapter,
+  matchUnitChapter,
   normalizeTitle,
   resembledChapters,
   type CoverageUnit,
@@ -92,6 +94,42 @@ describe("matchChapter", () => {
     // it would report a twenty-page chapter as covered by a paragraph.
     expect(matchChapter("m) Data Privacy")).toBeNull();
     expect(isExcluded("m) Data Privacy")).toBe(true);
+  });
+});
+
+describe("matchUnitChapter", () => {
+  it("reads a standalone vendor PDF as the 2021 release", () => {
+    // Both spellings, because normalization folds `&` into `and` and the
+    // document arrives under whichever one its filename used.
+    expect(matchUnitChapter("Vendor Selection & Management", true)).toBe(
+      "Vendor Selection and Management (Released 2021)"
+    );
+    expect(matchUnitChapter("Vendor Selection and Management", true)).toBe(
+      "Vendor Selection and Management (Released 2021)"
+    );
+  });
+
+  it("reads the same title inside a handbook as the 2013 chapter", () => {
+    // The distinction the whole table rests on. If this ever returns the 2021
+    // chapter, the GCDMP's own heading has been relabelled as a document it is
+    // not, and the 2013 chapter can never be reported at all.
+    expect(matchUnitChapter("Vendor Selection and Management", false)).toBe(
+      "Vendor Selection and Management"
+    );
+  });
+
+  it("is matchChapter for every title that is not document-aliased", () => {
+    for (const title of ["Data Privacy", "Data Entry Process", "Assuring Data Quality"]) {
+      expect(matchUnitChapter(title, true)).toBe(matchChapter(title));
+      expect(matchUnitChapter(title, false)).toBe(matchChapter(title));
+    }
+  });
+
+  it("points every document alias at a chapter that exists", () => {
+    const known = new Set(allChapters().map(normalizeTitle));
+    for (const name of Object.values(DOCUMENT_ALIASES)) {
+      expect(known.has(normalizeTitle(name))).toBe(true);
+    }
   });
 });
 
@@ -189,26 +227,83 @@ describe("buildBlueprintCoverage", () => {
   it("counts a standalone chapter PDF once, not twice", () => {
     // The document is the chapter, and one of its own sections repeats the
     // title. Counting both would report 900 words for a 600-word chapter.
+    //
+    // Deliberately not the vendor chapter, which these fixtures used to use:
+    // that title is document-aliased now, so a document carrying it resolves to
+    // the 2021 release and the assertion below would be about the alias rather
+    // than about double counting.
     const report = buildBlueprintCoverage([
-      unit({ docId: "vsm", section: 3, title: "Vendor Selection and Management", words: 300 }),
-      unit({ docId: "vsm", section: null, title: "Vendor Selection and Management", words: 600 }),
+      unit({ docId: "dbc", section: 3, title: "Database Closure", words: 300 }),
+      unit({ docId: "dbc", section: null, title: "Database Closure", words: 600 }),
     ]);
-    const chapter = report.chapters.find(
-      (c) => c.chapter === "Vendor Selection and Management"
-    );
+    const chapter = report.chapters.find((c) => c.chapter === "Database Closure");
     expect(chapter?.words).toBe(300);
     expect(chapter?.sources).toHaveLength(1);
     expect(chapter?.sources[0].section).toBe(3);
   });
 
+  it("does not let a running heading suppress the document it names", () => {
+    // The live defect. `Vendor Selection & Management.pdf` repeats its own
+    // title as a four-word heading, and that heading was outranking the 8,377
+    // words behind it — the chapter reported verified on eight words.
+    const report = buildBlueprintCoverage([
+      unit({ docId: "vsm", section: 2, title: "Database Closure", words: 4 }),
+      unit({ docId: "vsm", section: null, title: "Database Closure", words: 8377 }),
+    ]);
+    const chapter = report.chapters.find((c) => c.chapter === "Database Closure");
+    expect(chapter?.words).toBe(8377);
+    expect(chapter?.sources).toHaveLength(1);
+    expect(chapter?.sources[0].section).toBeNull();
+  });
+
+  it("counts the heading or the document, never their sum", () => {
+    // The other direction of the same rule. Dropping the suppression instead of
+    // moving it would read as 8,381 words for an 8,377-word chapter, which is
+    // the inflation `scan-blueprint` asserts against.
+    const report = buildBlueprintCoverage([
+      unit({ docId: "vsm", section: 2, title: "Database Closure", words: 4 }),
+      unit({ docId: "vsm", section: null, title: "Database Closure", words: 8377 }),
+    ]);
+    const chapter = report.chapters.find((c) => c.chapter === "Database Closure");
+    expect(chapter?.words).toBeLessThanOrEqual(8377);
+  });
+
+  it("is decided at the floor, not near it", () => {
+    // 60 words is a section and outranks the document; 59 is a heading and does
+    // not. Without both halves the rule passes with the floor set anywhere.
+    const at = buildBlueprintCoverage([
+      unit({ docId: "a", section: 2, title: "Database Closure", words: 60 }),
+      unit({ docId: "a", section: null, title: "Database Closure", words: 900 }),
+    ]);
+    const below = buildBlueprintCoverage([
+      unit({ docId: "b", section: 2, title: "Database Closure", words: 59 }),
+      unit({ docId: "b", section: null, title: "Database Closure", words: 900 }),
+    ]);
+    expect(at.chapters.find((c) => c.chapter === "Database Closure")?.words).toBe(60);
+    expect(below.chapters.find((c) => c.chapter === "Database Closure")?.words).toBe(900);
+  });
+
+  it("still finds a chapter that exists only as a heading in a handbook", () => {
+    // The reason a short match is dropped rather than ignored. The GCDMP
+    // carries its chapters as headings whose bodies are titled something else,
+    // and there is no document-level match to fall back to — so a floor applied
+    // to *matching* rather than to *ranking* would report the handbook's
+    // chapters as missing documents.
+    const report = buildBlueprintCoverage([
+      unit({ docId: "gcdmp", section: 114, title: "Database Closure", words: 4 }),
+      unit({ docId: "gcdmp", section: null, title: "Full GCDMP", words: 300000 }),
+    ]);
+    const chapter = report.chapters.find((c) => c.chapter === "Database Closure");
+    expect(chapter?.state).not.toBe("absent");
+    expect(chapter?.words).toBe(4);
+  });
+
   it("still uses a document-level match when no section claims the chapter", () => {
     const report = buildBlueprintCoverage([
-      unit({ docId: "vsm", section: 0, title: "Introduction", words: 50 }),
-      unit({ docId: "vsm", section: null, title: "Vendor Selection and Management", words: 600 }),
+      unit({ docId: "dbc", section: 0, title: "Introduction", words: 50 }),
+      unit({ docId: "dbc", section: null, title: "Database Closure", words: 600 }),
     ]);
-    const chapter = report.chapters.find(
-      (c) => c.chapter === "Vendor Selection and Management"
-    );
+    const chapter = report.chapters.find((c) => c.chapter === "Database Closure");
     expect(chapter?.words).toBe(600);
     expect(chapter?.sources[0].section).toBeNull();
   });
