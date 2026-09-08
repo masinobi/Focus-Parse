@@ -428,6 +428,41 @@ function markFurniture(sections: Section[]): Section[] {
 }
 
 /** Words the engine will actually read: everything outside the furniture. */
+/**
+ * Whether a summary is ever demanded for this section.
+ *
+ * One rule, in one place, because two consumers have to agree about it exactly:
+ * `finishChunk` raises the intercept and `buildCoverage` reports the debt, and
+ * invariant 20 says a coverage map may never demand what the ladder will not
+ * raise. They previously carried the condition separately and shared a defect.
+ *
+ * Three ways a section is never asked about, and the third is the fix:
+ *
+ *  - **Nothing follows it.** The last section of a document is never crossed
+ *    out of, so its boundary never arrives.
+ *  - **What follows arms nothing.** The intercept fires on crossing *into* a
+ *    section with `intercept` set; a short heading next door means the boundary
+ *    passes in silence.
+ *  - **It is too short to have said anything.** `MIN_INTERCEPT_WORDS` exists so
+ *    a reader is not stopped to restate two sentences — and it was being tested
+ *    against the section being *entered* while the summary was demanded of the
+ *    one being *left*. In the GCDMP that meant "Best Practices", whose entire
+ *    body is its own two-word heading, was asked for a one-sentence summary
+ *    because the 467-word section after it armed one. The grader then received
+ *    the heading as the section text and marked a summary of it. 76 sections in
+ *    that document have no body beyond their own title.
+ *
+ * `find` rather than the immediate neighbour because playback skips furniture:
+ * the section actually entered is the next one it will read.
+ */
+export function demandsSummary(sections: Section[], index: number): boolean {
+  const section = sections[index];
+  if (!section || section.furniture) return false;
+  if (section.wordCount < MIN_INTERCEPT_WORDS) return false;
+  const entered = sections.slice(index + 1).find((s) => !s.furniture);
+  return Boolean(entered?.intercept);
+}
+
 export function contentWordCount(doc: ParsedDoc): number {
   return doc.sections.reduce(
     (n, section) => n + (section.furniture ? 0 : section.wordCount),

@@ -14,6 +14,7 @@ import {
 import { firstContentToken } from "@/lib/parse";
 import type { ClozeCheck } from "@/lib/quiz";
 import { QUALITY, summaryId, type WeakTerms } from "@/lib/review";
+import { outlineOf, qualifiedTitle } from "@/lib/section-search";
 import type { ClozeResult, FlowNode, LogicTag, ParsedDoc, ViewMode } from "@/lib/types";
 
 /**
@@ -680,7 +681,11 @@ export const useFocusStore = create<FocusState>((set, get) => ({
           docId: doc.id,
           docTitle: doc.title,
           kind: "summary",
-          prompt: section.title,
+          // Qualified by its chapter. At review the text is gone and this
+          // string is the entire question — and 23 sections in the GCDMP are
+          // called "Minimum Standards", which asks the reader to restate one
+          // of twenty-three indistinguishable things.
+          prompt: qualifiedTitle(outlineOf(doc.sections), section.i),
           answer: summary,
           context: `${section.wordCount.toLocaleString()} words`,
           section: section.i,

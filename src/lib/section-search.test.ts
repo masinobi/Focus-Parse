@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { chapterTitles, searchOutline, type OutlineRow } from "./section-search";
+import {
+  chapterTitles,
+  qualifiedTitle,
+  searchOutline,
+  type OutlineRow,
+} from "./section-search";
 
 /**
  * The shape the full GCDMP actually has: chapters at level 1, and the same five
@@ -109,5 +114,49 @@ describe("searchOutline", () => {
     // The half of the rule that is easy to lose: without the own-title test,
     // "case report" would return nothing at all.
     expect(searchOutline(GCDMP, "case report")).toEqual([9]);
+  });
+});
+
+describe("qualifiedTitle", () => {
+  const GCDMP: OutlineRow[] = [
+    { title: "Database Closure", level: 1 },
+    { title: "Scope", level: 2 },
+    { title: "Minimum Standards", level: 2 },
+    { title: "Best Practices", level: 2 },
+    { title: "Data Privacy", level: 1 },
+    { title: "Scope", level: 2 },
+    { title: "Best Practices", level: 2 },
+  ];
+
+  it("tells two sections with the same title apart", () => {
+    // The reader's report: 19 sections called "Best Practices" in one document,
+    // and the intercept, the grader and the review queue all name it by that
+    // alone.
+    expect(qualifiedTitle(GCDMP, 3)).toBe("Database Closure — Best Practices");
+    expect(qualifiedTitle(GCDMP, 6)).toBe("Data Privacy — Best Practices");
+    expect(qualifiedTitle(GCDMP, 3)).not.toBe(qualifiedTitle(GCDMP, 6));
+  });
+
+  it("leaves a top-level chapter as its own name", () => {
+    expect(qualifiedTitle(GCDMP, 0)).toBe("Database Closure");
+  });
+
+  it("does not repeat a chapter that would only say itself again", () => {
+    const rows: OutlineRow[] = [
+      { title: "Audit Trail", level: 1 },
+      { title: "audit  trail", level: 2 },
+    ];
+    expect(qualifiedTitle(rows, 1)).toBe("audit  trail");
+  });
+
+  it("survives an index that is not there", () => {
+    expect(qualifiedTitle(GCDMP, 99)).toBe("");
+  });
+
+  it("names every intercept in a repeating outline distinctly", () => {
+    const names = GCDMP.map((_, i) => qualifiedTitle(GCDMP, i));
+    // Two "Scope" and two "Best Practices" in the bare titles; none after.
+    expect(new Set(GCDMP.map((r) => r.title)).size).toBe(5);
+    expect(new Set(names).size).toBe(7);
   });
 });

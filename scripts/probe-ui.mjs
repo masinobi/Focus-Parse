@@ -946,12 +946,37 @@ console.log(`
 
 const HEARD = "the see are eff must not identify a participant and edc keeps an audit trail";
 
-const INTERCEPT_FIXTURE = `# Data privacy in trials
+/*
+ * The reader's own screenshot, as a fixture.
+ *
+ * A chapter with a two-word sub-section in it, then a long one, then another
+ * long one. Crossing out of "Best Practices" used to demand a one-sentence
+ * summary of it -- because the *entered* section armed an intercept and nobody
+ * checked the length of the one being asked about -- and the grader was handed
+ * the heading as the section text. 76 sections of the GCDMP have no body beyond
+ * their own title, and 138 intercepts in that document were of this shape.
+ *
+ * It also carries the second half: "Best Practices" is one of nineteen in that
+ * document, so the chapter has to travel with the title or the question does
+ * not identify what it is asking about.
+ */
+const INTERCEPT_FIXTURE = `# Database Closure
 
-The sponsor holds accountability and the CRF must not identify a participant.
-EDC systems keep an audit trail of every change made after entry.
+## Best Practices
 
-# Coding dictionaries and their upkeep
+File the documentation.
+
+## Interim and Final Lock Distinctions
+
+The sponsor holds accountability for the lock and the CRF must not identify a
+participant once the database is closed. EDC systems keep an audit trail of
+every change made after entry, and that trail is what an inspector reads first.
+An interim lock freezes a subset of the data for one analysis while the study
+continues, so the CRF pages behind it stay open to query. A final lock closes
+everything at once and is not reversed without a documented decision from the
+sponsor, the data manager and the medical monitor together.
+
+## Minimum Requirements for Database Lock
 
 MedDRA is used to code adverse events and CDISC standards govern the format of
 a submission. A coding dictionary is versioned, and the version in force at the
@@ -1023,8 +1048,27 @@ if (opened) {
   const before = await dialogText();
   check(
     "the intercept names the section just finished",
-    /Data privacy in trials/.test(before),
-    before.slice(0, 70)
+    /Interim and Final Lock Distinctions/.test(before),
+    before.slice(0, 80)
+  );
+
+  // The reader's report, on screen. The two-word section sits immediately
+  // before this one and the boundary out of it satisfies every part of the old
+  // condition -- so if the floor is applied to the wrong section again, this is
+  // the summary the dialog asks for.
+  check(
+    "a two-word section is not the thing being asked about",
+    !/Summarize .Best Practices./.test(before),
+    /Summarize .Best Practices./.test(before)
+      ? "asked for a summary of a heading"
+      : "skipped, as too short to have said anything"
+  );
+
+  // And the title alone does not say which of the nineteen it is.
+  check(
+    "the question says which chapter it is asking about",
+    /DATABASE CLOSURE/i.test(before),
+    before.slice(0, 60)
   );
 
   const mic = page.getByRole("button", { name: /Speak it/ });

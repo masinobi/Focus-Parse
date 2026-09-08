@@ -81,3 +81,32 @@ export function searchOutline(rows: OutlineRow[], query: string): number[] | nul
   }
   return hits;
 }
+
+/**
+ * A section named so a human can tell it from the other eighteen.
+ *
+ * The intercept asks "Summarize X in one sentence", the grader is told the
+ * section is called X, and the retrieval queue stores X as the prompt a reader
+ * sees weeks later with the text gone. On this corpus X is very often not
+ * enough: of the GCDMP's 525 intercept-arming sections, 157 share a title with
+ * another — 28 called "Introduction", 23 "Minimum Standards", 19 "Best
+ * Practices", 8 "Scope". Adding the enclosing chapter takes 391 distinct names
+ * to 508 of 525.
+ *
+ * The structure map already solved this for its own rows; this is the same
+ * `chapterTitles` walk, so a section is named the same way wherever it is
+ * shown. Returns the bare title when there is no enclosing chapter, or when the
+ * chapter would only repeat it.
+ */
+export function qualifiedTitle(rows: OutlineRow[], index: number): string {
+  const own = rows[index]?.title?.trim() ?? "";
+  const chapter = chapterTitles(rows)[index]?.trim();
+  if (!chapter || !own) return own || chapter || "";
+  if (normalize(chapter) === normalize(own)) return own;
+  return `${chapter} — ${own}`;
+}
+
+/** The rows `qualifiedTitle` and `chapterTitles` want, from parsed sections. */
+export function outlineOf(sections: { title: string; level: number; baseTitle?: string }[]): OutlineRow[] {
+  return sections.map((s) => ({ title: s.baseTitle ?? s.title, level: s.level }));
+}

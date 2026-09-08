@@ -37,6 +37,11 @@ import {
 } from "@/lib/dictation";
 import type { DocEntityIndex } from "@/lib/entities";
 import type { Verdict } from "@/lib/graders/types";
+import {
+  chapterTitles,
+  outlineOf,
+  qualifiedTitle,
+} from "@/lib/section-search";
 import { cn } from "@/lib/utils";
 import { readingNodes, useFocusStore } from "@/store/useFocusStore";
 
@@ -141,6 +146,12 @@ export function InterceptDialog() {
 
   const section =
     intercept.section !== null ? doc?.sections[intercept.section] : undefined;
+
+  /** The chapter this section sits under, by the structure map's own rule. */
+  const chapter = React.useMemo(() => {
+    if (!doc || intercept.section === null) return null;
+    return chapterTitles(outlineOf(doc.sections))[intercept.section] ?? null;
+  }, [doc, intercept.section]);
 
   // The check is optional: without a key the button never appears.
   React.useEffect(() => {
@@ -295,7 +306,11 @@ export function InterceptDialog() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sectionTitle: section.title,
+          // The chapter travels with it. A grader told only "Best Practices"
+          // is being asked to judge one of nineteen.
+          sectionTitle: doc
+            ? qualifiedTitle(outlineOf(doc.sections), section.i)
+            : section.title,
           sectionText,
           summary: text,
         }),
@@ -334,6 +349,15 @@ export function InterceptDialog() {
                 Cognitive intercept
               </span>
             </div>
+
+            {/* The chapter above the heading, the way the structure map names
+                the same row. Without it the reader is asked to summarize "Best
+                Practices" with no way to tell which of the nineteen it is. */}
+            {chapter && (
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {chapter}
+              </span>
+            )}
 
             <DialogTitle className="text-2xl leading-tight">
               Summarize “{section?.title ?? "this section"}” in one sentence.

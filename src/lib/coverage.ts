@@ -1,3 +1,4 @@
+import { demandsSummary } from "./parse";
 import { buildGridQuestion, MAX_GRID_ATTEMPTS } from "./quiz";
 import type { ClozeResult, ParsedDoc, Section } from "./types";
 
@@ -180,15 +181,12 @@ export function buildCoverage(doc: ParsedDoc, input: CoverageInput): DocCoverage
     // the intercept — `finishChunk` raises it on crossing into a section with
     // `intercept` set, and asks about the one just finished. Keying this off
     // `section.intercept` instead looks equivalent on a document where every
-    // section arms one, and is wrong in the two places it matters: the last
-    // section of a document is never crossed out of, and a section followed by
-    // one that arms nothing is never asked about either. Both would have
-    // carried a debt the app will never raise and the reader can never pay.
+    // section arms one, and is wrong in the places it matters.
     //
-    // `find` rather than the immediate neighbour because playback skips
-    // furniture: the section actually entered is the next one it will read.
-    const entered = doc.sections.slice(section.i + 1).find((s) => !s.furniture);
-    const summary: RungState = !entered?.intercept
+    // The whole condition lives in `demandsSummary` so this and `finishChunk`
+    // cannot drift: invariant 20 is only kept if both read the same rule, and
+    // when they each carried their own they shared the same defect for a round.
+    const summary: RungState = !demandsSummary(doc.sections, section.i)
       ? "n/a"
       : summaries[section.i]
         ? "done"

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { tokenAtCharIndex } from "@/lib/parse";
+import { demandsSummary, tokenAtCharIndex } from "@/lib/parse";
 import { buildCloze, buildGridQuestion } from "@/lib/quiz";
 import {
   CLOZE_INTERVAL_TOKENS,
@@ -433,10 +433,15 @@ export function useSpeechEngine(): SpeechEngineStatus {
        */
 
       // 1. A structural boundary into a major header arms the cognitive
-      //    intercept: the summary is owed for the section just finished.
+      //    intercept: the summary is owed for the section just finished — so
+      //    `demandsSummary` asks about *that* one, not the one being entered.
+      //    Testing `sections[entering].intercept` alone applied the
+      //    minimum-length floor to the wrong section and stopped the reader to
+      //    summarize a two-word heading. Same rule as `buildCoverage` reads,
+      //    from one place, because invariant 20 needs them identical.
       if (
         entering !== leaving &&
-        doc.sections[entering]?.intercept &&
+        demandsSummary(doc.sections, leaving) &&
         !state.summaries[leaving]
       ) {
         state.advanceToken(doc.chunks[chunkIndex].tokenEnd - 1);

@@ -223,6 +223,48 @@ describe("the rungs", () => {
   });
 
   /**
+   * The reader's own report, and the case both this and `finishChunk` got
+   * wrong for a round.
+   *
+   * `MIN_INTERCEPT_WORDS` exists so nobody is stopped to restate two
+   * sentences — and it was being tested against the section being *entered*
+   * while the summary was demanded of the one being *left*. In the GCDMP that
+   * meant "Best Practices", whose whole body is its own two-word heading, was
+   * asked for a one-sentence summary because the 467-word section after it
+   * armed one. The grader received the heading as the section text. 76
+   * sections in that document have no body beyond their own title.
+   *
+   * Note the shape: the *entered* section is long and arms an intercept, so
+   * every part of the old condition is satisfied. Only the length of the
+   * section being asked about makes this "n/a".
+   */
+  it("never owes a summary from a section too short to have said anything", () => {
+    const doc = makeDoc([{ words: 2 }, { words: 467, intercept: true }]);
+    const c = buildCoverage(
+      doc,
+      input({ tokenIndex: 468, clozeChecks: windows(window(0, 469)) })
+    );
+    expect(c.sections[0].summary).toBe("n/a");
+    // And it must not sit in the map as a permanent debt either.
+    expect(c.summaries.owed).toBe(0);
+  });
+
+  it("still owes one from a section just over the floor", () => {
+    // The boundary of the same rule, so the fix is a threshold rather than a
+    // blanket refusal: 60 words is asked, 59 is not.
+    const asked = buildCoverage(
+      makeDoc([{ words: 60 }, { words: 100, intercept: true }]),
+      input({ tokenIndex: 159, clozeChecks: windows(window(0, 160)) })
+    );
+    const spared = buildCoverage(
+      makeDoc([{ words: 59 }, { words: 100, intercept: true }]),
+      input({ tokenIndex: 158, clozeChecks: windows(window(0, 159)) })
+    );
+    expect(asked.sections[0].summary).toBe("owed");
+    expect(spared.sections[0].summary).toBe("n/a");
+  });
+
+  /**
    * Invariant 7 in the engine: a check is never armed unless it can be
    * answered. A grid with one cell and no column name yields no question, so
    * the reader is never stopped for it — and a coverage map that counted it
