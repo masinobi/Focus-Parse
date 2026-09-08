@@ -37,7 +37,7 @@ change for different reasons:
 | Constant | Where | Now | Bump when |
 |---|---|---|---|
 | `DB_VERSION` | `db.ts` | **4** | An object store or index is added. Every store creation is guarded by `contains`, so a fresh database and an upgraded one take the identical path. Version 4 added `exams`. **A bump silently hangs any other tab already holding the database**: the second tab blocks the upgrade, `open()` neither resolves nor rejects, so `safe()` cannot catch it and every `db.*` call awaits for ever. Cost half an hour of measuring a page that was fine. Close other tabs before verifying a bump. |
-| `SCHEMA_VERSION` | `parse.ts` | **8** | The Token/Chunk/**Section**/**Block** shape changes. A stored document whose `schema` differs is rebuilt from `source` on read — which is how documents already in a reader's browser pick up parser fixes. Version 4 added `Section.furniture` and the pacing-checkpoint metadata; version 5 added `Block.sqlSteps` and `Block.sqlStepOfChunk`; version 6 stopped expanding acronyms inside grid cells, which changes every stored `Token.speechOffset` and `Chunk.speech` in a table block; version 7 marks the front of a book as furniture; version 8 reads markdown pipe tables as grids, which turns rows that were paragraphs into `table` blocks and changes every chunk, token and word count in a document holding one. |
+| `SCHEMA_VERSION` | `parse.ts` | **9** | The Token/Chunk/**Section**/**Block** shape changes. A stored document whose `schema` differs is rebuilt from `source` on read — which is how documents already in a reader's browser pick up parser fixes. Version 4 added `Section.furniture` and the pacing-checkpoint metadata; version 5 added `Block.sqlSteps` and `Block.sqlStepOfChunk`; version 6 stopped expanding acronyms inside grid cells, which changes every stored `Token.speechOffset` and `Chunk.speech` in a table block; version 7 marks the front of a book as furniture; version 8 reads markdown pipe tables as grids, which turns rows that were paragraphs into `table` blocks and changes every chunk, token and word count in a document holding one; version 9 records `Section.tier`. |
 | `ENTITY_SCHEMA` | `entities.ts` | 1 | Entity extraction rules change. A stale index rebuilds itself rather than reporting yesterday's rules. |
 | `BACKUP_FORMAT` | `backup.ts` | **2** | The backup envelope changes. Import validates per record, so a bump need not invalidate old files. Version 2 added `exams`; a version-1 file simply has no such key and reads as absent rather than malformed. |
 
@@ -505,6 +505,18 @@ replace. Typed pipes are not a detection, so no confidence floor applies to
 them. The one thing that still refuses to fold is a table that would flatten to
 no steps: the fence it emits is discarded by the line loop, so folding it would
 delete the reader's text with nothing to show it ever existed.
+
+**39. A tier is read off the heading, never out of the prose.** `shall`/`must`
+mandatory and `should` advisory is the obvious rule and it is backwards on this
+corpus: `should` appears 2,931 times, 327 of them *inside* sections titled
+Minimum Standards against 23 inside Best Practices, and **32 of the 51 Minimum
+Standards sections contain no `must` and no `shall` at all**. The GCDMP writes
+its mandatory tier in "should". And the tier is not a property of the sentence
+anyway -- "Document the sponsor's process and support functions" is a minimum
+standard in the 2013 vendor chapter and a best practice in the 2021 release,
+same words, decided by the edition. `scan-tiers` prints the modal-verb
+disagreement as a standing control: if it ever comes out small, `tiers.ts` is
+wrong.
 
 **32. Help offered at an intercept is recorded with the answer.** The "Stuck?"
 anchors hand a reader the section's own nouns, which turns free recall into
@@ -1115,7 +1127,7 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed and pushed on `main`, through the twelfth round.
+Everything here is committed and pushed on `main`, through the thirteenth round.
 Permission to push is asked for each batch: it is outward-facing, and one grant
 does not carry to the next.
 
@@ -1628,6 +1640,33 @@ prose fixture one line too short to reach the loop it was aiming at. The first
 became a fence-tracking assertion, the second was *deleted* rather than kept as
 decoration, and the third grew a line. **Run the break before believing the
 green, and delete a guard no break can reach.**
+
+**The thirteenth round evaluated four pitches and built one.** Three of the four
+described a problem the app does not have, and checking is what showed it:
+
+- *Cross-corpus distractor injector.* `ClozeQuestion` has no `options` field at
+  all -- reading cloze and exam cloze are both free response, so there were no
+  distractors to inject into. Acronym options already come from the whole
+  `ACRONYMS` table by category and grid options from the grid's own cells. Had
+  it been built, `compare.ts` already measured the failure: "audit trail" is in
+  ten of twelve documents, so a Part 11 / ICH E6 swap frequently produces a
+  distractor that is *also true*, and `scan-exam`'s "marker rejects its own
+  answer" cannot catch it because the marker knows one answer.
+- *Pre-roll replay buffer.* A missed cloze already seeks to the exact token of
+  the blank -- more precise than the five seconds proposed -- and the grid
+  replays whole *on purpose*, because replaying one cell lets a reader pass by
+  memorizing one card. Its proposed verification could not exist either: there
+  are no tests in `src/hooks`, and headless Chromium enumerates zero voices.
+- *Blueprint-weighted mock exam.* The study guide publishes no question
+  weights; searched for "weight", "percentage", "% of", "number of questions"
+  and every hit is unrelated prose. Weighting by task count would invent them.
+  And it is not implementable regardless: **18 of 1,148 section-level units
+  match a blueprint chapter, so 98.4% of questions have no domain** -- the same
+  chapter-membership gap recorded above as the largest candidate.
+
+The fourth was real and its implementation was backwards; see invariant 39.
+**A pitch that names a file and a function is not evidence that it read
+either.**
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid
 anywhere in the user's PDFs** — the phrase appears seven times but always as

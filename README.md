@@ -1056,6 +1056,86 @@ exactly the weeks a reader has least of.
 node scripts/scan-blueprint.mjs "path/to/CCDA Study" --verbose
 ```
 
+## Minimum standards and best practices
+
+The exam asks *"which of the following is a minimum standard"* as a question
+format, not as a topic. A GCDMP chapter answers it by laying the two tiers out
+as consecutive sections — and once the text is being read aloud, nothing
+distinguishes them. 51 sections of this corpus are one tier and 32 are the
+other, 27,177 words between them.
+
+[src/lib/tiers.ts](src/lib/tiers.ts) tags them, and the interesting part is what
+it refuses to do.
+
+### The rule that looks right and is backwards
+
+The obvious implementation reads the modal verbs: `shall` and `must` mark a
+requirement, `should` marks a recommendation. Counted over all thirteen
+documents:
+
+```
+should  2931 corpus-wide    327 inside a Minimum Standards section
+                             23 inside a Best Practices section
+must     344                 24 inside a Minimum Standards section
+shall     37                  7 inside a Minimum Standards section
+
+Minimum Standards sections containing no "must" and no "shall":  32 of 51
+```
+
+The GCDMP writes its **mandatory** tier in "should", fourteen times more often
+than it writes its aspirational one — and a keyword rule would miss 63% of those
+sections outright while badging them recommendations. Item 1 of Table 1
+*Minimum Standards* in the vendor chapter reads "Sponsors **should** assess a
+vendor's Quality Management System."
+
+The deeper reason is that the tier is not a property of the sentence at all.
+"Document the sponsor's process and support functions needed to evaluate the use
+of vendor services" is a **minimum standard** in the guide's 2013 vendor chapter
+and a **best practice** in the 2021 release — the same words, the opposite tier,
+decided by which edition you are holding. Nothing in the wording can know that.
+The heading it sits under can.
+
+### Exact, or listed, or nothing
+
+Same rule as the blueprint matcher. An enumerator is stripped — the corpus
+writes `4) Minimum Standards` and `Minimum Standards` for one heading — and the
+remainder must *equal* a listed form. The near misses are why this is not a
+substring test:
+
+| title | why it is not a tier |
+|---|---|
+| `2 GCDMP Chapters – Minimum Standards and Best Practices` | the study guide's contents entry; it names both and is neither |
+| `Other Best Practice Considerations` | a prose sub-heading, not the chapter's tier block |
+
+A substring rule tags the first of those eight times and takes the minimum count
+from 51 to 59. `scan-tiers.mjs` requires every title naming a tier to be either
+tagged or written down with a reason, so a fourteenth document arriving with a
+fifth spelling is adjudicated rather than absorbed.
+
+That scanner also prints the modal-verb disagreement every run, as a standing
+control on its own reasoning. If that number ever comes out small, the argument
+above is wrong and `tiers.ts` should be rewritten to read the prose.
+
+```bash
+node scripts/scan-tiers.mjs "path/to/CCDA Study" --verbose
+```
+
+### In the app
+
+A badge on the structure-map row and beside the heading in the reading pane, and
+a **tier filter** in the map that composes with the text filter rather than
+replacing it — "minimum standards in the vendor chapter" is the question it is
+for, and either control alone answers half of it.
+
+The filter is absent where a document declares no tier. ICH E6, 21 CFR Part 11
+and your own notes carry no GCDMP tier headings, and a control that can only
+ever return nothing is worse than no control.
+
+The badge is deliberately neither red nor green. The map already spends
+`text-destructive` on "read but never checked" and `text-output` on "verified",
+and a tier in either colour would read as a verdict on the reader rather than a
+fact about the document.
+
 ## Regulations cited
 
 The corpus index is keyed by *term*, and a citation is not a term. `21 CFR Part
@@ -1352,6 +1432,10 @@ reason a long document read as repetitive.
 
 **Coverage** — the structure map reports what each section has been *asked about*, not
 just how far the caret got, and points at the next section worth your time. See above.
+
+**Tier badges** — every section the GCDMP calls a *minimum standard* or a *best
+practice* is marked as one in the map and in the reading pane, and the map can filter
+to a tier. Read off the heading, never inferred from the prose. See above.
 
 **Acronym drill** — every acronym your documents use, marked as you go, hardest first,
 no clock. See above.
