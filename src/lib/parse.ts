@@ -32,7 +32,7 @@ export const SCHEMA_VERSION = 7;
  * Sections shorter than this do not arm a cognitive intercept. Stopping a
  * reader to summarize two sentences is friction without a payoff.
  */
-const MIN_INTERCEPT_WORDS = 60;
+export const MIN_INTERCEPT_WORDS = 60;
 
 /**
  * Longest stretch of reading allowed without an intercept. Documents whose

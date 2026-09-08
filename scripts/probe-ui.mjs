@@ -1766,6 +1766,156 @@ check(
   `token ${landed.at}: ${JSON.stringify(landed.around.slice(0, 40))}`
 );
 
+/* ---- Repairing the queue -------------------------------------------- *
+ *
+ * Fixing the intercept rule stops new summaries of two-word headings being
+ * demanded. It does nothing about the ones already filed, which go on coming
+ * back for months asking the reader to restate a heading -- and it does nothing
+ * about the ones worth keeping being stored under a title nineteen other
+ * sections share.
+ *
+ * This is the only operation in the app that deletes something the reader
+ * produced, so the assertions run both ways: the unanswerable item must go, and
+ * the real one must survive with a better name. A sweep that removed both would
+ * satisfy "the bad item is gone".
+ */
+console.log(`
+=== repairing the queue ===`);
+
+await loadMarkdown("Sweep probe.md", INTERCEPT_FIXTURE);
+await page.locator("header").getByRole("button", { name: "New" }).click();
+await page.waitForTimeout(1500);
+
+/** Read, write and count rows in the reviews store directly. */
+const sweepReviews = (fn, arg) =>
+  page.evaluate(
+    ([body, payload]) =>
+      new Promise((resolve) => {
+        const req = indexedDB.open("focusparse");
+        req.onsuccess = () => {
+          // eslint-disable-next-line no-new-func
+          const run = new Function("db", "payload", "resolve", body);
+          run(req.result, payload, resolve);
+        };
+        req.onerror = () => resolve(null);
+      }),
+    [fn, arg]
+  );
+
+const READ_ALL = `
+  const t = db.transaction("reviews", "readonly").objectStore("reviews").getAll();
+  t.onsuccess = () => resolve(t.result.filter((r) => r.kind === "summary")
+    .map((r) => ({ id: r.id, prompt: r.prompt, section: r.section })));
+  t.onerror = () => resolve([]);
+`;
+
+const docInfo = await page.evaluate(
+  () =>
+    new Promise((resolve) => {
+      const req = indexedDB.open("focusparse");
+      req.onsuccess = () => {
+        const t = req.result.transaction("documents", "readonly")
+          .objectStore("documents").getAll();
+        t.onsuccess = () => {
+          const doc = t.result.find((d) => /Sweep probe/.test(d.title));
+          if (!doc) return resolve(null);
+          const named = (title) =>
+            doc.sections.findIndex(
+              (s) => (s.baseTitle || s.title).trim() === title
+            );
+          resolve({
+            id: doc.id,
+            title: doc.title,
+            short: named("Best Practices"),
+            long: named("Minimum Requirements for Database Lock"),
+            shortWords: doc.sections[named("Best Practices")]?.wordCount ?? -1,
+          });
+        };
+        t.onerror = () => resolve(null);
+      };
+      req.onerror = () => resolve(null);
+    })
+);
+
+check(
+  "the fixture really does hold a heading with no body",
+  docInfo !== null && docInfo.short >= 0 && docInfo.shortWords > 0 && docInfo.shortWords < 60,
+  docInfo ? `"Best Practices" is ${docInfo.shortWords} words` : "no document"
+);
+
+// Two items in the shape the old rule left behind: one for the two-word
+// heading, one for a real section stored under its bare title.
+await sweepReviews(
+  `
+    const store = db.transaction("reviews", "readwrite").objectStore("reviews");
+    const base = {
+      docId: payload.id, docTitle: payload.title, kind: "summary",
+      answer: "Something the reader wrote.", ease: 2.5, intervalDays: 1,
+      reps: 1, lapses: 0, dueAt: 0, createdAt: 0, updatedAt: 0,
+    };
+    store.put({ ...base, id: payload.id + ":summary:" + payload.short,
+      prompt: "Best Practices", section: payload.short });
+    store.put({ ...base, id: payload.id + ":summary:" + payload.long,
+      prompt: "Minimum Requirements for Database Lock", section: payload.long });
+    store.transaction.oncomplete = () => resolve(true);
+  `,
+  docInfo
+);
+
+const before = await sweepReviews(READ_ALL);
+check(
+  "both stale items are in the queue to start with",
+  before.some((r) => r.prompt === "Best Practices") &&
+    before.some((r) => r.prompt === "Minimum Requirements for Database Lock"),
+  `${before.length} summary items`
+);
+
+// Clear the marker so the one-off pass runs again, then reload into the home
+// screen, which is where it fires.
+await page.evaluate(() => window.localStorage.removeItem("focusparse:swept:1"));
+await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+await page.waitForTimeout(4000);
+
+const after = await sweepReviews(READ_ALL);
+const shortLeft = after.filter((r) => r.section === docInfo.short);
+const longLeft = after.filter((r) => r.section === docInfo.long);
+
+check(
+  "the summary of a two-word heading is gone",
+  shortLeft.length === 0,
+  shortLeft.length === 0 ? "removed" : JSON.stringify(shortLeft)
+);
+check(
+  "the summary of a real section is kept",
+  longLeft.length === 1,
+  `${longLeft.length} left`
+);
+check(
+  "and now says which chapter it belongs to",
+  longLeft.length === 1 && /^Database Closure/.test(longLeft[0].prompt),
+  longLeft.length ? JSON.stringify(longLeft[0].prompt) : "gone"
+);
+check(
+  "the reader is told the queue changed",
+  /tidied up/i.test(await page.evaluate(() => document.body.innerText)),
+  "a queue that shrinks silently is a queue nobody trusts"
+);
+
+await page.screenshot({ path: "scripts/.probe-sweep.png", fullPage: false });
+
+// Running again must change nothing: the marker is set, and even without it
+// the plan is empty.
+await page.evaluate(() => window.localStorage.removeItem("focusparse:swept:1"));
+await page.goto(BASE, { waitUntil: "domcontentloaded", timeout: 120_000 });
+await page.waitForTimeout(3500);
+const twice = await sweepReviews(READ_ALL);
+check(
+  "sweeping a second time changes nothing",
+  twice.length === after.length &&
+    twice.every((r) => after.some((a) => a.id === r.id && a.prompt === r.prompt)),
+  `${after.length} -> ${twice.length} summary items`
+);
+
 /* ---- Report -------------------------------------------------------- */
 
 check("no console errors", consoleErrors.length === 0, consoleErrors[0] ?? "");
@@ -1776,7 +1926,7 @@ console.log(`\n=== probe ===`);
 console.log(`  document: ${sample.f} (${Math.round(sample.size / 1024)}KB)`);
 console.log(`  clock at first question: ${clockAtStart ?? "—"}`);
 console.log(
-  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter, .probe-compare (.png, in scripts/)`
+  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter, .probe-compare, .probe-sweep (.png, in scripts/)`
 );
 console.log(`  failures: ${failures.length}   (must be 0)`);
 if (failures.length) {

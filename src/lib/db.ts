@@ -25,7 +25,16 @@ import {
   type ReviewSeed,
   type WeakTerms,
 } from "./review";
+import { planSummarySweep } from "./sweep";
 import type { ParsedDoc, SessionState } from "./types";
+
+/** What one pass of `sweepSummaries` changed. */
+export interface SweepReport {
+  removed: number;
+  renamed: number;
+  kept: number;
+  unjudged: number;
+}
 
 /**
  * Thin IndexedDB layer. Five stores:
@@ -336,6 +345,71 @@ export const db = {
       }
     }
     return weak;
+  },
+
+  /**
+   * Repair summary items written under the old intercept rule.
+   *
+   * The floor that stops a reader being asked to restate two sentences used to
+   * be tested against the wrong section, so the queue holds summaries of
+   * headings with no body — and holds the rest under bare titles that nineteen
+   * other sections also carry. New answers are correct; these are not, and they
+   * will keep coming back for months.
+   *
+   * The only operation in this app that deletes something the reader produced,
+   * so the deciding is done by `planSummarySweep` against a parsed document and
+   * this only carries it out. An item whose document or section cannot be
+   * resolved is counted and left alone: unevaluable is not the same as wrong.
+   *
+   * Idempotent — a swept queue plans no further change — so it is safe to run
+   * again if the parser moves.
+   */
+  async sweepSummaries(): Promise<SweepReport> {
+    const report: SweepReport = { removed: 0, renamed: 0, kept: 0, unjudged: 0 };
+    const all = await safe(
+      tx<ReviewItem[]>(REVIEWS, "readonly", (s) => s.getAll() as IDBRequest<ReviewItem[]>),
+      []
+    );
+
+    const byDoc = new Map<string, ReviewItem[]>();
+    for (const item of all) {
+      if (item.kind !== "summary") continue;
+      byDoc.set(item.docId, [...(byDoc.get(item.docId) ?? []), item]);
+    }
+
+    for (const [docId, items] of byDoc) {
+      // `getDoc` re-parses a stale document, so the rule applied here is the
+      // current one rather than whatever was in force when the item was filed.
+      const doc = await db.getDoc(docId);
+      if (!doc) {
+        report.unjudged += items.length;
+        continue;
+      }
+
+      const plan = planSummarySweep(doc, items);
+      for (const item of plan.remove) {
+        await safe(
+          tx<undefined>(REVIEWS, "readwrite", (s) => s.delete(item.id)).then(
+            () => undefined
+          ),
+          undefined
+        );
+        report.removed += 1;
+      }
+      for (const { item, prompt } of plan.rename) {
+        await safe(
+          tx<IDBValidKey>(REVIEWS, "readwrite", (s) =>
+            s.put({ ...item, prompt, updatedAt: Date.now() })
+          ).then(() => undefined as void),
+          undefined as void
+        );
+        report.renamed += 1;
+      }
+      report.kept += plan.kept;
+      report.unjudged += plan.unjudged;
+    }
+
+    return report;
   },
 
   async deleteReviewsForDoc(docId: string): Promise<void> {

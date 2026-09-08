@@ -15,6 +15,7 @@ import {
   Tags,
   Target,
   Upload,
+  Wand2,
   X,
 } from "lucide-react";
 
@@ -30,12 +31,18 @@ import { ReviewSession } from "@/components/review-session";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { db, type DocSummary } from "@/lib/db";
+import { db, type DocSummary, type SweepReport } from "@/lib/db";
 import { parseDocument } from "@/lib/parse";
 import { extractPdf } from "@/lib/pdf";
 import { SAMPLE_DOCUMENT } from "@/lib/sample";
 import { sqlToMarkdown } from "@/lib/sql";
 import { useFocusStore } from "@/store/useFocusStore";
+
+/**
+ * Marks that the one-off summary sweep has run. Numbered so a later repair can
+ * take its own pass without disturbing this one.
+ */
+const SWEEP_MARK = "focusparse:swept:1";
 
 export function DocumentLoader() {
   const [pasted, setPasted] = React.useState("");
@@ -58,6 +65,7 @@ export function DocumentLoader() {
   const [citations, setCitations] = React.useState(false);
   /** How many mock papers have been sat, for the history entry. */
   const [papers, setPapers] = React.useState(0);
+  const [swept, setSwept] = React.useState<SweepReport | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   const loadDoc = useFocusStore((s) => s.loadDoc);
@@ -68,6 +76,44 @@ export function DocumentLoader() {
     void db.listDocs().then(setRecent);
     void db.countDue().then(setDue);
     void db.countExams().then(setPapers);
+  }, []);
+
+  /**
+   * One pass over the queue to repair items filed under the old intercept rule.
+   *
+   * Guarded by a marker so it runs once rather than on every load — it reads
+   * and re-parses every document that has a summary in the queue, which is the
+   * whole corpus. `SWEEP_MARK` carries a number so a later repair can run its
+   * own pass without clearing this one.
+   *
+   * The result is shown rather than swallowed. This deletes retrieval history
+   * the reader produced, and a queue that quietly shrinks by 138 items is the
+   * kind of thing that makes someone stop trusting the count.
+   */
+  React.useEffect(() => {
+    let live = true;
+    let done = false;
+    try {
+      done = window.localStorage.getItem(SWEEP_MARK) !== null;
+    } catch {
+      // Private mode: run it, just do not remember that it ran.
+    }
+    if (done) return;
+
+    void db.sweepSummaries().then((report) => {
+      try {
+        window.localStorage.setItem(SWEEP_MARK, String(Date.now()));
+      } catch {
+        /* nothing to remember it with */
+      }
+      if (!live) return;
+      if (report.removed > 0 || report.renamed > 0) setSwept(report);
+      void db.countDue().then(setDue);
+    });
+
+    return () => {
+      live = false;
+    };
   }, []);
 
   const ingest = React.useCallback(
@@ -239,6 +285,45 @@ export function DocumentLoader() {
             an interval is capped at half the time remaining — so it belongs
             above the queue rather than in a settings panel. */}
         <Readiness due={due} onReview={() => setReviewing(true)} />
+
+        {/* Said once, and dismissible. The alternative is a review count that
+            drops by a hundred overnight with nothing to explain it. */}
+        {swept && (
+          <div className="mb-6 flex items-start gap-3 rounded-lg border border-dashed px-4 py-3 text-sm">
+            <Wand2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p>Your review queue was tidied up.</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {swept.removed > 0 && (
+                  <>
+                    {swept.removed === 1
+                      ? "1 summary of a heading with no text under it was removed"
+                      : `${swept.removed} summaries of headings with no text under them were removed`}{" "}
+                    — you were asked for {swept.removed === 1 ? "it" : "those"} by
+                    mistake, and {swept.removed === 1 ? "it" : "they"} could never
+                    have been answered from the document.
+                  </>
+                )}
+                {swept.removed > 0 && swept.renamed > 0 && " "}
+                {swept.renamed > 0 && (
+                  <>
+                    {swept.renamed} now {swept.renamed === 1 ? "says" : "say"} which
+                    chapter {swept.renamed === 1 ? "it belongs" : "they belong"} to,
+                    because a title like “Minimum Standards” appears in 23 of them.
+                  </>
+                )}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSwept(null)}
+              aria-label="Dismiss"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Retrieval debt comes before new material. Reading a tenth guideline
             while the first nine evaporate is motion, not progress. */}
