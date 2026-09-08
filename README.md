@@ -229,6 +229,21 @@ Routing it through the markdown intermediate rather than a side channel keeps
 `source` a complete record, so schema migration can rebuild a document without
 re-reading the original file.
 
+**A markdown pipe table takes the same route** ([src/lib/md-tables.ts](src/lib/md-tables.ts)).
+None of the coordinate recovery applies — the author typed the structure — but
+until the parser learned to fold one, a table written in markdown arrived as
+paragraphs of pipes: read aloud as "pipe Attributable pipe Who recorded the
+data pipe", and invisible to the grid check. Folding happens on the parser's
+working copy of the lines, so the stored `source` is still the markdown you
+supplied and the fold re-runs on every rebuild. Escaped `\|` stays a character,
+cells are stripped of their inline markdown, ragged rows are snapped to the
+header's width, and a table inside a code fence is left alone.
+
+The confidence floor below does **not** apply to a typed table — pipes are not a
+detection — but one rule does: a table that would flatten to no steps is left as
+prose. The fence it would emit is discarded by the line loop, so folding it
+would delete your text with nothing to show it had been there.
+
 The parser turns each grid into a `table` block with **one chunk per step**, so
 each step is its own utterance and the gaps between them are real sentence
 boundaries rather than pauses the engine has to fake. Display and speech text
@@ -993,8 +1008,24 @@ in only one of them:
 | | |
 |---|---|
 | `ALIASES` | this title *is* that chapter |
+| `DOCUMENT_ALIASES` | this title is that chapter **when it stands as a whole document** |
 | `RESEMBLES` | related and never counted — a later edition that re-split it |
 | `EXCLUDED` | examined and ruled out, with the reason |
+
+`DOCUMENT_ALIASES` has one entry and exists because this corpus holds two
+chapters whose titles are identical after normalization: the guide gives
+separate minimum standards for `Vendor Selection and Management` and for
+`Vendor Selection and Management (Released 2021)`, and they are not the same
+list — what the first calls a minimum standard, the 2021 release demotes to a
+best practice. Normalization folds `&` into `and`, so no title rule can tell
+them apart. Document-versus-section can: the 2021 release is a standalone
+article, and the 2013 chapter exists only as a heading inside the handbook.
+
+A second rule keeps a heading from speaking for the document it names. A
+standalone chapter PDF repeats its own title as a running heading, and a section
+match used to beat a document match unconditionally — so four words beat 8,377
+and the chapter read as *verified on eight*. A section outranks its document
+only once it is 60 words, the same floor the intercept and the queue sweep use.
 
 Fuzzy matching is used in exactly one place, and never to decide: `scan-blueprint`
 flags any corpus title within an edit or two that did **not** match, so a missing
@@ -1006,10 +1037,16 @@ paragraph.
 
 ### What it says on this library
 
-Three chapters the exam names are not here. Two are metrics chapters that do not
-exist in the 2013 GCDMP edition; the third is the 2021 vendor chapter, and it
-carries minimum standards — which is where "which of the following is a minimum
-standard" questions come from.
+Two chapters the exam names are not here, and both are metrics chapters that do
+not exist in the 2013 GCDMP edition. It read three until the vendor chapter
+turned out to be in the library already, filed under the other vendor chapter's
+name.
+
+Read the word count printed beside each row before trusting the state. Thirteen
+of the sixteen chapters that report as verified are matched only by their entry
+in the handbook's contents — `Database Closure` on two words. The parser has no
+notion of which sections *belong* to a chapter, so a chapter carried inside the
+handbook is found by its heading and nothing else.
 
 The panel puts that first and paints it differently from an unread chapter, on
 purpose. Confusing "you have not read this" with "you do not have this" wastes

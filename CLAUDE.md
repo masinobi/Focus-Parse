@@ -27,7 +27,7 @@ decision; test against it rather than against invented samples.
 | Remote | https://github.com/masinobi/Focus-Parse (**private**) |
 | Demo | https://claude.ai/code/artifact/bb5b76a5-5b7d-4a52-abdd-324313fc7d08 (private) |
 | Stack | Next.js 14 App Router · TypeScript · Tailwind · shadcn/ui · Zustand · IndexedDB · Web Speech · Web Audio · pdf.js |
-| Corpus | `<corpus folder>` — **ten PDFs and one markdown guide, as of 26 Aug 2026.** It was eight PDFs for most of this project’s life; `21 CFR Part 11` and `E6(R2) good clinical practice` were added on 26 Aug 2026, *during* the seventh round — which is how two probe assumptions that had nothing to do with the app came apart at once. Figures elsewhere in this file state the corpus they were measured on. **Plus, since 24 Aug 2026, a `SQL Practice - Trial Screening` subfolder**: a feasibility screen and two drill sets in T-SQL against a Synthea extract, with the CSVs beside them. It is not part of the eleven and no figure counts it — `scan-sql` is the report that reads it. |
+| Corpus | `<corpus folder>` — **ten PDFs and three markdown files, as of 8 Sep 2026.** Two of the three are the reader's own: `CCDA Discriminator Matrix.md` (near-synonym pairs, seven tables) and `CCDA_Weeks_3-5_Gap_Review.md` (written from a scored mock paper, 21/32). They are mostly *tables*, which is what the twelfth round went and fixed. **There is also a `Cloze Deck` subfolder** of five weekly `.txt` decks plus a mistakes deck -- hand-authored, not loaded by the app, and not counted by any figure here. It was eight PDFs for most of this project’s life; `21 CFR Part 11` and `E6(R2) good clinical practice` were added on 26 Aug 2026, *during* the seventh round — which is how two probe assumptions that had nothing to do with the app came apart at once. Figures elsewhere in this file state the corpus they were measured on. **Plus, since 24 Aug 2026, a `SQL Practice - Trial Screening` subfolder**: a feasibility screen and two drill sets in T-SQL against a Synthea extract, with the CSVs beside them. It is not part of the thirteen and no figure counts it — `scan-sql` is the report that reads it. |
 | Past sessions | `the Claude Code transcript folder for this project` |
 
 **Stored shapes carry four independent version numbers.** Bump the wrong one and
@@ -37,7 +37,7 @@ change for different reasons:
 | Constant | Where | Now | Bump when |
 |---|---|---|---|
 | `DB_VERSION` | `db.ts` | **4** | An object store or index is added. Every store creation is guarded by `contains`, so a fresh database and an upgraded one take the identical path. Version 4 added `exams`. **A bump silently hangs any other tab already holding the database**: the second tab blocks the upgrade, `open()` neither resolves nor rejects, so `safe()` cannot catch it and every `db.*` call awaits for ever. Cost half an hour of measuring a page that was fine. Close other tabs before verifying a bump. |
-| `SCHEMA_VERSION` | `parse.ts` | **6** | The Token/Chunk/**Section**/**Block** shape changes. A stored document whose `schema` differs is rebuilt from `source` on read — which is how documents already in a reader's browser pick up parser fixes. Version 4 added `Section.furniture` and the pacing-checkpoint metadata; version 5 added `Block.sqlSteps` and `Block.sqlStepOfChunk`; version 6 stopped expanding acronyms inside grid cells, which changes every stored `Token.speechOffset` and `Chunk.speech` in a table block. |
+| `SCHEMA_VERSION` | `parse.ts` | **8** | The Token/Chunk/**Section**/**Block** shape changes. A stored document whose `schema` differs is rebuilt from `source` on read — which is how documents already in a reader's browser pick up parser fixes. Version 4 added `Section.furniture` and the pacing-checkpoint metadata; version 5 added `Block.sqlSteps` and `Block.sqlStepOfChunk`; version 6 stopped expanding acronyms inside grid cells, which changes every stored `Token.speechOffset` and `Chunk.speech` in a table block; version 7 marks the front of a book as furniture; version 8 reads markdown pipe tables as grids, which turns rows that were paragraphs into `table` blocks and changes every chunk, token and word count in a document holding one. |
 | `ENTITY_SCHEMA` | `entities.ts` | 1 | Entity extraction rules change. A stale index rebuilds itself rather than reporting yesterday's rules. |
 | `BACKUP_FORMAT` | `backup.ts` | **2** | The backup envelope changes. Import validates per record, so a bump need not invalidate old files. Version 2 added `exams`; a version-1 file simply has no such key and reads as absent rather than malformed. |
 
@@ -485,6 +485,26 @@ predicate deleted a real 60-word section's summary in the probe because it
 happened to be last in its document. Anything the sweep cannot evaluate -- no
 section recorded, a section index the document no longer has, another
 document's item -- is counted and left alone.
+
+**37. A heading never outranks the document it names.** A standalone chapter
+PDF repeats its title as a running heading, and blueprint coverage let any
+section match beat the document match -- so four words beat 8,377 and `Vendor
+Selection and Management` read as *verified on eight words*. `Design and
+Development of Data Collection Instruments` was counted at 14 and is 14,283. A
+section outranks its document only at `MIN_INTERCEPT_WORDS`, the floor the
+intercept, the coverage map and the sweep already share. A shorter match still
+counts as coverage, because that is the only way a chapter that exists as a
+heading inside the GCDMP handbook is found at all -- but within one document
+and one chapter the two are exclusive in *both* directions, or 8,377 words
+reads as 8,381 and trips the report's own inflation assertion.
+
+**38. A markdown table is structure, and is never a guess.** `FLATTEN_MIN_STEPS`
+exists because a grid *detected* from glyph coordinates can be half-recovered,
+and confident cards of invented structure are worse than the prose they
+replace. Typed pipes are not a detection, so no confidence floor applies to
+them. The one thing that still refuses to fold is a table that would flatten to
+no steps: the fence it emits is discarded by the line loop, so folding it would
+delete the reader's text with nothing to show it ever existed.
 
 **32. Help offered at an intercept is recorded with the answer.** The "Stuck?"
 anchors hand a reader the section's own nouns, which turns free recall into
@@ -1073,10 +1093,11 @@ exam date" in the README.
 Every other one measures the corpus against itself — how much was read, what was
 verified, which terms recur — so the one question none of them can reach is
 whether the corpus is *enough*. That is the only number here more reading cannot
-move, and on this library it is three: `Metrics for Clinical Trials` and
-`Reports and Metrics`, neither of which exists in the 2013 GCDMP edition, and
-`Vendor Selection and Management (Released 2021)`, which carries minimum
-standards.
+move, and on this library it is **two**: `Metrics for Clinical Trials` and
+`Reports and Metrics`, neither of which exists in the 2013 GCDMP edition. It
+read three until the twelfth round, when `Vendor Selection and Management
+(Released 2021)` turned out to be sitting in the corpus under a title that
+normalizes to the *other* vendor chapter's -- see invariant 37.
 
 The coverage map is the fourth thing that belongs to the enforcement-ladder
 idea above, and arguably the point of it. The ladder was already producing
@@ -1094,7 +1115,7 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed and pushed on `main`, through the eleventh round.
+Everything here is committed and pushed on `main`, through the twelfth round.
 Permission to push is asked for each batch: it is outward-facing, and one grant
 does not carry to the next.
 
@@ -1231,6 +1252,19 @@ stamps the current chunk and section into an exportable list. Cheap, and
 justified by this project’s own history — twice a vague complaint about the
 reading turned out to be a real parser defect (interleaved columns, wrapped
 headings), and both times the reader had no way to record *where* it felt wrong.
+Make that three: the twelfth round's markdown-table defect was found by reading
+the corpus folder, and the reader had been studying through pipe-noise with no
+way to say so.
+
+*Pitched in the twelfth round and deliberately deferred:* a **discriminator
+drill** for near-synonyms — `Attributable`/accountable, verification/validation,
+audit/inspection. It is the reader's own diagnosed failure mode and the exam is
+largely discrimination, but the honest version cannot *invent* pairs; asserting
+a distinction the documents did not state is invariant 26's whole argument in a
+second place. The reader already curates the pairs by hand, as two-column
+tables, so the twelfth round taught the parser to read those tables instead.
+**Measure whether the existing grid check already covers it before building a
+second mechanism.**
 
 *Refused, twice, for different reasons:* **hands-free/commute mode** sounds the
 most attractive and is the most expensive, because the whole enforcement ladder
@@ -1275,7 +1309,15 @@ marked *candidate* are things that could actually be fixed.
   whatever the parser called one. A twenty-word stub whose heading happens to
   read `Data Privacy` counts as the Data Privacy chapter being partly read. The
   panel prints the word count beside every chapter, which is the honest
-  mitigation; a minimum-size threshold would be an invented constant.
+  mitigation; a minimum-size threshold would be an invented constant. **Thirteen
+  of the sixteen chapters reporting verified are matched on single digits** —
+  `Database Closure` on two words, `Edit Check Design Principles` on four. The
+  twelfth round stopped such a stub *outranking a whole document* (invariant 37)
+  but not it counting as coverage on its own, because a chapter that lives
+  inside the GCDMP handbook has nothing else to be found by. Fixing it means
+  giving the parser a notion of which sections belong to a chapter, which is a
+  design change and not a threshold. *candidate*, and the largest one left in
+  this list.
 - Blueprint coverage says nothing about *weight*. The study guide lists tasks
   per domain and no question weights, so the panel counts tasks and refuses to
   imply more. A domain with fifteen tasks is not necessarily worth more marks.
@@ -1546,6 +1588,46 @@ summary because it was last in its document. "The bad item is gone" was green
 throughout; only the paired assertion -- "and the real one survives, renamed" --
 turned red. **On any operation that deletes, assert what must survive in the
 same breath as what must go.**
+
+**The twelfth round started from a report, not from the app.** Asked what to
+build next, the answer came from running `scan-blueprint --verbose` and reading
+the reader's own corpus folder rather than from the feature backlog. Both items
+came out of that, and neither was on any list.
+
+**A one-line diagnosis that was wrong, and the measurement that said so.** The
+blueprint reported `Vendor Selection and Management (Released 2021)` absent and
+flagged it as a minimum-standards chapter, with the PDF sitting in the corpus.
+The obvious fix -- move one line from `RESEMBLES` to `ALIASES` -- was reported
+to the reader before the units were dumped. It was wrong twice over. Dumping
+them showed a *four-word running heading* suppressing the 8,377-word document
+behind it (invariant 37), and reading the guide showed the two vendor chapters
+carry **different minimum standards**: what p38 calls a minimum standard, the
+2021 release demotes to best practices. Normalization folds `&` into `and`, so
+no title rule can separate them and document-versus-section is what does.
+**Announcing a fix before dumping the data is how a report gets published with
+a wrong cause attached.**
+
+**Verified 16 of 18 is still mostly table-of-contents lines.** Thirteen of those
+chapters are verified on single-digit word counts -- `Database Closure` on two.
+The parser has no notion of the sections *belonging* to a chapter, so a chapter
+that lives inside the handbook is found only by its heading. The word count
+printed beside each row remains the only mitigation, and fixing it properly is a
+design change, not a threshold.
+
+**The probe was testing a build from before the work.** Its first run reported
+zero grid entries; `next start` was still serving a production build from 13:39
+and had been for the whole session, so the *earlier* green run proved nothing
+about the blueprint change either. `.next/BUILD_ID` and the served
+`buildId\":\"...\"` are the two-second check. **A probe that needs a server it
+does not start will eventually test yesterday.**
+
+**Three of twelve breaks did not go red, and each was a different lie.** An
+fp-grid idempotence check that could never fail (the emitted JSON has no pipes
+in it), a column-width guard already unreachable behind the flatten guard, and a
+prose fixture one line too short to reach the loop it was aiming at. The first
+became a fence-tracking assertion, the second was *deleted* rather than kept as
+decoration, and the third grew a line. **Run the break before believing the
+green, and delete a guard no break can reach.**
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid
 anywhere in the user's PDFs** — the phrase appears seven times but always as
