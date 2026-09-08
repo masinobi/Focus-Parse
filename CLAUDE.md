@@ -455,6 +455,37 @@ paper threw out "Section ____ states" while the check firing every 250 words
 asked it, 72 times across 2,774 blanks. When a fairness rule is added to one
 check, look for the other rung that should also be refusing it.
 
+**34. The length floor belongs to the section being *summarized*.** The
+intercept fires on crossing *into* a section with `intercept` set and asks about
+the one just *left*, so testing `sections[entering].intercept` puts
+`MIN_INTERCEPT_WORDS` on the wrong section entirely. It did, for a round: the
+reader was stopped to restate "Best Practices", whose whole body is its own
+two-word heading, and the grader was handed that heading as the section text.
+21% of every intercept in this corpus was of that shape, 138 of them in the
+GCDMP alone. `demandsSummary` is the one rule now, and `finishChunk` and
+`buildCoverage` both read it -- they each carried their own copy and so shared
+the defect exactly, which is how the coverage map came to badge a two-word
+heading LOGGED.
+
+**35. A section is named by its chapter, or it is not named.** 157 of the
+GCDMP's 525 intercept sections share a title with another -- 28 "Introduction",
+23 "Minimum Standards", 19 "Best Practices". The intercept prompt, the grader
+payload and the retrieval queue all identified a section by that alone, and at
+review the text is gone and that string is the entire question. `qualifiedTitle`
+adds the enclosing chapter using the structure map's own `chapterTitles` walk,
+so a section is named the same way everywhere it appears.
+
+**36. Repairing a queue deletes only what was never answerable.** The sweep
+sweeps on *length* alone, deliberately not on `demandsSummary`. That predicate
+bundles three conditions and only one makes a stored sentence worthless: "too
+short to have said anything" means the reader restated a heading, while
+"nothing follows it" and "what follows arms nothing" are facts about where the
+intercept fires, and a re-parse moves them around. Sweeping on the full
+predicate deleted a real 60-word section's summary in the probe because it
+happened to be last in its document. Anything the sweep cannot evaluate -- no
+section recorded, a section index the document no longer has, another
+document's item -- is counted and left alone.
+
 **32. Help offered at an intercept is recorded with the answer.** The "Stuck?"
 anchors hand a reader the section's own nouns, which turns free recall into
 cued recall. `ReviewItem.cued` travels with the summary so the self-grade weeks
@@ -1063,7 +1094,7 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed and pushed on `main`, through the tenth round.
+Everything here is committed and pushed on `main`, through the eleventh round.
 Permission to push is asked for each batch: it is outward-facing, and one grant
 does not carry to the next.
 
@@ -1488,6 +1519,33 @@ writing `scan-perf`, all of which returned clean numbers:
 the book opens, some in the flow arm, different DOMs between them) and exits
 non-zero when they fail. The third is a note, because nothing in the script can
 see it. **A timing without its pair taken back-to-back is not a comparison.**
+
+**The eleventh round came from a screenshot.** The reader sent one row of the
+structure map -- "Best Practices", 2w, 1s, badged LOGGED -- and the sentence "I
+only get graded on the title". It was literally true: they had been made to
+summarize a section whose entire body is its own heading, and the grader
+received that heading as the section text. See invariants 34 to 36.
+
+**Two consumers carrying the same condition separately is how it stayed broken.**
+`finishChunk` raised the intercept and `buildCoverage` reported the debt, and
+invariant 20 says the second may never demand what the first will not raise.
+They agreed perfectly -- on the same defect. The map badging it LOGGED was not a
+second bug, it was the first one being faithfully mirrored. **When two places
+must agree about a rule, give them one function, not one comment each.**
+
+**387 passing tests said nothing.** They were green with the bug and green
+without it, because the coverage fixture used a 100-word section and the floor
+is 60. A test that cannot distinguish the two states is not evidence about
+either. The probe's intercept fixture was 28 words and *stopped producing an
+intercept* the moment the fix landed, which is the only reason the end-to-end
+path got checked at all.
+
+**The probe caught a data loss in the repair.** The first sweep swept on
+`demandsSummary`, which looked obviously right and deleted a real section's
+summary because it was last in its document. "The bad item is gone" was green
+throughout; only the paired assertion -- "and the real one survives, renamed" --
+turned red. **On any operation that deletes, assert what must survive in the
+same breath as what must go.**
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid
 anywhere in the user's PDFs** — the phrase appears seven times but always as
