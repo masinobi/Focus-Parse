@@ -1127,6 +1127,28 @@ Confirmed on the machine that had the fault — Aria speaks again in Edge, 9 Sep
 2026. Nothing in this repo could establish that, which is why it is written down
 here rather than left to the test suite.
 
+### And why the caret used to run ahead of it
+
+Fixing the first fault exposed a second one behind it. On resuming, the caret
+would walk to the end of the sentence before anything was audible, then sit
+frozen there while the audio caught up.
+
+The estimator interpolates the caret at a fixed words-per-minute for engines
+that fire no word boundaries. That arithmetic is only meaningful measured from
+the moment audio *began*, and it was measured from the moment the utterance was
+handed to `speak()` — which on a network voice is one cold round trip earlier.
+So the wait was spent as though it were speech: `elapsed / msPerWord` walked the
+caret to the end of the chunk, and when the audio finally started every real
+boundary arrived behind the guess. Highlight movement is monotonic within an
+utterance, so the caret could not come back.
+
+The engine listens for the `start` event now and anchors to it. Before it
+arrives there is no basis for a guess, so nothing is interpolated and the stall
+watchdog owns that window. A voice still gets a fixed number of utterances to
+prove it reports starts at all — nothing in the spec obliges an engine to, and a
+missing fallback would freeze the caret for every sentence on one that does
+not.
+
 ### If a voice still fails
 
 Open **`/voice-check`**. It speaks a fixed passage through every installed voice,

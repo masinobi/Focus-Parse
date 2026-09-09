@@ -555,6 +555,18 @@ recording as the shape of the whole episode: **a fix nothing here can verify is
 not finished when it is pushed, it is finished when the person who reported it
 says so.**
 
+**43. Elapsed time is only speech time once the audio has started.** The
+estimator interpolates the caret at a fixed words-per-minute, and it measured
+from the moment the utterance was handed to `speak()` -- one cold network round
+trip too early. On resume the caret walked to the end of the sentence while
+nothing was audible, then froze there, because real boundaries all arrived
+behind the guess and highlight movement is monotonic within an utterance.
+`estimatorAnchor` uses the `start` event and returns null before it arrives:
+**no basis for a guess is a reason to do nothing, not a reason to guess from the
+nearest number to hand.** The fallback is the load-bearing half -- nothing
+obliges an engine to fire `start`, and a missing fallback would freeze the caret
+for every sentence on one that does not.
+
 **32. Help offered at an intercept is recorded with the answer.** The "Stuck?"
 anchors hand a reader the section's own nouns, which turns free recall into
 cued recall. `ReviewItem.cued` travels with the summary so the self-grade weeks
@@ -1756,6 +1768,23 @@ flag now and a second `addInitScript` switches it off, because init scripts run
 in the order they were added on every subsequent navigation. **A faked platform
 boundary is scoped to the block that faked it, or it is the platform for
 everything after.**
+
+**A docstring that describes the symptom is not the same as one that names the
+cause.** `graceFor` has said for rounds that "a late voice reads as a caret that
+lurches and then stalls" -- a verbatim description of the bug reported here --
+and attributed it to the estimator starting too eagerly, which sent every
+previous reading of that file to the grace constants. The cause was three lines
+below, in what `startedAt` was measured from. **When a comment predicts the
+symptom you are chasing and the code around it looks right, suspect the
+comment's diagnosis rather than assuming the bug is elsewhere.**
+
+**Two fixes to the same file, one round apart, both from the same blind spot.**
+The stall watchdog and the estimator anchor are independent defects that
+survived fourteen rounds of verification for one reason: nothing in this repo
+can execute `useSpeechEngine`. Both were found from a reader's sentence, not
+from a test, and both were fixed by moving a decision into `speech-timing.ts`
+where a test can reach it. That module did not exist two rounds ago and now
+holds every number the speech path argues about.
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid
 anywhere in the user's PDFs** — the phrase appears seven times but always as
