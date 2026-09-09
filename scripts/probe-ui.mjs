@@ -2195,6 +2195,188 @@ check(
 
 await page.screenshot({ path: "scripts/.probe-gauge.png", fullPage: false });
 
+
+/* -----------------------------------------------------------------------
+ * Finding a voice.
+ *
+ * The picker was a bare `<select>`, which is right for five options and wrong
+ * for the hundred and forty Edge installs — unsearchable, every name starting
+ * "Microsoft", and the one you want somewhere past every language pack the
+ * machine has ever had.
+ *
+ * Headless Chromium enumerates zero voices, so the list is scripted the same
+ * way the dictation probe scripts the recognizer: what runs downstream is the
+ * app's own code, and only the platform boundary is faked.
+ * --------------------------------------------------------------------- */
+console.log(`
+=== finding a voice ===`);
+
+/** A slice of what Edge actually installs, spellings and all. */
+const SCRIPTED_VOICES = [
+  ["Microsoft Aria Online (Natural) - English (United States)", "en-US", false],
+  ["Microsoft Guy Online (Natural) - English (United States)", "en-US", false],
+  ["Microsoft Ryan Online (Natural) - English (United Kingdom)", "en-GB", false],
+  ["Microsoft Mark - English (United States)", "en-US", true],
+  ["Microsoft David - English (United States)", "en-US", true],
+  ["Microsoft Denise Online (Natural) - French (France)", "fr-FR", false],
+];
+
+await page.addInitScript((list) => {
+  const voices = list.map(([name, lang, localService]) => ({
+    name,
+    lang,
+    localService,
+    default: false,
+    voiceURI: name,
+  }));
+  const synth = window.speechSynthesis;
+  // Behind a flag so the stub can be retired. A scripted voice is a plain
+  // object, and assigning one to `utterance.voice` throws in a real browser --
+  // which is correct of the browser and would leak this block's fake platform
+  // into every block after it.
+  window.__fpVoices = true;
+  Object.defineProperty(synth, "getVoices", {
+    value: () => (window.__fpVoices ? voices : []),
+    configurable: true,
+  });
+}, SCRIPTED_VOICES);
+
+await loadMarkdown("Voice probe.md", GAUGE_FIXTURE);
+
+const voiceButton = page.locator("button[aria-label^='Voice:']");
+check(
+  "the top bar names the voice in use",
+  (await voiceButton.count()) === 1,
+  (await voiceButton.first().innerText()).trim()
+);
+
+await voiceButton.first().click();
+await page.waitForTimeout(400);
+
+const rows = () => page.locator("[data-voice-row]").count();
+const shownNames = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll("[data-voice-row]")].map((r) =>
+      r.getAttribute("data-voice-row")
+    )
+  );
+
+check(
+  "opening it lists every installed voice",
+  (await rows()) === SCRIPTED_VOICES.length,
+  `${await rows()} of ${SCRIPTED_VOICES.length}`
+);
+
+const filter = page.getByLabel("Filter voices");
+check("and offers a filter rather than a scroll", (await filter.count()) === 1);
+
+const type = async (text) => {
+  await filter.fill(text);
+  await page.waitForTimeout(250);
+};
+
+await type("aria");
+check(
+  "a name narrows to one voice",
+  (await rows()) === 1 && /Aria/.test((await shownNames())[0] ?? ""),
+  JSON.stringify(await shownNames())
+);
+
+await type("kingdom");
+check(
+  "so does a country the language tag only abbreviates",
+  (await rows()) === 1 && /Ryan/.test((await shownNames())[0] ?? ""),
+  JSON.stringify(await shownNames())
+);
+
+await type("en-GB");
+check(
+  "and the tag itself finds the same one",
+  (await rows()) === 1 && /Ryan/.test((await shownNames())[0] ?? ""),
+  JSON.stringify(await shownNames())
+);
+
+await type("local");
+const localOnly = await shownNames();
+check(
+  "the voices that need no network can be asked for by name",
+  localOnly.length === 2 && localOnly.every((n) => /Mark|David/.test(n)),
+  JSON.stringify(localOnly)
+);
+
+await type("cloud english");
+const cloudEnglish = await shownNames();
+check(
+  "two terms narrow rather than widen",
+  cloudEnglish.length === 3 && !cloudEnglish.some((n) => /Denise|Mark|David/.test(n)),
+  JSON.stringify(cloudEnglish)
+);
+
+await type("arai");
+check(
+  "a near miss finds nothing and says so, rather than guessing",
+  (await rows()) === 0 &&
+    /No installed voice matches/.test(await page.locator("[role='dialog']").innerText()),
+  "empty state shown"
+);
+
+await page.getByLabel("Clear the voice filter").click();
+await page.waitForTimeout(250);
+check(
+  "clearing gives the whole list back",
+  (await rows()) === SCRIPTED_VOICES.length,
+  `${await rows()} voices`
+);
+
+await page.screenshot({ path: "scripts/.probe-voices.png", fullPage: false });
+
+/* Choosing one has to actually change the voice in use. */
+await type("mark");
+await page.locator("[data-voice-row]").first().click();
+await page.waitForTimeout(400);
+
+check(
+  "choosing a voice closes the picker",
+  (await page.locator("[data-voice-row]").count()) === 0,
+  "dialog gone"
+);
+check(
+  "and the top bar now names the one that was chosen",
+  /Mark/.test(await voiceButton.first().innerText()),
+  (await voiceButton.first().innerText()).trim()
+);
+
+await voiceButton.first().click();
+await page.waitForTimeout(400);
+const voiceMarked = await page.evaluate(() =>
+  [...document.querySelectorAll("[data-voice-row]")]
+    .filter((r) => r.getAttribute("data-voice-selected") === "true")
+    .map((r) => r.getAttribute("data-voice-row"))
+);
+check(
+  "reopening shows which one is in use, and only that one",
+  voiceMarked.length === 1 && /Mark/.test(voiceMarked[0]),
+  JSON.stringify(voiceMarked)
+);
+check(
+  "and the filter did not survive the close",
+  (await page.locator("[data-voice-row]").count()) === SCRIPTED_VOICES.length,
+  "list is whole again"
+);
+
+await page.keyboard.press("Escape");
+await page.waitForTimeout(300);
+
+/*
+ * Retire the scripted voices. Init scripts run in the order they were added on
+ * each navigation, so this one lands after the stub and switches it off for
+ * every page loaded from here on -- returning the probe to the zero-voice
+ * platform the rest of it was written against.
+ */
+await page.addInitScript(() => {
+  window.__fpVoices = false;
+});
+
 /* -----------------------------------------------------------------------
  * Coming back.
  *
@@ -2295,7 +2477,7 @@ console.log(`\n=== probe ===`);
 console.log(`  document: ${sample.f} (${Math.round(sample.size / 1024)}KB)`);
 console.log(`  clock at first question: ${clockAtStart ?? "—"}`);
 console.log(
-  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter, .probe-compare, .probe-table, .probe-tier, .probe-sweep, .probe-gauge, .probe-reentry (.png, in scripts/)`
+  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter, .probe-compare, .probe-table, .probe-tier, .probe-sweep, .probe-gauge, .probe-voices, .probe-reentry (.png, in scripts/)`
 );
 console.log(`  failures: ${failures.length}   (must be 0)`);
 if (failures.length) {

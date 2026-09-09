@@ -22,6 +22,7 @@ import {
 
 import { EditableTitle } from "@/components/editable-title";
 import { Badge } from "@/components/ui/badge";
+import { VoicePicker } from "@/components/voice-picker";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -317,20 +318,11 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
             <span className="text-foreground">{wpm}</span> wpm read
           </span>
 
-          {voices.length > 0 && (
-            <select
-              value={voiceURI ?? ""}
-              onChange={(e) => setVoice(e.target.value || null)}
-              className="h-8 max-w-[11rem] rounded-md border border-input bg-background px-2 text-xs"
-              aria-label="Voice"
-            >
-              {voices.map((v) => (
-                <option key={v.voiceURI} value={v.voiceURI}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
-          )}
+          <VoicePicker
+            voices={voices}
+            voiceURI={voiceURI}
+            onSelect={(uri) => setVoice(uri || null)}
+          />
 
           <Button
             variant="outline"

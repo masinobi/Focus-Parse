@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { demandsSummary, tokenAtCharIndex } from "@/lib/parse";
+import {
+  ESTIMATOR_GRACE_MS,
+  graceFor,
+  stallTimeoutFor,
+  type VoiceLatency,
+} from "@/lib/speech-timing";
 import { buildCloze, buildGridQuestion } from "@/lib/quiz";
 import {
   CLOZE_INTERVAL_TOKENS,
@@ -10,38 +16,10 @@ import {
   useFocusStore,
 } from "@/store/useFocusStore";
 
-/**
- * Grace period before the interpolating fallback is allowed to move the
- * highlight. Real `boundary` events almost always arrive inside this window.
- */
-export const ESTIMATOR_GRACE_MS = 320;
+/** Ticks of the interpolating fallback. Everything else it uses lives in
+ * `speech-timing.ts`, where it can be tested; headless Chromium enumerates no
+ * voices, so this file has no probe and never will. */
 const ESTIMATOR_TICK_MS = 55;
-
-/**
- * Grace used for a voice we have not heard from yet and that synthesizes over
- * the network. Measured, not guessed: across 49 voices in Edge the first
- * boundary arrived between 575ms and 2376ms, so the 320ms baseline — which was
- * tuned against local voices — guarantees the estimator moves the caret on a
- * guess at the start of every sentence.
- */
-const NETWORK_PROBE_GRACE_MS = 1200;
-
-/**
- * Ceiling on the learned grace. Past this the fallback has stopped being a
- * fallback; a voice this slow to report is better paced by interpolation than
- * by waiting for it.
- */
-const MAX_ESTIMATOR_GRACE_MS = 2800;
-
-/**
- * How much longer than a voice's observed latency to wait before interpolating.
- * Latency varies per utterance, especially over a network, so matching it
- * exactly would trip the estimator on every slower-than-average sentence.
- */
-const LATENCY_HEADROOM = 1.5;
-
-/** Utterances to give a voice before concluding it fires no boundaries at all. */
-const SILENT_VOICE_ATTEMPTS = 2;
 
 /** Where the chosen voice is remembered between sessions. */
 const VOICE_KEY = "focusparse:voice";
@@ -85,44 +63,11 @@ function pickVoice(list: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefin
   return notSlow ?? pool.find((v) => v.default) ?? pool[0];
 }
 
-/** What the engine has learned about the currently selected voice. */
-interface VoiceLatency {
-  voiceURI: string | null;
-  /** Smoothed time to the first boundary, or null if none has ever arrived. */
-  ms: number | null;
-  utterances: number;
-  boundaries: number;
-}
-
-/**
- * How long to let a sentence run before interpolating.
- *
- * The estimator exists for engines that never fire word boundaries. Starting it
- * while boundaries are merely *late* is worse than useless: it advances the
- * caret on a guess, and because highlight movement is monotonic within an
- * utterance, the real events then have to catch up to the guess before the caret
- * moves again — so a late voice reads as a caret that lurches and then stalls.
- */
-function graceFor(stats: VoiceLatency, localService: boolean): number {
-  if (stats.ms !== null) {
-    return Math.min(
-      MAX_ESTIMATOR_GRACE_MS,
-      Math.round(stats.ms * LATENCY_HEADROOM) + 80
-    );
-  }
-  // Tried and heard nothing back: it is not going to start now, so pace
-  // promptly rather than leaving the reader in silence.
-  if (stats.utterances >= SILENT_VOICE_ATTEMPTS && stats.boundaries === 0) {
-    return ESTIMATOR_GRACE_MS;
-  }
-  return localService ? ESTIMATOR_GRACE_MS : NETWORK_PROBE_GRACE_MS;
-}
-
-/** No boundary, no end, nothing speaking: the engine dropped the utterance. */
-const STALL_TIMEOUT_MS = 1600;
-
 /** Chrome drops a `speak()` issued in the same tick as a `cancel()`. */
 export const CANCEL_SETTLE_MS = 60;
+
+/** Re-exported so `/voice-check` keeps one import for the engine's numbers. */
+export { ESTIMATOR_GRACE_MS };
 
 /** Baseline used only by the fallback estimator. */
 const ESTIMATOR_WPM = 185;
@@ -311,13 +256,21 @@ export function useSpeechEngine(): SpeechEngineStatus {
       let lastToken = tokenIndex;
       const startedAt = performance.now();
 
+      /*
+       * The watchdog, which used to be a flat 1,600ms and so was tighter than
+       * the grace above it -- see `speech-timing.ts`. A network voice slower
+       * than about a second to its first boundary had every sentence abandoned
+       * before it had said a word, silently, because an abandoned sentence
+       * looks exactly like one that finished. `stallTimeoutFor` takes the
+       * grace as an argument so the two can no longer drift apart.
+       */
       const armStall = () => {
         if (stallTimer.current !== null) window.clearTimeout(stallTimer.current);
         stallTimer.current = window.setTimeout(() => {
           if (!alive()) return;
           if (!synth.speaking && !synth.pending) finishChunk(chunk.i);
           else armStall();
-        }, STALL_TIMEOUT_MS);
+        }, stallTimeoutFor(graceMs, boundarySeen));
       };
 
       utterance.onboundary = (event) => {
