@@ -13,6 +13,7 @@ import {
 } from "@/lib/pace";
 import { firstContentToken } from "@/lib/parse";
 import type { ClozeCheck } from "@/lib/quiz";
+import { preRollTarget } from "@/lib/reentry";
 import { QUALITY, summaryId, type WeakTerms } from "@/lib/review";
 import { outlineOf, qualifiedTitle } from "@/lib/section-search";
 import type { ClozeResult, FlowNode, LogicTag, ParsedDoc, ViewMode } from "@/lib/types";
@@ -164,6 +165,15 @@ interface FocusState {
   check: CheckState;
   vigilance: VigilanceState;
   /**
+   * True while a re-entry offer is standing.
+   *
+   * Deliberately not cleared by `notePresence`. Returning to the tab *is* a
+   * presence event, so a flag that presence cleared would be set and unset in
+   * the same instant and the reader would never see the offer that was made
+   * for them.
+   */
+  away: boolean;
+  /**
    * Token the cheap-check cadence is measured from. Reset by every deliberate
    * position change, so seeking around a document cannot bank credit toward a
    * check over text that was never read.
@@ -269,6 +279,20 @@ interface FocusState {
   clearLapse: () => void;
 
   /**
+   * The reader has been away long enough to have lost the thread.
+   *
+   * Clears any open check on their behalf, by the same `abandonCheck` path a
+   * dismiss would take -- so nothing is recorded, nothing is marked wrong, and
+   * the position is rewound to where the check interrupted. What changes is
+   * only that they are not made to do it themselves on arrival.
+   */
+  noteAway: () => void;
+  /** Take the offer: rewind a couple of sentences and start reading. */
+  resumeWithPreRoll: () => void;
+  /** Decline it. The offer does not come back until the next absence. */
+  clearReentry: () => void;
+
+  /**
    * Commit a capture. `parked` marks it as an intrusive thought rather than a
    * piece of the argument — see `FlowNode.parked`.
    */
@@ -370,6 +394,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   chainHead: null,
 
   check: IDLE_CHECK,
+  away: false,
   vigilance: freshVigilance(),
   lastCheckToken: 0,
   weakTerms: {},
@@ -398,6 +423,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       nodes: [],
       chainHead: null,
       check: IDLE_CHECK,
+      away: false,
       vigilance: { ...freshVigilance(), enabled: get().vigilance.enabled },
       lastCheckToken: start,
       hydrated: false,
@@ -422,6 +448,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       nodes: [],
       chainHead: null,
       check: IDLE_CHECK,
+      away: false,
       vigilance: { ...freshVigilance(), enabled: get().vigilance.enabled },
       lastCheckToken: 0,
       hydrated: false,
@@ -844,6 +871,51 @@ export const useFocusStore = create<FocusState>((set, get) => ({
     ),
 
   notePresence: () => set((s) => ({ vigilance: presence(s.vigilance) })),
+
+  /* ---- Coming back ----------------------------------------------------- *
+   *
+   * See `reentry.ts` for why this exists at all: no timer in the app reaches an
+   * open check, because the vigilance device requires `isPlaying` and arming a
+   * check pauses playback.
+   */
+
+  noteAway: () => {
+    // Reuses the dismiss path rather than reimplementing it. That path already
+    // clears the check, stops the audio and rewinds to the chunk the check
+    // interrupted, and records nothing -- which is exactly the behaviour that
+    // makes doing it unasked safe.
+    if (get().check.kind !== null) get().abandonCheck();
+    set({ away: true });
+  },
+
+  resumeWithPreRoll: () => {
+    const { doc, chunkIndex } = get();
+    if (!doc) {
+      set({ away: false });
+      return;
+    }
+    const target = preRollTarget(doc, chunkIndex);
+    const chunk = doc.chunks[target];
+    set((s) => ({
+      away: false,
+      check: IDLE_CHECK,
+      ...(chunk
+        ? {
+            chunkIndex: target,
+            tokenIndex: chunk.tokenStart,
+            // Replaying is not reading forward: the cadence must not bank
+            // credit for a stretch about to be heard a second time.
+            lastCheckToken: chunk.tokenStart,
+          }
+        : {}),
+      isPlaying: true,
+      lastTickAt: Date.now(),
+      seekNonce: s.seekNonce + 1,
+      vigilance: presence(s.vigilance),
+    }));
+  },
+
+  clearReentry: () => set((s) => ({ away: false, vigilance: presence(s.vigilance) })),
 
   lapseVigilance: () =>
     set((s) =>

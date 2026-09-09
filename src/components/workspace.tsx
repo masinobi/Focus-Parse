@@ -10,6 +10,7 @@ import { ReaderPane } from "@/components/reader/reader-pane";
 import { Scratchpad } from "@/components/scratchpad/scratchpad";
 import { StructureSidebar } from "@/components/structure-sidebar";
 import { TopBar } from "@/components/top-bar";
+import { ReentryOffer } from "@/components/reentry-offer";
 import { VigilancePill } from "@/components/vigilance-pill";
 import {
   ResizableHandle,
@@ -19,6 +20,7 @@ import {
 import { useBrownNoise } from "@/hooks/useBrownNoise";
 import { useKeyboardControls } from "@/hooks/useKeyboardControls";
 import { useSpeechEngine } from "@/hooks/useSpeechEngine";
+import { useReentry } from "@/hooks/useReentry";
 import { useVigilance } from "@/hooks/useVigilance";
 import { db } from "@/lib/db";
 import { useFocusStore } from "@/store/useFocusStore";
@@ -50,6 +52,7 @@ export function Workspace() {
   const noise = useBrownNoise();
   useKeyboardControls();
   useVigilance();
+  useReentry();
 
   // The reading speed the reader asked for, and what each installed voice has
   // been heard to deliver. Read here rather than in the store's initial state:
@@ -151,6 +154,7 @@ export function Workspace() {
       <GridCheckDialog />
       <ClozeDialog />
       <VigilancePill />
+      <ReentryOffer />
     </main>
   );
 }

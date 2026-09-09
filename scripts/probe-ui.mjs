@@ -2096,6 +2096,195 @@ check(
   `${after.length} -> ${twice.length} summary items`
 );
 
+
+/* -----------------------------------------------------------------------
+ * The distance to the next stop, as a shape.
+ *
+ * The sidebar reports it in words and that number is staying. The claim here
+ * is narrower and entirely visual: a row of marks exists, it is one mark per
+ * sentence, and marks move from ahead to done as the caret advances.
+ *
+ * The moving half is the assertion with teeth. A gauge rendered once with the
+ * right count and never updated would satisfy every static check, and would be
+ * a picture of a gauge.
+ * --------------------------------------------------------------------- */
+console.log(`
+=== the sentence gauge ===`);
+
+const GAUGE_FIXTURE = `# Database Closure
+
+The database is locked once every query raised during conduct is resolved.
+Data management confirms that no discrepancy remains open against the study.
+The sponsor records its approval in writing before the lock is applied.
+A change made after lock requires a documented and approved unlock procedure.
+Each unlock is reported with its reason and the records that it touched.
+Reconciliation with external vendors is completed before the lock is set.
+Serious adverse events are reconciled against the safety database first.
+Coding is frozen and the dictionary version in force is recorded.
+The final extract is produced from the locked database and checksummed.
+Archival follows the retention schedule agreed in the data management plan.
+`;
+
+await loadMarkdown("Gauge probe.md", GAUGE_FIXTURE);
+
+const gaugeState = () =>
+  page.evaluate(() => {
+    const row = document.querySelector("[data-gauge]");
+    if (!row) return null;
+    const marks = [...row.querySelectorAll("[data-gauge-mark]")];
+    return {
+      total: Number(row.getAttribute("data-gauge")),
+      done: Number(row.getAttribute("data-gauge-done")),
+      marks: marks.length,
+      doneMarks: marks.filter((m) => m.getAttribute("data-gauge-mark") === "done").length,
+      label: row.getAttribute("aria-label") || "",
+    };
+  });
+
+const gaugeStart = await gaugeState();
+check(
+  "the sidebar draws a mark for every sentence of the leg",
+  gaugeStart !== null && gaugeStart.total > 1 && gaugeStart.marks === gaugeStart.total,
+  gaugeStart ? `${gaugeStart.marks} marks for ${gaugeStart.total} sentences` : "no gauge"
+);
+check(
+  "nothing is done before anything has been read",
+  gaugeStart.done === 0 && gaugeStart.doneMarks === 0,
+  `${gaugeStart.doneMarks} done`
+);
+check(
+  "and it says in words what the marks mean",
+  /sentences? until the next spot check/i.test(gaugeStart.label),
+  JSON.stringify(gaugeStart.label)
+);
+
+/*
+ * The marks *emptying* is asserted in `reentry.test.ts`, not here, and the
+ * reason is worth writing down because the first version of this block got it
+ * wrong. Reaching a non-zero `done` needs the caret to advance while the leg
+ * stays put, which only playback does — and headless Chromium enumerates zero
+ * voices. A seek cannot stand in for it: `seekToken` sets `lastCheckToken` to
+ * the token it lands on, deliberately, so that scrubbing around a document
+ * cannot bank credit toward a check over text nobody read. Every seek starts a
+ * fresh leg with nothing done in it.
+ *
+ * So what is checked here is that the row is *live*: it recomputes against the
+ * new position rather than being rendered once. A static gauge would have kept
+ * its original count, which is exactly what the first version of this assertion
+ * would have accepted.
+ */
+const gaugeSeek = await page.evaluate(() => {
+  const words = [...document.querySelectorAll("span[data-token]")];
+  const target = words[Math.floor((words.length * 2) / 3)];
+  target.click();
+  return Number(target.getAttribute("data-token"));
+});
+await page.waitForTimeout(500);
+
+const gaugeAfter = await gaugeState();
+check(
+  "seeking on restarts the leg from where the caret landed",
+  gaugeAfter.total < gaugeStart.total && gaugeAfter.done === 0,
+  `${gaugeStart.total} -> ${gaugeAfter.total} sentences, ${gaugeAfter.done} done`
+);
+check(
+  "the marks drawn and the count claimed agree",
+  gaugeAfter.doneMarks === gaugeAfter.done && gaugeAfter.marks === gaugeAfter.total,
+  `${gaugeAfter.marks} marks for ${gaugeAfter.total} (seeked to token ${gaugeSeek})`
+);
+
+await page.screenshot({ path: "scripts/.probe-gauge.png", fullPage: false });
+
+/* -----------------------------------------------------------------------
+ * Coming back.
+ *
+ * No timer in the app reached an open check: the vigilance device requires
+ * `isPlaying`, and arming a check pauses playback. So a dialog left open when
+ * someone walked away was still open on their return, asking about a section
+ * whose text had long since left working memory, and the only move was to
+ * dismiss it — which reads as a failure and is not one.
+ *
+ * Driven on Playwright's synthetic clock rather than by waiting fifteen real
+ * minutes. Both sides of the threshold are asserted: an offer that appeared
+ * immediately would satisfy "the offer appears" on its own.
+ * --------------------------------------------------------------------- */
+console.log(`
+=== coming back ===`);
+
+await page.clock.install();
+await loadMarkdown("Re-entry probe.md", GAUGE_FIXTURE);
+
+const offer = page.locator("text=Welcome back");
+check(
+  "no offer while the reader is here",
+  (await offer.count()) === 0,
+  "nothing on screen"
+);
+
+await page.clock.fastForward("10:00");
+await page.waitForTimeout(400);
+check(
+  "and none after ten minutes away",
+  (await offer.count()) === 0,
+  "still nothing — the threshold is fifteen"
+);
+
+await page.clock.fastForward("06:00");
+await page.waitForTimeout(400);
+check(
+  "the offer arrives once the absence is real",
+  (await offer.count()) === 1,
+  "welcome back"
+);
+
+const offerText = await page.locator("[class*='fixed'][class*='bottom-6']").first().innerText();
+check(
+  "it says nothing was marked, because nothing was",
+  /nothing was marked/i.test(offerText) && !/missed|failed|lost your/i.test(offerText),
+  JSON.stringify(offerText.replace(/\s+/g, " ").slice(0, 70))
+);
+
+/* Taking the offer has to actually move the caret backwards. */
+const beforeReplay = await page.evaluate(() => {
+  const active = document.querySelector(".fp-word-active");
+  return active ? Number(active.getAttribute("data-token")) : null;
+});
+
+await page.evaluate(() => {
+  const words = [...document.querySelectorAll("span[data-token]")];
+  words[Math.floor(words.length / 2)].click();
+});
+await page.waitForTimeout(400);
+const reentrySeeked = await page.evaluate(() => {
+  const active = document.querySelector(".fp-word-active");
+  return active ? Number(active.getAttribute("data-token")) : null;
+});
+
+const replay = page.getByRole("button", { name: /Replay the last \d+ sentences/ });
+check("the offer survives a seek", (await replay.count()) === 1, "still offered");
+
+await replay.click();
+await page.waitForTimeout(600);
+
+const afterReplay = await page.evaluate(() => {
+  const active = document.querySelector(".fp-word-active");
+  return active ? Number(active.getAttribute("data-token")) : null;
+});
+check(
+  "replaying steps the caret back, not forward",
+  reentrySeeked !== null && afterReplay !== null && afterReplay < reentrySeeked,
+  `token ${reentrySeeked} -> ${afterReplay} (was ${beforeReplay} at load)`
+);
+check(
+  "and the offer is gone once it has been taken",
+  (await offer.count()) === 0,
+  "cleared"
+);
+
+await page.screenshot({ path: "scripts/.probe-reentry.png", fullPage: false });
+/* The synthetic clock stays installed: this is the last block, and
+   uninstalling is not part of the stable API. */
+
 /* ---- Report -------------------------------------------------------- */
 
 check("no console errors", consoleErrors.length === 0, consoleErrors[0] ?? "");
@@ -2106,7 +2295,7 @@ console.log(`\n=== probe ===`);
 console.log(`  document: ${sample.f} (${Math.round(sample.size / 1024)}KB)`);
 console.log(`  clock at first question: ${clockAtStart ?? "—"}`);
 console.log(
-  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter, .probe-compare, .probe-table, .probe-tier, .probe-sweep (.png, in scripts/)`
+  `  screenshots: .probe-graph, .probe-exam, .probe-sql, .probe-blueprint, .probe-citations, .probe-intercept, .probe-filter, .probe-compare, .probe-table, .probe-tier, .probe-sweep, .probe-gauge, .probe-reentry (.png, in scripts/)`
 );
 console.log(`  failures: ${failures.length}   (must be 0)`);
 if (failures.length) {

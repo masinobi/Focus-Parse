@@ -25,6 +25,7 @@ import {
   type RungState,
   type SectionCoverage,
 } from "@/lib/coverage";
+import { checkGauge } from "@/lib/gauge";
 import { contentWordCount, formatDuration } from "@/lib/parse";
 import { chapterTitles, searchOutline } from "@/lib/section-search";
 import { TIER_LABEL, type Tier } from "@/lib/tiers";
@@ -259,6 +260,16 @@ const SectionRow = React.memo(function SectionRow({
 const SEARCH_FROM_ROWS = 20;
 
 /**
+ * Most marks the gauge will draw.
+ *
+ * A 250-token leg is thirteen to eighteen sentences on this corpus, so this
+ * does not bind — it is here so a document of very short sentences degrades to
+ * a coarser gauge rather than to a row of hairlines. `checkGauge` reports when
+ * it has been used, and the tooltip changes to say a mark is now a group.
+ */
+const MAX_GAUGE_SEGMENTS = 24;
+
+/**
  * How a tier reads in a badge and in the filter.
  *
  * Short, because the badge sits in a row that already carries a word count, a
@@ -344,6 +355,19 @@ export function StructureSidebar() {
         ? nextStop(doc, tokenIndex, lastCheckToken, summaries, CLOZE_INTERVAL_TOKENS)
         : null,
     [doc, tokenIndex, lastCheckToken, summaries]
+  );
+
+  /**
+   * The same distance as a shape. See `gauge.ts` for why the number alone is
+   * not enough and why a clock is still refused: this moves only when a
+   * sentence ends, so there is nothing to watch between moves.
+   */
+  const gauge = React.useMemo(
+    () =>
+      doc
+        ? checkGauge(doc, tokenIndex, lastCheckToken, CLOZE_INTERVAL_TOKENS, MAX_GAUGE_SEGMENTS)
+        : null,
+    [doc, tokenIndex, lastCheckToken]
   );
 
   // A filter is about one document. Carrying it across would open the next one
@@ -512,6 +536,32 @@ export function StructureSidebar() {
             the same stretch, and a reader told otherwise would rightly stop
             believing the number. Approximate on purpose — a stretch with
             nothing worth asking about slides the window instead of stopping. */}
+        {gauge && (
+          <div
+            className="mt-2 flex items-center gap-[3px]"
+            role="img"
+            data-gauge={gauge.total}
+            data-gauge-done={gauge.done}
+            aria-label={`About ${gauge.total - gauge.done} of ${gauge.total} sentences until the next spot check`}
+            title={
+              gauge.scaled
+                ? "One mark per group of sentences until the next spot check. This passage holds more sentences than the row has marks."
+                : "One mark per sentence until the next spot check, at the earliest."
+            }
+          >
+            {Array.from({ length: gauge.total }, (_, i) => (
+              <span
+                key={i}
+                data-gauge-mark={i < gauge.done ? "done" : "ahead"}
+                className={cn(
+                  "h-1 flex-1 rounded-full transition-colors",
+                  i < gauge.done ? "bg-muted-foreground/20" : "bg-muted-foreground/60"
+                )}
+              />
+            ))}
+          </div>
+        )}
+
         {stop && (stop.toCheck !== null || stop.toSummary !== null) && (
           <p
             className="mt-1.5 text-[11px] text-muted-foreground/80"
