@@ -548,6 +548,13 @@ either clock. `stallTimeoutFor` now takes the grace as an argument so the
 ordering is structural. **Two independent constants describing one ordering will
 drift; derive the second from the first.**
 
+**Confirmed fixed by the reader in Edge on 9 Sep 2026** -- "Aria now works". The
+fix shipped as a reasoned one, because nothing in this repo can execute the
+speech path; the confirmation came from the machine that had the fault. Worth
+recording as the shape of the whole episode: **a fix nothing here can verify is
+not finished when it is pushed, it is finished when the person who reported it
+says so.**
+
 **32. Help offered at an intercept is recorded with the answer.** The "Stuck?"
 anchors hand a reader the section's own nouns, which turns free recall into
 cued recall. `ReviewItem.cued` travels with the summary so the self-grade weeks
@@ -1738,7 +1745,9 @@ sat there through fourteen rounds of it. The timing policy is in
 `speech-timing.ts` now purely so it can be unit-tested; the fix itself is four
 lines. **Code that no harness can reach will accumulate exactly the defects a
 harness would have caught, and moving it somewhere testable is usually cheaper
-than the bug.**
+than the bug.** The reader confirmed the fix the same day, so the inference held
+-- but the inference is all this repo had, and that is the part to fix if the
+speech path is ever touched again in anger.
 
 **A probe stub has to retire itself.** The scripted voice list leaked into the
 next block, where the re-entry replay started playback and the engine assigned a

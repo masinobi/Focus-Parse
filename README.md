@@ -1123,6 +1123,10 @@ enumerates zero voices**, so the speech engine has no browser probe and never
 will. Moving the numbers somewhere a unit test can reach them is the only way
 they are checked at all.
 
+Confirmed on the machine that had the fault — Aria speaks again in Edge, 9 Sep
+2026. Nothing in this repo could establish that, which is why it is written down
+here rather than left to the test suite.
+
 ### If a voice still fails
 
 Open **`/voice-check`**. It speaks a fixed passage through every installed voice,
