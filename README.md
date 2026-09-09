@@ -1056,6 +1056,77 @@ exactly the weeks a reader has least of.
 node scripts/scan-blueprint.mjs "path/to/CCDA Study" --verbose
 ```
 
+## Coming back
+
+Nothing here records a missed session. Walking away costs nothing, no item is
+marked wrong, and no debt accrues — a summary never written is simply not
+written. That was already true; none of it had to be built.
+
+What was missing is that **no timer reached an open check.** The vigilance
+device is the app's only other clock and it deliberately does not run here:
+`if (!enabled || !isPlaying) return`, and arming a check pauses playback. That
+is correct for what vigilance is — it asks whether anyone is listening, and
+nobody is listening to a paused document — but it left the one state a reader is
+most likely to walk away from with nothing watching it. Leave an intercept open,
+come back tomorrow, and the dialog is still there asking about a section whose
+text left working memory hours ago. The only move is to dismiss it, which reads
+as a failure and is not one.
+
+[src/hooks/useReentry.ts](src/hooks/useReentry.ts) ticks on the opposite
+condition — only while the audio is stopped, which is also why a one-minute
+interval costs nothing. After fifteen minutes it clears a stale check through
+the same path a dismiss would take, so the accounting is unchanged; what changes
+is who has to do it.
+
+Then an **offer**, not an action. Audio that starts by itself in a tab someone
+has just come back to is hostile, and the reader may have been away for a reason
+that makes a replay pointless. It says what happened in the past tense, offers
+to replay the last two sentences, and can be dismissed.
+
+It never says how long you were gone. That number has no use except to be read
+as a reproach.
+
+Two details that are easy to get backwards:
+
+- The offer is **not** cleared by ordinary interaction. Returning to the tab is
+  itself a presence event, so a flag that presence cleared would be set and unset
+  in the same instant and the offer made for you would never appear.
+- The pre-roll counts back over what was **spoken**, skipping journal furniture.
+  Playback never enters a reference list, so replaying "the last two sentences"
+  out of one would be replaying something you have never heard.
+
+## The sentence gauge
+
+The structure map reports the distance to the next spot check in words, and that
+number is staying. The reason a countdown clock was refused still holds — a
+ticking clock in the field of view is a thing to watch instead of the text — but
+that argument is about a *clock*. It does not settle whether a number is the
+right shape for the answer.
+
+"≈180w to a spot check" is a quantity you have to convert before it means
+anything, and converting it is precisely the work that a tired brain cannot
+spare. [src/lib/gauge.ts](src/lib/gauge.ts) draws the same fact as a row of
+marks, one per sentence, emptying as sentences finish.
+
+It satisfies the constraint the clock failed, for a reason worth being explicit
+about: **it only moves when a sentence ends.** A clock moves on its own, which
+is what makes it a thing to watch. This moves on an event you caused, a dozen or
+so times per leg, so there is nothing to watch between moves.
+
+It draws the **spot-check** rung and not the summary. A 250-token leg is thirteen
+to eighteen sentences, which is a readable row at a readable size; the distance
+to the next summary is often over a thousand words, where one mark per sentence
+is a hundred hairlines and a proportional bar is the progress bar the header
+already has. That figure stays a number.
+
+Like the numbers beside it, the row is the **earliest** a stop can come rather
+than a promise that it will: `buildCloze` can find nothing worth asking in a
+stretch, and the engine then slides the window on instead of stopping.
+
+A leg longer than the row has marks is scaled and *says* it has been, in the
+tooltip — a gauge that silently changed what a mark meant would be a different
+measurement wearing the same row. On this corpus it does not happen.
+
 ## Minimum standards and best practices
 
 The exam asks *"which of the following is a minimum standard"* as a question
@@ -1432,6 +1503,13 @@ reason a long document read as repetitive.
 
 **Coverage** — the structure map reports what each section has been *asked about*, not
 just how far the caret got, and points at the next section worth your time. See above.
+
+**Coming back** — a check left open while you were away is put away for you after
+fifteen minutes, nothing is marked, and you are offered a replay of the last two
+sentences rather than an accusation. See above.
+
+**Sentence gauge** — the distance to the next spot check as a row of marks that empty
+as sentences finish, beside the same figure in words. See above.
 
 **Tier badges** — every section the GCDMP calls a *minimum standard* or a *best
 practice* is marked as one in the map and in the reading pane, and the map can filter

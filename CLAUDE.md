@@ -518,6 +518,26 @@ same words, decided by the edition. `scan-tiers` prints the modal-verb
 disagreement as a standing control: if it ever comes out small, `tiers.ts` is
 wrong.
 
+**40. An absence costs nothing, and the app says so.** Nothing recorded a
+missed session before this and nothing was removed to keep it that way --
+`abandonCheck` already cleared, stopped, rewound and recorded nothing. What was
+missing is that **no timer reached an open check**: `useVigilance` runs `if
+(!enabled || !isPlaying) return` and arming a check pauses playback, so the one
+state a reader most often walks away from had nothing watching it. `useReentry`
+ticks on the opposite condition. The offer is an *offer* -- audio that starts by
+itself in a tab someone just returned to is hostile -- and it never reports how
+long the absence was, because that number has no use except to be read as a
+reproach. `away` is deliberately not cleared by `notePresence`: returning is
+itself a presence event, so a flag presence cleared would never be seen.
+
+**41. A shape may replace a number; a clock may not.** `nextStop` refuses a
+countdown because it moves on its own and becomes a thing to watch instead of
+the text. That argument is about a *clock*, not about numbers, and the sentence
+gauge satisfies it for a stated reason: it only moves when a sentence ends, a
+dozen or so times per leg, so there is nothing to watch between moves. It draws
+the spot-check rung only -- 250 tokens is 13 to 18 sentences and fits a row; the
+summary distance is often a thousand words and stays a number.
+
 **32. Help offered at an intercept is recorded with the answer.** The "Stuck?"
 anchors hand a reader the section's own nouns, which turns free recall into
 cued recall. `ReviewItem.cued` travels with the summary so the self-grade weeks
@@ -1127,7 +1147,7 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed and pushed on `main`, through the thirteenth round.
+Everything here is committed and pushed on `main`, through the fourteenth round.
 Permission to push is asked for each batch: it is outward-facing, and one grant
 does not carry to the next.
 
@@ -1667,6 +1687,33 @@ described a problem the app does not have, and checking is what showed it:
 The fourth was real and its implementation was backwards; see invariant 39.
 **A pitch that names a file and a function is not evidence that it read
 either.**
+
+**The fourteenth round: the probe found an assertion that could not exist.**
+The sentence gauge's *emptying* is unobservable from a browser test, and it took
+running one to see why. `seekToken` sets `lastCheckToken` to the token it lands
+on -- deliberately, so scrubbing cannot bank credit toward a check over unread
+text -- so every seek starts a fresh leg with nothing done in it, and only
+playback advances the caret against a fixed leg. Headless Chromium enumerates
+zero voices. The probe asserts the row is *live* instead (11 marks to 4 on a
+seek, which a static render fails) and the emptying is left to the unit tests,
+with the reason written where the next person will look. **When a probe
+assertion will not go green, check whether it is asking for something the app
+deliberately never does before changing the app.**
+
+**A test that passed against both rules it was written to separate.** "Keeps the
+sentence the leg starts inside" asserted on `done`, which is zero under overlap
+*and* under containment. It asserts on `total` now. That is the third time in
+three rounds that a break-run found an assertion with no teeth -- an idempotence
+check that could never fail, a guard no break could reach, and now this.
+**Running the break is not a formality; it is the only thing that distinguishes
+a test from a comment.**
+
+**Playwright's synthetic clock is how a fifteen-minute timer is tested.**
+`page.clock.install()` then `fastForward("10:00")` and `fastForward("06:00")`,
+asserting both sides of the threshold -- an offer that appeared immediately
+would satisfy "the offer appears" on its own. It is installed in the last block
+of the probe and never uninstalled, because uninstalling is not part of the
+stable API and nothing runs after it.
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid
 anywhere in the user's PDFs** — the phrase appears seven times but always as
