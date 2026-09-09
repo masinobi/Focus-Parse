@@ -1056,6 +1056,80 @@ exactly the weeks a reader has least of.
 node scripts/scan-blueprint.mjs "path/to/CCDA Study" --verbose
 ```
 
+## Choosing a voice
+
+Edge installs well over a hundred voices, all named with the same decoration —
+"Microsoft Aria Online (Natural) - English (United States)" — and the old
+control was a `<select>`, which is right for five options and wrong for a
+hundred and forty.
+
+It is a dialog now with a filter. Every whitespace-separated term has to match
+somewhere in the voice's name, its language tag, or the words describing where
+it runs, so all of these work:
+
+| typed | finds |
+|---|---|
+| `aria` | the one voice |
+| `kingdom` or `en-GB` | the British voices, either spelling |
+| `local` | the voices that need no network |
+| `cloud english` | English voices synthesized over the network |
+
+Two terms **narrow**; there is no scoring and no nearest match. A voice that
+matches nothing returns nothing, and the platform's own order is preserved so a
+voice does not move under the cursor on every keystroke. That is the same rule
+the blueprint matcher follows and for the same reason — a wrong voice picked off
+a confident-looking list is a whole session read in the wrong accent.
+
+Each row shows whether the voice runs **on this machine** or **over the
+network**, which the old control could not show at all and which turns out to
+be the first thing worth knowing.
+
+## Why a network voice used to go silent
+
+Two clocks run over every utterance, and they disagreed.
+
+The **estimator grace** is how long the engine waits for a real `boundary` event
+before it starts interpolating the caret. It is generous on purpose and learned
+per voice: 1,200ms for a network voice never heard from, then that voice's own
+measured latency plus half again, up to 2,800ms.
+
+The **stall watchdog** is the other one. It decides the platform dropped the
+utterance entirely, abandons the sentence and starts the next. It was a flat
+1,600ms, armed before `speak()` was even called.
+
+So the watchdog was tighter than the wait it exists to back up. A voice the
+estimator was still patiently waiting for at 2,000ms had already had its
+sentence given up on at 1,600 — silently, because an abandoned sentence and a
+finished one look identical from the outside.
+
+This was not a theoretical margin. The voice-preference list in the engine is
+ordered by a `/voice-check` run on this machine, and its own note records that
+**across 49 voices in Edge the first boundary arrived between 575ms and
+2,376ms**. Every voice in the slow half of that measured range was having its
+sentences abandoned before it had said a word.
+
+Local voices report in tens of milliseconds and never came near either clock,
+which is why the symptom reads as *"this particular voice is broken"* rather
+than as a bug in the engine.
+
+[src/lib/speech-timing.ts](src/lib/speech-timing.ts) now derives the watchdog
+from the grace instead of declaring it alongside: `stallTimeoutFor(grace,
+boundarySeen)` cannot be shorter than the wait it backs up, and tightens back to
+the flat timeout once a boundary has arrived, since a voice that has reported is
+known reachable and a later silence is a real drop.
+
+The policy lives in its own module for one reason: **headless Chromium
+enumerates zero voices**, so the speech engine has no browser probe and never
+will. Moving the numbers somewhere a unit test can reach them is the only way
+they are checked at all.
+
+### If a voice still fails
+
+Open **`/voice-check`**. It speaks a fixed passage through every installed voice,
+measures the first boundary, checks the offsets against the same
+`tokenAtCharIndex` the engine uses, and gives each voice a verdict. "Copy report"
+puts the whole table on the clipboard.
+
 ## Coming back
 
 Nothing here records a missed session. Walking away costs nothing, no item is
@@ -1503,6 +1577,9 @@ reason a long document read as repetitive.
 
 **Coverage** — the structure map reports what each section has been *asked about*, not
 just how far the caret got, and points at the next section worth your time. See above.
+
+**Voice picker** — a filter over the hundred-odd voices a browser installs, matching
+name, language and whether the voice needs the network. See above.
 
 **Coming back** — a check left open while you were away is put away for you after
 fifteen minutes, nothing is marked, and you are offered a replay of the last two

@@ -538,6 +538,16 @@ dozen or so times per leg, so there is nothing to watch between moves. It draws
 the spot-check rung only -- 250 tokens is 13 to 18 sentences and fits a row; the
 summary distance is often a thousand words and stays a number.
 
+**42. A watchdog may never be tighter than the wait it backs up.** The stall
+timeout was a flat 1,600ms while the estimator grace reached 2,800ms, so a voice
+the engine was still waiting for had already had its sentence abandoned -- and
+`/voice-check` measured Edge's first boundaries between **575ms and 2,376ms**,
+so this hit real voices on this machine. It presents as "Aria doesn't work but
+Mark does", because local voices report in tens of milliseconds and never reach
+either clock. `stallTimeoutFor` now takes the grace as an argument so the
+ordering is structural. **Two independent constants describing one ordering will
+drift; derive the second from the first.**
+
 **32. Help offered at an intercept is recorded with the answer.** The "Stuck?"
 anchors hand a reader the section's own nouns, which turns free recall into
 cued recall. `ReviewItem.cued` travels with the summary so the self-grade weeks
@@ -1147,7 +1157,7 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed and pushed on `main`, through the fourteenth round.
+Everything here is committed and pushed on `main`, through the fifteenth round.
 Permission to push is asked for each batch: it is outward-facing, and one grant
 does not carry to the next.
 
@@ -1714,6 +1724,29 @@ asserting both sides of the threshold -- an offer that appeared immediately
 would satisfy "the offer appears" on its own. It is installed in the last block
 of the probe and never uninstalled, because uninstalling is not part of the
 stable API and nothing runs after it.
+
+**The fifteenth round was a bug report, and the second sentence was the
+diagnosis.** "The voice doesn't work on Microsoft Edge" is unactionable; "aria
+doesn't work but mark does" names the fault, because those two differ in exactly
+one property. **When a report names a platform, ask which instances of it fail
+before touching the platform-specific code.**
+
+**The speech path has no probe and this is what that costs.** Headless Chromium
+enumerates zero voices, so `useSpeechEngine` has never been executed by any
+verification in this repo -- and the two constants that contradicted each other
+sat there through fourteen rounds of it. The timing policy is in
+`speech-timing.ts` now purely so it can be unit-tested; the fix itself is four
+lines. **Code that no harness can reach will accumulate exactly the defects a
+harness would have caught, and moving it somewhere testable is usually cheaper
+than the bug.**
+
+**A probe stub has to retire itself.** The scripted voice list leaked into the
+next block, where the re-entry replay started playback and the engine assigned a
+plain object to `utterance.voice` -- which throws, correctly. The stub reads a
+flag now and a second `addInitScript` switches it off, because init scripts run
+in the order they were added on every subsequent navigation. **A faked platform
+boundary is scoped to the block that faked it, or it is the platform for
+everything after.**
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid
 anywhere in the user's PDFs** — the phrase appears seven times but always as
