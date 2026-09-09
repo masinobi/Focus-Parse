@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { demandsSummary, tokenAtCharIndex } from "@/lib/parse";
 import {
   ESTIMATOR_GRACE_MS,
+  estimatorAnchor,
   graceFor,
   stallTimeoutFor,
   type VoiceLatency,
@@ -118,6 +119,7 @@ export function useSpeechEngine(): SpeechEngineStatus {
     ms: null,
     utterances: 0,
     boundaries: 0,
+    starts: 0,
   });
 
   const clearTimers = useCallback(() => {
@@ -247,6 +249,7 @@ export function useSpeechEngine(): SpeechEngineStatus {
           ms: null,
           utterances: 0,
           boundaries: 0,
+          starts: 0,
         };
       }
       const graceMs = graceFor(latency.current, voice ? voice.localService : true);
@@ -254,7 +257,16 @@ export function useSpeechEngine(): SpeechEngineStatus {
 
       let boundarySeen = false;
       let lastToken = tokenIndex;
-      const startedAt = performance.now();
+      /** When `speak()` was handed the utterance. */
+      const queuedAt = performance.now();
+      /**
+       * When audio actually began, once the platform says so.
+       *
+       * The gap between the two is a cold network round trip on an Online
+       * (Natural) voice, and counting it as speech is what made the caret run
+       * ahead of the audio on resume.
+       */
+      let speakingSince: number | null = null;
 
       /*
        * The watchdog, which used to be a flat 1,600ms and so was tighter than
@@ -280,7 +292,11 @@ export function useSpeechEngine(): SpeechEngineStatus {
 
         if (!boundarySeen) {
           boundarySeen = true;
-          const observed = performance.now() - startedAt;
+          // Measured from the queue time on purpose, unlike the estimator's
+          // anchor: this feeds `graceFor`, and the range it was tuned against
+          // -- 575ms to 2,376ms across 49 Edge voices -- was measured the same
+          // way. Re-anchoring it would silently invalidate that tuning.
+          const observed = performance.now() - queuedAt;
           latency.current.boundaries += 1;
           // Smoothed rather than replaced: one slow round-trip should nudge the
           // grace, not redefine it.
@@ -307,6 +323,12 @@ export function useSpeechEngine(): SpeechEngineStatus {
         armStall();
       };
 
+      utterance.onstart = () => {
+        if (!alive()) return;
+        speakingSince = performance.now();
+        latency.current.starts += 1;
+      };
+
       utterance.onend = () => {
         if (!alive()) return;
         finishChunk(chunk.i);
@@ -324,7 +346,12 @@ export function useSpeechEngine(): SpeechEngineStatus {
       // (Safari, and several Linux/espeak voices).
       estimatorTimer.current = window.setInterval(() => {
         if (!alive() || boundarySeen) return;
-        const elapsed = performance.now() - startedAt;
+        // Measured from when audio began, not from when the utterance was
+        // queued -- see `estimatorAnchor`. Null means there is no basis for
+        // interpolating yet, and the stall watchdog owns that window.
+        const anchor = estimatorAnchor(queuedAt, speakingSince, latency.current);
+        if (anchor === null) return;
+        const elapsed = performance.now() - anchor;
         if (elapsed < graceMs) return;
 
         setEstimating(true);

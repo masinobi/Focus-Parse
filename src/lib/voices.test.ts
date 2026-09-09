@@ -4,7 +4,9 @@ import {
   ESTIMATOR_GRACE_MS,
   MAX_ESTIMATOR_GRACE_MS,
   NETWORK_PROBE_GRACE_MS,
+  SILENT_VOICE_ATTEMPTS,
   STALL_TIMEOUT_MS,
+  estimatorAnchor,
   graceFor,
   stallTimeoutFor,
   type VoiceLatency,
@@ -135,6 +137,7 @@ describe("stallTimeoutFor", () => {
     ms: null,
     utterances: 0,
     boundaries: 0,
+    starts: 0,
     ...over,
   });
 
@@ -175,5 +178,62 @@ describe("stallTimeoutFor", () => {
     const grace = graceFor(latency(), true);
     expect(grace).toBe(ESTIMATOR_GRACE_MS);
     expect(stallTimeoutFor(grace, false)).toBe(STALL_TIMEOUT_MS);
+  });
+});
+
+describe("estimatorAnchor", () => {
+  const latency = (over: Partial<VoiceLatency> = {}): VoiceLatency => ({
+    voiceURI: "v",
+    ms: null,
+    utterances: 0,
+    boundaries: 0,
+    starts: 0,
+    ...over,
+  });
+
+  const QUEUED = 1000;
+  const SPEAKING = 3400;
+
+  it("measures from when audio began, not from when it was queued", () => {
+    // The reported bug. 2,400ms of cold network round trip counted as speech,
+    // so the caret ran to the end of the sentence before a word was audible.
+    expect(estimatorAnchor(QUEUED, SPEAKING, latency({ starts: 4, utterances: 4 }))).toBe(
+      SPEAKING
+    );
+  });
+
+  it("refuses to interpolate before the audio has started", () => {
+    // Null is the answer, not the queue time. There is no basis for a guess
+    // about how far into a sentence a voice is when it is not speaking yet.
+    expect(estimatorAnchor(QUEUED, null, latency({ starts: 4, utterances: 4 }))).toBeNull();
+  });
+
+  it("waits through a whole cold start, however long", () => {
+    // The interval ticks every 55ms; every one of them has to decline.
+    for (let ms = 0; ms <= 6000; ms += 55) {
+      expect(estimatorAnchor(QUEUED, null, latency({ starts: 1, utterances: 1 }))).toBeNull();
+    }
+  });
+
+  it("falls back to the queue time for an engine that never reports a start", () => {
+    // The spec does not oblige one to fire `start`. Without this the caret
+    // would freeze for every sentence on such an engine, which is worse than
+    // what was there before.
+    const silent = latency({ utterances: SILENT_VOICE_ATTEMPTS, starts: 0 });
+    expect(estimatorAnchor(QUEUED, null, silent)).toBe(QUEUED);
+  });
+
+  it("gives a voice its full allowance before concluding that", () => {
+    // One quiet utterance is not evidence. A voice mid-cold-start on its first
+    // sentence must not be mistaken for one that never reports.
+    const early = latency({ utterances: SILENT_VOICE_ATTEMPTS - 1, starts: 0 });
+    expect(estimatorAnchor(QUEUED, null, early)).toBeNull();
+  });
+
+  it("prefers a real start even on an engine written off as silent", () => {
+    // Whatever was concluded from earlier utterances, an actual `start` event
+    // is better evidence than the absence of previous ones.
+    const silent = latency({ utterances: 12, starts: 0 });
+    expect(estimatorAnchor(QUEUED, SPEAKING, silent)).toBe(SPEAKING);
   });
 });

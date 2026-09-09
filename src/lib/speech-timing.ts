@@ -95,6 +95,8 @@ export interface VoiceLatency {
   ms: number | null;
   utterances: number;
   boundaries: number;
+  /** Utterances for which a `start` event ever arrived. */
+  starts: number;
 }
 
 /**
@@ -136,4 +138,43 @@ export function graceFor(stats: VoiceLatency, localService: boolean): number {
 export function stallTimeoutFor(graceMs: number, boundarySeen: boolean): number {
   if (boundarySeen) return STALL_TIMEOUT_MS;
   return Math.max(STALL_TIMEOUT_MS, graceMs + STALL_HEADROOM_MS);
+}
+
+/**
+ * When the estimator may treat elapsed time as *spoken* time.
+ *
+ * The estimator interpolates the caret for engines that fire no word
+ * boundaries, at a fixed words-per-minute. That arithmetic is only meaningful
+ * measured from the moment audio actually began, and it used to be measured
+ * from the moment the utterance was handed to `speak()` -- which on a network
+ * voice is one cold round trip earlier.
+ *
+ * The result was the bug as reported: on resuming, the caret ran ahead to the
+ * end of the sentence while nothing was audible, and then sat frozen there
+ * while the audio caught up to it, because highlight movement is monotonic
+ * within an utterance and the real boundaries all arrived behind the guess. The
+ * engine's own docstring predicted it in as many words; what it did not say is
+ * that `startedAt` was the queue time rather than the speech time, which is
+ * what made a *slow-starting* voice look like a *non-reporting* one.
+ *
+ * Returning null means "not yet": there is no basis for interpolating, so do
+ * nothing and let the stall watchdog own that window.
+ *
+ * The fallback matters as much as the rule. An engine that never reports a
+ * start at all -- and the spec does not oblige one to -- would otherwise have
+ * its caret frozen for every sentence. So a voice is given
+ * `SILENT_VOICE_ATTEMPTS` utterances to prove it reports starts, exactly as it
+ * is given the same to prove it reports boundaries; if it never has, the queue
+ * time is used and the behaviour is what it was before.
+ */
+export function estimatorAnchor(
+  queuedAt: number,
+  speakingSince: number | null,
+  stats: VoiceLatency
+): number | null {
+  if (speakingSince !== null) return speakingSince;
+  if (stats.utterances >= SILENT_VOICE_ATTEMPTS && stats.starts === 0) {
+    return queuedAt;
+  }
+  return null;
 }
