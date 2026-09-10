@@ -1109,6 +1109,18 @@ fails with `spawn UNKNOWN` in this environment. **Unverified, therefore not
 fixed** — if the audio still stops after the main-thread work above, this is
 where to look, and the test is whether pressing pause and play brings it back.
 
+**Downgraded on 9 Sep 2026: the reader reports never having experienced it.**
+Not fixed and not disproved — an unreproducible hypothesis about a wedged
+platform cannot be closed by absence — but it should stop being treated as the
+leading explanation for anything, and here is why it probably never was one.
+This note was written to explain reports of the audio stopping, and two real
+defects behind those reports have since been found and confirmed fixed: the
+stall watchdog firing at 1,600ms against a first boundary that Edge measured as
+late as 2,376ms (invariant 42), and the estimator counting a cold network start
+as speech (invariant 43). The first *abandons sentences*, which is what "the
+audio stops" sounds like from the outside. **A speculative cause recorded beside
+a symptom will outlive the real cause unless someone goes back and says so.**
+
 ## Feature inventory
 
 Dual-channel pacing (a **words-per-minute** target, solved per voice;
