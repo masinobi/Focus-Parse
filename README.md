@@ -1149,6 +1149,10 @@ prove it reports starts at all — nothing in the spec obliges an engine to, and
 missing fallback would freeze the caret for every sentence on one that does
 not.
 
+Confirmed in Edge on 9 Sep 2026: the caret tracks the audio through a resume.
+Both of these faults were reported in a sentence and closed by the same reader
+trying it again, because nothing in this repo can execute the speech path.
+
 ### If a voice still fails
 
 Open **`/voice-check`**. It speaks a fixed passage through every installed voice,

@@ -565,7 +565,9 @@ behind the guess and highlight movement is monotonic within an utterance.
 **no basis for a guess is a reason to do nothing, not a reason to guess from the
 nearest number to hand.** The fallback is the load-bearing half -- nothing
 obliges an engine to fire `start`, and a missing fallback would freeze the caret
-for every sentence on one that does not.
+for every sentence on one that does not. **Confirmed by the reader in Edge on
+9 Sep 2026** -- the caret tracks the audio through a resume. Like invariant 42,
+shipped as an inference and closed by the machine that had the fault.
 
 **32. Help offered at an intercept is recorded with the answer.** The "Stuck?"
 anchors hand a reader the section's own nouns, which turns free recall into
