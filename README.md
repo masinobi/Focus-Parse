@@ -7,7 +7,7 @@ boundary without restating what you just heard.
 
 It was built to read the 524-page GCDMP for a clinical data management
 certification, which is why the checks are unusually hard to dismiss — but
-nothing in the pacing engine knows what it is reading.
+nothing in the pacing engine knows what it reads.
 
 ![The caret tracking spoken audio word by word, then a cognitive intercept demanding a one-sentence summary at the section boundary](docs/media/reading.gif)
 
@@ -21,15 +21,15 @@ npm run study
 ```
 
 Then open http://localhost:3000 and hit **Load the sample** — a document written
-to be read inside the app, so nothing else needs downloading first.
+to be read in the app, so nothing else needs to be downloaded first.
 
-On Windows you can double-click **`Study FocusParse.cmd`** instead. It builds only
-when something has actually changed, serves the production bundle, and opens the
+On Windows, you can double-click **`Study FocusParse.cmd`** instead. It builds only
+when something has changed, serves the production bundle, and opens the
 browser once the server really answers — about 2 seconds when the build is already
 current, about a minute when it is not. Close the window to stop.
 
 **`npm run study` is the command for reading; `npm run dev` is the command for
-working on the app.** On a 524-page document the development build costs roughly
+working on the app.** On a 524-page document, the development build costs roughly
 two to three times as much to read with, in freezes and in memory —
 [measured here](docs/pacing.md#read-with-a-production-build). If you switch back to
 `npm run dev` after a build, delete `.next` first.
@@ -155,7 +155,7 @@ loader without opening them, and pasted text can be named up front.
   SQL. The enforcement ladder still fires on the prose around it, which is where the
   reasoning lives.
 - A `.sql` file's headings come from comments ruled with `=` or `-`. A script that uses
-  some other banner style comes out as one long section with no intercepts.
+  some other banner style comes out as one long section with no breaks.
 - Tables and figures are linearized into prose; they read poorly aloud. A detected grid
   and a SQL fence are the two exceptions, and each has its own reader.
 - A cloze carrier is only as good as the sentence it came from. Where column recovery
