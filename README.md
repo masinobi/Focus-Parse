@@ -9,9 +9,9 @@ It was built to read the 524-page GCDMP for a clinical data management
 certification, which is why the checks are unusually hard to dismiss — but
 nothing in the pacing engine knows what it is reading.
 
-<!-- A recording belongs here: the caret tracking the audio word by word, then an
-     intercept firing at a section boundary. Headless browsers enumerate no
-     voices, so it has to be captured on a real machine. -->
+![The caret tracking spoken audio word by word, then a cognitive intercept demanding a one-sentence summary at the section boundary](docs/media/reading.gif)
+
+*Recorded in Edge against the bundled sample. The first half is the caret holding the spoken word while the clause around it stays lit; the second is what happens at a section boundary.*
 
 ## Quickstart
 
