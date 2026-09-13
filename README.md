@@ -9,6 +9,12 @@ It was built to read the 524-page GCDMP for a clinical data management
 certification, which is why the checks are unusually hard to dismiss — but
 nothing in the pacing engine knows what it reads.
 
+**[Try it in the browser →](https://masinobi.github.io/Focus-Parse/)**  
+One page, no install, and it speaks: the demo drives your browser's own
+synthesizer through a fixed passage so the caret, the clause spotlight, the
+three views and all four kinds of check can be triggered by hand. It is a
+walk-through, not the app — the app reads documents you load yourself.
+
 ![The caret tracking spoken audio word by word, then a cognitive intercept demanding a one-sentence summary at the section boundary](docs/media/reading.gif)
 
 *Recorded in Edge against the bundled sample. The first half is the caret holding the spoken word while the clause around it stays lit; the second is what happens at a section boundary.*
@@ -107,6 +113,14 @@ reason a long document read as repetitive.
 
 **Coverage** — the structure map reports what each section has been *asked about*, not
 just how far the caret got, and points at the next section worth your time. See [the coverage map](docs/exam-prep.md#the-coverage-map).
+
+**Blueprint gaps** — every account above measures the library against itself, so the
+one question none of them can answer is the one that decides an exam: *what is on the
+blueprint that I do not have?* The exam blueprint is transcribed from the published
+study guide and the library is matched against it chapter by chapter, which turns the
+app from a reader into an audit of your own coverage. A chapter is matched exactly or
+from a listed set of aliases — never by resemblance, because a wrong match reports
+coverage you do not have. See [blueprint coverage](docs/exam-prep.md#blueprint-coverage).
 
 **Voice picker** — a filter over the hundred-odd voices a browser installs, matching
 name, language and whether the voice needs the network. See [speech and voices](docs/speech.md).
