@@ -1,5 +1,7 @@
 # FocusParse
 
+[![CI](https://github.com/masinobi/Focus-Parse/actions/workflows/ci.yml/badge.svg)](https://github.com/masinobi/Focus-Parse/actions/workflows/ci.yml)
+
 Synchronized audio-visual ingestion with active kinetic re-encoding. Load a PDF,
 markdown or plain-text document; FocusParse paces it with speech synthesis, locks a
 word-level highlight to the audio, and refuses to let you coast past a section
