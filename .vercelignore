@@ -1,0 +1,27 @@
+# What must not be uploaded to a deployment.
+#
+# The Vercel CLI honours .gitignore, so most of this is already covered. It is
+# written out anyway because the consequence of one of these slipping through
+# is not a broken build — it is a private key on a public host, and a rule
+# that only exists by inheritance is a rule nobody can check.
+
+# Secrets. The deployment runs with no key on purpose: without one the
+# summary-grading route reports itself unconfigured and the "Check my recall"
+# button never renders. See SECURITY.md.
+.env
+.env.*
+
+# Build output and dependencies — the platform produces its own.
+.next
+node_modules
+*.tsbuildinfo
+
+# Scratch beside the scanners: probe screenshots, recordings, throwaway
+# scripts. Same rule as .gitignore, for the same reason.
+scripts/.*
+
+# Nothing here is served by the app.
+docs
+demo
+.github
+.claude

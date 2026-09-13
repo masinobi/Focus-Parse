@@ -260,6 +260,25 @@ SCDM's published study guide so the app can report what is on the exam that your
 own library does not cover. Point the scanners at any folder of PDFs, markdown or
 text.
 
+## Deploying
+
+A stock Next.js app with nothing to configure: every document, note and review
+schedule lives in the visitor's own browser, so an instance serves everyone and
+stores nothing.
+
+**Deploy it with no environment variables.** Without a key the grading route
+reports itself unconfigured, the *Check my recall* button never renders, and
+the rest of the app — which is nearly all of it — works unchanged. Verified
+rather than assumed: with the keys blanked, `GET /api/check-summary` returns
+`{"configured":false}` and the button is gated on that reply. A key set on a
+public deployment would bill your quota to every visitor who reaches a section
+boundary.
+
+What a deployment cannot supply is a voice. Speech synthesis and the voices
+installed on the machine belong to the visitor's browser, which is why the
+[demo](https://masinobi.github.io/Focus-Parse/) and the app both sound
+different on every computer that opens them.
+
 ## Contributing
 
 Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers
