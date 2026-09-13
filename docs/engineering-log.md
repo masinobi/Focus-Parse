@@ -1,7 +1,7 @@
 # FocusParse — working notes
 
-Context for picking this project up cold. The README documents *what* the app
-does and why each algorithm is shaped the way it is; this file covers the things
+Context for picking this project up cold. `docs/` documents *what* the app does
+and why each algorithm is shaped the way it is; this file covers the things
 that are not in the code: environment traps, invariants that are easy to break,
 how work has been verified, and what is still outstanding.
 
@@ -24,11 +24,11 @@ decision; test against it rather than against invented samples.
 | | |
 |---|---|
 | Project | `<project folder>` |
-| Remote | https://github.com/masinobi/Focus-Parse (**private**) |
-| Demo | https://claude.ai/code/artifact/bb5b76a5-5b7d-4a52-abdd-324313fc7d08 (private) |
+| Remote | https://github.com/masinobi/Focus-Parse |
+| Demo | `demo/index.html` in this repo |
 | Stack | Next.js 14 App Router · TypeScript · Tailwind · shadcn/ui · Zustand · IndexedDB · Web Speech · Web Audio · pdf.js |
 | Corpus | `<corpus folder>` — **ten PDFs and three markdown files, as of 8 Sep 2026.** Two of the three are the reader's own: `CCDA Discriminator Matrix.md` (near-synonym pairs, seven tables) and `CCDA_Weeks_3-5_Gap_Review.md` (written from a scored mock paper, 21/32). They are mostly *tables*, which is what the twelfth round went and fixed. **There is also a `Cloze Deck` subfolder** of five weekly `.txt` decks plus a mistakes deck -- hand-authored, not loaded by the app, and not counted by any figure here. It was eight PDFs for most of this project’s life; `21 CFR Part 11` and `E6(R2) good clinical practice` were added on 26 Aug 2026, *during* the seventh round — which is how two probe assumptions that had nothing to do with the app came apart at once. Figures elsewhere in this file state the corpus they were measured on. **Plus, since 24 Aug 2026, a `SQL Practice - Trial Screening` subfolder**: a feasibility screen and two drill sets in T-SQL against a Synthea extract, with the CSVs beside them. It is not part of the thirteen and no figure counts it — `scan-sql` is the report that reads it. |
-| Past sessions | `the Claude Code transcript folder for this project` |
+| Past sessions | the Claude Code transcript folder for this project |
 
 **Stored shapes carry four independent version numbers.** Bump the wrong one and
 either nothing migrates or everything re-parses. They are separate because they
@@ -1023,7 +1023,7 @@ lead-bolding away from the caret -- for a second or two, once, on the largest
 document in the corpus. **Not worth it, and the reason it ever looked worth it
 is that nobody had measured the build the reader would actually study in.**
 
-What *was* worth doing is one line of README. It said `npm run dev`, so that is
+What *was* worth doing is one line of documentation. It said `npm run dev`, so that is
 what the reader was reading a 524-page book in, at roughly three times the cost
 of `npm run study`. The DOM was never the lever; the build was.
 
@@ -1147,7 +1147,7 @@ Four of those are one idea, and reading them separately misses the point: grid
 interrogation, cloze spot checks, the presence check and the retrieval queue.
 The app used to *assume* a reader was present, enforce engagement only at
 section boundaries, and let everything it produced die with the session. See
-"The enforcement ladder" and "Spaced retrieval" in the README for why each
+"The enforcement ladder" and "Spaced retrieval" in `docs/` for why each
 threshold is where it is.
 
 Three more are also one idea, added later: the corpus index, the mock exam and
@@ -1162,7 +1162,7 @@ much was read, what was verified, which terms are not sticking. Neither of those
 can answer "is this working" or "is there time", because both questions need a
 series and a date, and the app had neither: a marked paper died with its dialog,
 and the scheduler did not know the exam existed. See "Exam history" and "The
-exam date" in the README.
+exam date" in `docs/exam-prep.md`.
 
 **Blueprint coverage is the only account in this app that is not closed.**
 Every other one measures the corpus against itself — how much was read, what was
@@ -1611,7 +1611,7 @@ from `npm run dev` numbers. Production is two to three times cheaper across the
 board and halves the heap, and the flow's own share of the production cost is
 one to two seconds of open, once, plus about 1.5% of playback wall time. The
 design change is off the table. What shipped instead was `npm run study` and a
-README that no longer sends the reader to the development build to read a
+a front page that no longer sends the reader to the development build to read a
 524-page book in. See "What a long document costs".
 
 **The lesson is narrower than "measure first", because that was being done.**
