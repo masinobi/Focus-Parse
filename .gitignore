@@ -25,3 +25,7 @@ Thumbs.db
 # something. Every dot-prefixed file in here, because listing the extensions
 # one at a time has now let .py and .bak through twice.
 scripts/.*
+
+# Written by the Vercel CLI on first run: a local link between this folder and
+# a project, plus an anonymous client id. Machine-specific, never shared.
+.vercel
