@@ -1,0 +1,49 @@
+name: Demo
+
+# Publishes `demo/` — one self-contained HTML page, no build step — to GitHub
+# Pages, so the repository has something to click before it has something to
+# clone.
+#
+# This will not run until Pages is switched on in Settings -> Pages with
+# "GitHub Actions" as the source. On a free account that requires the
+# repository to be public; the API refuses it outright while it is private.
+#
+# The page is a demo. It is not the app: the app needs a browser with a real
+# speech synthesizer and a document of your own.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "demo/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; never cancel one in flight, since a half-finished
+# deploy is a broken page rather than a stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: demo
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

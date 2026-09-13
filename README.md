@@ -246,6 +246,15 @@ SCDM's published study guide so the app can report what is on the exam that your
 own library does not cover. Point the scanners at any folder of PDFs, markdown or
 text.
 
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers
+how to run the checks and what this project treats as a finished change —
+which is not the usual list, since two of the three verification layers need a
+corpus and a real browser. Security reports go through a
+[private advisory](https://github.com/masinobi/Focus-Parse/security/advisories/new);
+see [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
