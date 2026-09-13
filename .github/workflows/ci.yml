@@ -1,0 +1,44 @@
+name: CI
+
+# What can be checked without a corpus and without a voice.
+#
+# Two of this project's three verification layers deliberately do NOT run here,
+# and pretending otherwise would be worse than leaving them out:
+#
+#   * The scanners (`npm run scan-*`) compile the same modules the app imports
+#     and run them over real PDFs. The corpus is published guidance that is not
+#     redistributable, so there is nothing for them to read on a runner.
+#   * The browser probe (`npm run probe`) drives a real Chromium, but headless
+#     Chromium enumerates zero voices — the speech path has no browser probe
+#     anywhere, including locally. See docs/speech.md.
+#
+# Both are run by hand against a real corpus before a change lands. What is
+# below is the part a machine can honestly check.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
