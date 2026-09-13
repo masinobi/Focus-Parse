@@ -25,7 +25,8 @@ decision; test against it rather than against invented samples.
 |---|---|
 | Project | `<project folder>` |
 | Remote | https://github.com/masinobi/Focus-Parse |
-| Demo | `demo/index.html` in this repo |
+| Live | https://focus-parse.vercel.app — built from `main` on every push, with no API key set |
+| Demo | https://masinobi.github.io/Focus-Parse/ — `demo/index.html`, deployed by the Demo workflow |
 | Stack | Next.js 14 App Router · TypeScript · Tailwind · shadcn/ui · Zustand · IndexedDB · Web Speech · Web Audio · pdf.js |
 | Corpus | `<corpus folder>` — **ten PDFs and three markdown files, as of 8 Sep 2026.** Two of the three are the reader's own: `CCDA Discriminator Matrix.md` (near-synonym pairs, seven tables) and `CCDA_Weeks_3-5_Gap_Review.md` (written from a scored mock paper, 21/32). They are mostly *tables*, which is what the twelfth round went and fixed. **There is also a `Cloze Deck` subfolder** of five weekly `.txt` decks plus a mistakes deck -- hand-authored, not loaded by the app, and not counted by any figure here. It was eight PDFs for most of this project’s life; `21 CFR Part 11` and `E6(R2) good clinical practice` were added on 26 Aug 2026, *during* the seventh round — which is how two probe assumptions that had nothing to do with the app came apart at once. Figures elsewhere in this file state the corpus they were measured on. **Plus, since 24 Aug 2026, a `SQL Practice - Trial Screening` subfolder**: a feasibility screen and two drill sets in T-SQL against a Synthea extract, with the CSVs beside them. It is not part of the thirteen and no figure counts it — `scan-sql` is the report that reads it. |
 | Past sessions | the Claude Code transcript folder for this project |

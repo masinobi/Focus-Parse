@@ -9,11 +9,18 @@ It was built to read the 524-page GCDMP for a clinical data management
 certification, which is why the checks are unusually hard to dismiss — but
 nothing in the pacing engine knows what it reads.
 
-**[Try it in the browser →](https://masinobi.github.io/Focus-Parse/)**  
-One page, no install, and it speaks: the demo drives your browser's own
-synthesizer through a fixed passage so the caret, the clause spotlight, the
-three views and all four kinds of check can be triggered by hand. It is a
-walk-through, not the app — the app reads documents you load yourself.
+**[Open the app →](https://focus-parse.vercel.app)** · **[or the guided demo →](https://masinobi.github.io/Focus-Parse/)**
+
+The first is the real thing: drop in a PDF, markdown or text file of your own
+and read it. Nothing is uploaded — the document, your summaries and the review
+schedule stay in your browser's storage, so there is no account and nothing to
+sign into. That hosted copy runs with no API key, which means everything works
+except the one optional button that grades a summary.
+
+The second is one self-contained page that drives your browser's own
+synthesizer through a fixed passage, with the caret, the clause spotlight, the
+three views and all four kinds of check triggerable by hand. Quicker to judge
+from; it just is not reading anything of yours.
 
 ![The caret tracking spoken audio word by word, then a cognitive intercept demanding a one-sentence summary at the section boundary](docs/media/reading.gif)
 
@@ -264,7 +271,8 @@ text.
 
 A stock Next.js app with nothing to configure: every document, note and review
 schedule lives in the visitor's own browser, so an instance serves everyone and
-stores nothing.
+stores nothing. [focus-parse.vercel.app](https://focus-parse.vercel.app) is one,
+built from `main` on every push.
 
 **Deploy it with no environment variables.** Without a key the grading route
 reports itself unconfigured, the *Check my recall* button never renders, and
