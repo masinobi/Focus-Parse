@@ -4,20 +4,20 @@ name: Demo
 # Pages, so the repository has something to click before it has something to
 # clone.
 #
-# Manual only, deliberately. Pages has to be switched on first, in
-# Settings -> Pages with "GitHub Actions" as the source, and on a free account
-# that needs the repository to be public — the API refuses it outright while it
-# is private. Until then `configure-pages` fails on every push, which puts a red
-# cross on the repository for a setting rather than a fault, and a failing check
-# nobody can fix by reading the code is worse than no check.
-#
-# Once Pages is on: run this once from the Actions tab, then add the push
-# trigger back so the demo redeploys when `demo/` changes.
+# Pages is on, with "GitHub Actions" as the source, so this runs on its own
+# when the demo changes. It was manual-only for one commit because Pages cannot
+# be enabled on a private repository on a free plan, and a workflow that fails
+# on a settings state rather than a fault is worse than no workflow.
 #
 # The page is a demo. It is not the app: the app needs a browser with a real
 # speech synthesizer and a document of your own.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "demo/**"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
