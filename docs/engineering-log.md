@@ -113,6 +113,51 @@ Four things it cost to learn, all of which will bite again:
   in an earlier round — invisible there, and a trap the moment that text moves
   into markup. Check with a byte scan before publishing, not by eye.
 
+## The history was rewritten on 13 Sep 2026
+
+**Every commit SHA before that date is gone.** A clone or fork taken earlier
+cannot be pulled into; re-clone instead. There is one branch and there were no
+collaborators and no forks, so this cost nothing but is worth knowing if an old
+checkout turns up on another machine.
+
+The reason: this file was `CLAUDE.md` for the project's whole life, and its
+first table spelled out three absolute paths — the corpus folder, the project
+folder, and the Claude Code transcript directory. Two of them contained a
+Windows home directory, which is to say a username. Eighty-four of the
+ninety-eight commits carried it, so scrubbing the working copy fixed the file
+and published the username anyway the moment the repository went public.
+
+`git filter-repo --replace-text` over all ninety-eight commits, then
+`--replace-message` for one commit message that had the same string in it.
+Three things were checked before the force-push, and the second is the one
+that made it safe to do at all:
+
+- No blob in any commit still matches the username, the old project folder,
+  a Windows home path or a OneDrive documents path. The patterns are not
+  spelled out here, for the reason two bullets down.
+- **`HEAD^{tree}` is byte-identical to what it was before the rewrite**
+  (`29202632`). The working tree was already scrubbed, so a rewrite that
+  changed any file at HEAD would have been a rewrite that did something other
+  than what it was asked to. History changed; the checkout did not.
+- 98 commits in, 98 commits out.
+
+A mirror of the pre-rewrite repository was cloned first. It is in a scratch
+directory and will not survive, which is the intent — it existed to make the
+force-push reversible for the ten minutes it needed to be.
+
+Two footnotes worth keeping:
+
+- One of the eighty-four leaks was *added* during the cleanup. `git mv` stages
+  the rename immediately, so the commit made after the move but before the
+  scrub carried the unscrubbed file. **Staging is not the same clock as the
+  working tree, and a rename is staged the instant it is typed.**
+- The commit message that documented the scrub was the last place the username
+  survived — it quoted the string it was asserting the absence of. An assertion
+  written out in prose is still a copy of the thing.
+
+The author email was never a problem: all 98 commits are authored by
+`86988781+masinobi@users.noreply.github.com`, which is what GitHub hands out
+for exactly this reason.
 ## Environment traps
 
 These have each cost real time. Read before running anything.
