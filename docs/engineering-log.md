@@ -56,18 +56,25 @@ before assuming what "the outstanding work" refers to.
 
 ## The public demo
 
-A standalone single-file demo lives at the artifact URL above. It is **not in
-this repo** — it is a self-contained HTML reimplementation of the pacing engine,
-the scratchpad and all four checks, with a trigger rail so a visitor can fire any
-mechanism directly instead of waiting for it. Intervals are deliberately
-accelerated and the page says so.
+`demo/index.html` is a self-contained HTML reimplementation of the pacing
+engine, the scratchpad and all four checks, with a trigger rail so a visitor
+can fire any mechanism directly instead of waiting for it. Intervals are
+deliberately accelerated and the page says so. It drives the visitor's own
+`speechSynthesis`, so it really does speak.
 
-**The source now lives at `demo/index.html`.** It did not for the first six
-rounds — it was written to a session-scoped scratchpad, so every change meant
-fetching the published page back and rebuilding from it. That is committed now
-and the recovery dance is over: edit `demo/index.html`, then publish it passing
-the existing **URL**. Publishing a file path *without* the URL creates a second
-artifact instead of updating this one.
+**It deploys to https://masinobi.github.io/Focus-Parse/ by itself.** The `Demo`
+workflow publishes the `demo/` folder to GitHub Pages on any push that touches
+it. Edit the file, commit, push; there is nothing else to do and nothing to
+publish by hand.
+
+**The artifact route below is history, kept because the lessons are not.** For
+the first rounds this page lived only as a published artifact and every change
+meant fetching the live copy back and rebuilding from it. That is over. What
+survives is the part that still bites — a parallel implementation drifts, and
+it is the one thing here with no test of any kind.
+
+**What follows applied to the artifact and no longer describes how the demo
+ships. Read it only if it is ever published that way again.**
 
 **Favicon: 📖.** Recorded because it is not recoverable. The publish call
 requires one and neither `action: "list"` nor `action: "read"` returns the
@@ -109,10 +116,60 @@ Four things it cost to learn, all of which will bite again:
   and both were then proved load-bearing by disabling them and re-running
   (6 of 12 grid chunks diverge without the first; "4.2" is blanked out of
   "Section ____ defines the review cycle" without the second).
-- **The demo must be pure ASCII, and drifts.** The wrapper owns `<head>`, so the
-  page cannot declare a charset. Two em-dashes had got into JavaScript comments
-  in an earlier round — invisible there, and a trap the moment that text moves
-  into markup. Check with a byte scan before publishing, not by eye.
+- **The demo must be pure ASCII, and drifts.** The artifact wrapper owned
+  `<head>`, so the page could not declare a charset. Two em-dashes had got into
+  JavaScript comments in an earlier round — invisible there, and a trap the
+  moment that text moves into markup. Check with a byte scan, not by eye.
+  **On Pages this is no longer fatal**: GitHub serves the file as
+  `text/html; charset=utf-8`, and the file is currently pure ASCII anyway
+  (checked, 0 non-ASCII characters). It still has no `<meta charset>` of its
+  own, so it would break if opened over `file://`. Adding one is a one-line
+  fix nobody has made.
+
+## The repository went public on 13 Sep 2026
+
+**A push is outward-facing in three ways now, not one.** It updates a public
+repository, it runs CI, and it redeploys two hosted copies — the app on Vercel
+from any push to `main`, and the demo on Pages from any push touching `demo/`.
+Permission to push is still asked for each batch, and there is more riding on
+it than there was.
+
+**Nothing local may go in a commit again.** Absolute paths were rewritten out
+of all 98 commits (below) precisely because a public history publishes them.
+A path in a docstring is the likeliest way this recurs; the scanners all take
+their corpus as an argument, and they should stay that way.
+
+**Where presentation lives now.** `README.md` is a front page — the pitch, a
+recording, a quickstart, the feature list, known limits, the keyboard map —
+and everything that used to make it 1,896 lines is in `docs/`: `pacing.md`,
+`ingestion.md`, `enforcement-ladder.md`, `exam-prep.md`, `speech.md`,
+`storage.md`, and this file. `CONTRIBUTING.md` states what a finished change
+looks like here; `SECURITY.md` narrows the surface for anyone looking.
+
+**The docs have a checker, and it can go red.** Splitting one file into seven
+moved 41 sections and rewrote 25 cross-references, so every relative link and
+every `#anchor` across the markdown is verified rather than eyeballed. It
+lives in a scratch script rather than in the repo, which is its weakness:
+re-derive it, or better, commit one. It was proved to fail on a fabricated
+broken link and a fabricated bad anchor before being believed.
+
+**CI runs three of the five layers and says so in its own header.** Typecheck,
+lint, 477 tests. Not the scanners — no corpus on a runner, and the corpus is
+not redistributable. Not the probe — headless Chromium enumerates no voices.
+A badge claiming otherwise would be the green that cannot go red.
+
+**The hosted app runs with no API key, deliberately.** Without one
+`GET /api/check-summary` reports `{"configured":false}` and the *Check my
+recall* button is never rendered — it is gated on that reply, not merely
+disabled. A key set there would bill the owner's quota to every visitor who
+reaches a section boundary. `.vercelignore` exists to keep `.env*` off the
+platform even though `.gitignore` already would.
+
+**The Vercel CLI cannot deploy from this machine.** It builds locally before
+uploading and that build creates symlinks, which this Windows account is not
+permitted to do (`EPERM`, reproduced outside Vercel). The deployment is wired
+through Vercel's GitHub integration instead, which builds on their runners —
+so there is nothing to run locally and nothing that can break this way.
 
 ## The history was rewritten on 13 Sep 2026
 
@@ -1236,7 +1293,7 @@ the endpoint rejects it for new keys. **Restart the dev server after changing
 
 ## Outstanding
 
-Everything here is committed and pushed on `main`, through the fifteenth round.
+Everything here is committed and pushed on `main`, through the sixteenth round.
 Permission to push is asked for each batch: it is outward-facing, and one grant
 does not carry to the next.
 
@@ -1845,6 +1902,39 @@ can execute `useSpeechEngine`. Both were found from a reader's sentence, not
 from a test, and both were fixed by moving a decision into `speech-timing.ts`
 where a test can reach it. That module did not exist two rounds ago and now
 holds every number the speech path argues about.
+
+**The sixteenth round changed no application code at all.** It was the
+public-release round: the README split, the working notes moved here, the
+history rewritten, CI, the community files, a recording, and two deployments.
+Four things in it are worth carrying forward.
+
+**A scrub leaks while scrubbing, twice.** `git mv` stages a rename the instant
+it is typed, so the commit made after the move and before the scrub carried the
+unscrubbed file — one more leak added during the cleanup. Then the commit
+message documenting the scrub became the last place the string survived,
+because it quoted what it was asserting the absence of. Writing the note about
+*that* reproduced it a third time. **An assertion written out in prose is still
+a copy of the thing.**
+
+**Feedback arrived describing a repository that does not exist.** A review of
+the public repo flagged a file called `CLAUDE_4.md` and asked for a GIF that
+had been at the top of the README for hours. No such filename has ever been in
+this history. Two of its four points were already shipped before it wrote them.
+The architectural reading was fair and two suggestions were genuinely good —
+the blueprint gap deserved its place on the front page — but **check a review's
+specifics against the tree before acting on any of them.**
+
+**A workflow that fails on a settings state is worse than no workflow.** The
+Pages deploy went red on its first push because Pages cannot be enabled on a
+private repository on a free plan. It was made manual-only for one commit and
+put back the moment the setting existed. A red cross nobody can fix by reading
+the code teaches readers to ignore the crosses.
+
+**The lockfile drifts silently and CI is what catches it.** `package.json`
+gained `license` and `engines`; `package-lock.json` did not follow until an
+unrelated command rewrote it. `npm ci` validates one against the other, so that
+was a failure queued up for whoever pushed next, about something they had not
+touched.
 
 **Corpus finding worth remembering:** there is **no Schedule of Assessments grid
 anywhere in the user's PDFs** — the phrase appears seven times but always as
