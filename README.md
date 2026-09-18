@@ -7,10 +7,6 @@ markdown or plain-text document; FocusParse paces it with speech synthesis, lock
 word-level highlight to the audio, and refuses to let you coast past a section
 boundary without restating what you just heard.
 
-It was built to read the 524-page GCDMP for a clinical data management
-certification, which is why the checks are unusually hard to dismiss — but
-nothing in the pacing engine knows what it reads.
-
 **[Open the app →](https://focus-parse.vercel.app)** · **[or the guided demo →](https://masinobi.github.io/Focus-Parse/)**
 
 The first is the real thing: drop in a PDF, markdown or text file of your own
