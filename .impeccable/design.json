@@ -1,0 +1,372 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-05T09:18:38.367Z",
+  "title": "Design System: FocusParse",
+  "extensions": {
+    "colorMeta": {
+      "signal-amber": {
+        "role": "primary",
+        "displayName": "Signal Amber",
+        "canonical": "oklch(87.1% 0.164 92.1)",
+        "tonalRamp": [
+          "oklch(15% 0.082 92.1)",
+          "oklch(26% 0.082 92.1)",
+          "oklch(37% 0.164 92.1)",
+          "oklch(48% 0.164 92.1)",
+          "oklch(59% 0.164 92.1)",
+          "oklch(70% 0.164 92.1)",
+          "oklch(82% 0.164 92.1)",
+          "oklch(95% 0.082 92.1)"
+        ]
+      },
+      "paper": {
+        "role": "primary",
+        "displayName": "Paper",
+        "canonical": "oklch(98.5% 0.000 89.9)",
+        "tonalRamp": [
+          "oklch(15% 0.000 89.9)",
+          "oklch(26% 0.000 89.9)",
+          "oklch(37% 0.000 89.9)",
+          "oklch(48% 0.000 89.9)",
+          "oklch(59% 0.000 89.9)",
+          "oklch(70% 0.000 89.9)",
+          "oklch(82% 0.000 89.9)",
+          "oklch(95% 0.000 89.9)"
+        ]
+      },
+      "entity-sky": {
+        "role": "secondary",
+        "displayName": "Entity Sky",
+        "canonical": "oklch(74.6% 0.135 233.4)",
+        "tonalRamp": [
+          "oklch(15% 0.067 233.4)",
+          "oklch(26% 0.067 233.4)",
+          "oklch(37% 0.135 233.4)",
+          "oklch(48% 0.135 233.4)",
+          "oklch(59% 0.135 233.4)",
+          "oklch(70% 0.135 233.4)",
+          "oklch(82% 0.135 233.4)",
+          "oklch(95% 0.067 233.4)"
+        ]
+      },
+      "mechanism-violet": {
+        "role": "secondary",
+        "displayName": "Mechanism Violet",
+        "canonical": "oklch(69.4% 0.192 305.8)",
+        "tonalRamp": [
+          "oklch(15% 0.096 305.8)",
+          "oklch(26% 0.096 305.8)",
+          "oklch(37% 0.192 305.8)",
+          "oklch(48% 0.192 305.8)",
+          "oklch(59% 0.192 305.8)",
+          "oklch(70% 0.192 305.8)",
+          "oklch(82% 0.192 305.8)",
+          "oklch(95% 0.096 305.8)"
+        ]
+      },
+      "output-green": {
+        "role": "secondary",
+        "displayName": "Output Green",
+        "canonical": "oklch(80.0% 0.182 151.7)",
+        "tonalRamp": [
+          "oklch(15% 0.091 151.7)",
+          "oklch(26% 0.091 151.7)",
+          "oklch(37% 0.182 151.7)",
+          "oklch(48% 0.182 151.7)",
+          "oklch(59% 0.182 151.7)",
+          "oklch(70% 0.182 151.7)",
+          "oklch(82% 0.182 151.7)",
+          "oklch(95% 0.091 151.7)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(14.1% 0.004 285.8)",
+        "tonalRamp": [
+          "oklch(15% 0.002 285.8)",
+          "oklch(26% 0.002 285.8)",
+          "oklch(37% 0.004 285.8)",
+          "oklch(48% 0.004 285.8)",
+          "oklch(59% 0.004 285.8)",
+          "oklch(70% 0.004 285.8)",
+          "oklch(82% 0.004 285.8)",
+          "oklch(95% 0.002 285.8)"
+        ]
+      },
+      "graphite": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "oklch(27.4% 0.005 286.0)",
+        "tonalRamp": [
+          "oklch(15% 0.003 286.0)",
+          "oklch(26% 0.003 286.0)",
+          "oklch(37% 0.005 286.0)",
+          "oklch(48% 0.005 286.0)",
+          "oklch(59% 0.005 286.0)",
+          "oklch(70% 0.005 286.0)",
+          "oklch(82% 0.005 286.0)",
+          "oklch(95% 0.003 286.0)"
+        ]
+      },
+      "pewter": {
+        "role": "neutral",
+        "displayName": "Pewter",
+        "canonical": "oklch(71.2% 0.013 286.1)",
+        "tonalRamp": [
+          "oklch(15% 0.006 286.1)",
+          "oklch(26% 0.006 286.1)",
+          "oklch(37% 0.013 286.1)",
+          "oklch(48% 0.013 286.1)",
+          "oklch(59% 0.013 286.1)",
+          "oklch(70% 0.013 286.1)",
+          "oklch(82% 0.013 286.1)",
+          "oklch(95% 0.006 286.1)"
+        ]
+      },
+      "alarm-oxblood": {
+        "role": "neutral",
+        "displayName": "Alarm Oxblood",
+        "canonical": "oklch(39.6% 0.133 25.7)",
+        "tonalRamp": [
+          "oklch(15% 0.067 25.7)",
+          "oklch(26% 0.067 25.7)",
+          "oklch(37% 0.133 25.7)",
+          "oklch(48% 0.133 25.7)",
+          "oklch(59% 0.133 25.7)",
+          "oklch(70% 0.133 25.7)",
+          "oklch(82% 0.133 25.7)",
+          "oklch(95% 0.067 25.7)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The single RSVP word, in the reading serif. Used nowhere else."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Document # headings in the reader, the intercept question, the returning home's wordmark, the first-run sample heading."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Document ## headings in the reader."
+      },
+      "reading": {
+        "displayName": "Reading",
+        "purpose": "The document body: serif, 17px, line-height 1.85, max 62ch."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Everything the app says: buttons, rows, dialog prose."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase tracked pane and lane headings."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Key hints, .sql blocks, preformatted text."
+      }
+    },
+    "shadows": [
+      {
+        "name": "float",
+        "value": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+        "purpose": "Presence pill, missed-check toast, modal dialogs: things that interrupt."
+      },
+      {
+        "name": "rest",
+        "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        "purpose": "Incidental; effectively invisible on Ink."
+      },
+      {
+        "name": "veil",
+        "value": "background rgb(0 0 0 / 0.8); backdrop-filter blur(4px)",
+        "purpose": "Modal overlay behind dialogs."
+      }
+    ],
+    "motion": [
+      {
+        "name": "caret-snap",
+        "value": "none",
+        "purpose": "The block caret moves between words with no transition; the hard edge is the rhythm."
+      },
+      {
+        "name": "word-tint",
+        "value": "color 75ms",
+        "purpose": "Highlight-mode colour change on the active word."
+      },
+      {
+        "name": "syllabic-pulse",
+        "value": "scale 1 -> 1.1 -> 1, ease-out, duration = measured pace (default 260ms)",
+        "purpose": "Beat on the active word; disabled under prefers-reduced-motion."
+      },
+      {
+        "name": "rsvp-in",
+        "value": "90ms ease-out; opacity 0 -> 1, translateY 2px -> 0",
+        "purpose": "Each RSVP word arriving."
+      },
+      {
+        "name": "node-in",
+        "value": "160ms cubic-bezier(0.2, 0.8, 0.2, 1); opacity 0 -> 1, translateY 6px -> 0, scale 0.98 -> 1",
+        "purpose": "Captured nodes and the presence pill entering."
+      },
+      {
+        "name": "dialog",
+        "value": "200ms fade + zoom 95% -> 100%",
+        "purpose": "Radix dialog open/close."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "container-2xl",
+        "value": "1400px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one forward action on a surface: Play, Parse document, submit a summary.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"6 3 20 12 6 21 6 3\"/></svg>Play</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;gap:8px;height:40px;padding:8px 16px;border:0;border-radius:6px;background:#fafafa;color:#18181b;font:500 14px/20px ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",Inter,Roboto,Arial,sans-serif;cursor:pointer;transition:background-color .15s}.ds-btn-primary:hover{background:hsl(0 0% 98% / .9)}.ds-btn-primary:focus-visible{outline:none;box-shadow:0 0 0 2px #09090b,0 0 0 4px #d4d4d8}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary actions: Set a date, Choose file, Load the sample.",
+      "html": "<button class=\"ds-btn-outline\">Set a date</button>",
+      "css": ".ds-btn-outline{height:40px;padding:8px 16px;border:1px solid #27272a;border-radius:6px;background:#09090b;color:#fafafa;font:500 14px/20px ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",Inter,Roboto,Arial,sans-serif;cursor:pointer;transition:background-color .15s}.ds-btn-outline:hover{background:#27272a}.ds-btn-outline:focus-visible{outline:none;box-shadow:0 0 0 2px #09090b,0 0 0 4px #d4d4d8}"
+    },
+    {
+      "name": "View Toggle",
+      "kind": "nav",
+      "refersTo": "button-ghost-hover",
+      "description": "Segmented group for Standard / Bionic / RSVP; the selected segment fills with Graphite.",
+      "html": "<div class=\"ds-seg\" role=\"group\" aria-label=\"View\"><button aria-pressed=\"true\">Standard</button><button aria-pressed=\"false\">Bionic</button><button aria-pressed=\"false\">RSVP</button></div>",
+      "css": ".ds-seg{display:inline-flex;padding:2px;gap:2px;border:1px solid #27272a;border-radius:6px;background:#09090b}.ds-seg button{height:28px;padding:0 10px;border:0;border-radius:4px;background:transparent;color:#a1a1aa;font:500 12px/16px ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",Inter,Roboto,Arial,sans-serif;cursor:pointer}.ds-seg button:hover{color:#fafafa}.ds-seg button[aria-pressed=true]{background:#27272a;color:#fafafa}.ds-seg button:focus-visible{outline:2px solid #d4d4d8;outline-offset:1px}"
+    },
+    {
+      "name": "Scratchpad Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Text field and scratchpad: Ink fill, Graphite stroke, instructional placeholder.",
+      "html": "<textarea class=\"ds-input\" rows=\"3\" placeholder=\"Type the idea, then /e, /m or /o to commit it — or /p to park it…\"></textarea>",
+      "css": ".ds-input{width:320px;min-height:72px;padding:8px 12px;border:1px solid #27272a;border-radius:6px;background:#09090b;color:#fafafa;font:400 14px/20px ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",Inter,Roboto,Arial,sans-serif;resize:none}.ds-input::placeholder{color:#a1a1aa}.ds-input:focus-visible{outline:none;box-shadow:0 0 0 2px #09090b,0 0 0 4px #d4d4d8}"
+    },
+    {
+      "name": "Capture Tags",
+      "kind": "chip",
+      "refersTo": "badge-entity",
+      "description": "Entity / Mechanism / Output chips on captured nodes.",
+      "html": "<span class=\"ds-tag ds-tag-e\">/e Entity</span> <span class=\"ds-tag ds-tag-m\">/m Mechanism</span> <span class=\"ds-tag ds-tag-o\">/o Output</span>",
+      "css": ".ds-tag{display:inline-flex;align-items:center;padding:0 6px;border-radius:6px;font:600 12px/18px ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",Inter,Roboto,Arial,sans-serif}.ds-tag-e{background:#3ebaf4;color:#021b27}.ds-tag-m{background:#ba77f9;color:#1a0330}.ds-tag-o{background:#4ade80;color:#042510}"
+    },
+    {
+      "name": "Key Hint",
+      "kind": "custom",
+      "refersTo": "kbd-hint",
+      "description": "Keyboard hint strip pinned under the reader.",
+      "html": "<span class=\"ds-hint\"><kbd>Space</kbd>play / pause</span> <span class=\"ds-hint\"><kbd>V</kbd>presence check</span>",
+      "css": ".ds-hint{display:inline-flex;align-items:center;gap:6px;margin-right:16px;color:#a1a1aa;font:400 12px/16px ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",Inter,Roboto,Arial,sans-serif}.ds-hint kbd{padding:2px 6px;border:1px solid #27272a;border-radius:4px;background:#27272a;color:#a1a1aa;font:400 11px/14px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}"
+    },
+    {
+      "name": "Block Caret",
+      "kind": "custom",
+      "refersTo": "word-caret",
+      "description": "The word being spoken: a square Signal Amber block that snaps between words with no transition.",
+      "html": "<p class=\"ds-read\">The sponsor retains <span class=\"ds-caret\">accountability</span> for trial data even when tasks are delegated.</p>",
+      "css": ".ds-read{max-width:62ch;margin:0;color:hsl(0 0% 98% / .9);font:400 17px/1.85 \"Iowan Old Style\",Charter,Georgia,Cambria,serif}.ds-caret{display:inline-block;padding:0 1px;background:#fbd037;color:#09090b;font-weight:500;border-radius:0;transition:none}"
+    },
+    {
+      "name": "Presence Pill",
+      "kind": "custom",
+      "refersTo": "presence-pill",
+      "description": "Floating 'Still there?' check: the only thing that floats while you read.",
+      "html": "<div class=\"ds-pill\" role=\"status\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 11V6a2 2 0 0 0-4 0v5\"/><path d=\"M14 10V4a2 2 0 0 0-4 0v6\"/><path d=\"M10 10.5V6a2 2 0 0 0-4 0v8\"/><path d=\"M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15\"/></svg><span>Still there?</span><kbd>V</kbd></div>",
+      "css": ".ds-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid #fbd037;border-radius:9999px;background:hsl(240 10% 3.9% / .95);color:#fbd037;font:500 14px/20px ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",Inter,Roboto,Arial,sans-serif;box-shadow:0 10px 15px -3px rgb(0 0 0 / .1),0 4px 6px -4px rgb(0 0 0 / .1);backdrop-filter:blur(8px)}.ds-pill kbd{padding:2px 6px;border:1px solid currentColor;border-radius:4px;font:400 10px/12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}"
+    },
+    {
+      "name": "Feature Row",
+      "kind": "card",
+      "refersTo": "button-outline",
+      "description": "Home-screen entry: a bordered full-width row with icon, title, caption and count.",
+      "html": "<button class=\"ds-row\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z\"/><path d=\"M22 10v6\"/><path d=\"M6 12.5V16a6 3 0 0 0 12 0v-3.5\"/></svg><span class=\"ds-row-t\">Mock exam<span>A timed paper drawn across every document</span></span><span class=\"ds-row-n\">12 docs</span></button>",
+      "css": ".ds-row{display:flex;align-items:center;gap:12px;width:420px;padding:12px 16px;border:1px solid #27272a;border-radius:8px;background:#09090b;color:#a1a1aa;text-align:left;cursor:pointer;transition:background-color .15s}.ds-row:hover{background:hsl(240 3.7% 15.9% / .6)}.ds-row:focus-visible{outline:none;box-shadow:0 0 0 2px #09090b,0 0 0 4px #d4d4d8}.ds-row-t{flex:1;color:#fafafa;font:500 14px/20px ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",Inter,Roboto,Arial,sans-serif}.ds-row-t span{display:block;color:#a1a1aa;font-weight:400;font-size:12px;line-height:16px}.ds-row-n{color:#a1a1aa;font:400 12px/16px ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",Inter,Roboto,Arial,sans-serif}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Kind Invigilator",
+    "overview": "FocusParse is an exam hall run by a proctor who wants you to pass. The room is quiet and dark, the document is the only thing lit, and nothing on the walls asks for attention. Then, at a section boundary, a spot check or a silence that lasts too long, the invigilator steps forward: the screen stops, the question fills it, and there is no way round it except answering. The interface's whole personality lives in that contrast. It is calm for long stretches, unmistakable when it interrupts, and never accusatory: someone coming back after a break gets a replay, not a reprimand.\n\nThe system is dense, flat and built on zinc neutrals. It is a working tool for long sessions, so the chrome recedes: hairline borders, tonal panels, one warm colour. That colour, Signal Amber, means \"here, now\": the word being spoken, or a moment that needs your answer. Typography splits into two voices. The serif belongs to the document being read; the system sans belongs to everything the app says about it.\n\nThe interface reports honestly. Numbers that are estimates say \"est.\", a target the voice cannot reach is struck through beside what it will really do, and coverage shows what was *verified*, not how far the caret travelled. Visual design follows suit: a display that changes itself on a guess about attention was explicitly refused, and so was a ticking clock in the field of view.",
+    "keyCharacteristics": [
+      "Dark by default today. Light is meant to be a first-class reader's choice but is not yet designed.",
+      "One warm accent (Signal Amber) against cool zinc neutrals.",
+      "Serif for the text being read; sans for the instrument around it.",
+      "Flat at rest. Anything that floats is interrupting you.",
+      "Dashed borders mean \"empty, optional or not yet verified\".",
+      "Keyboard-first: every reading and check path shows its key."
+    ],
+    "rules": [
+      {
+        "name": "The Signal Rule",
+        "body": "Signal Amber means \"here, now, or answer me\". It never decorates, never marks a category, and never appears on a screen where neither the reading position nor a demand for a response is present. (The acronym *safety* badge currently borrows it, which is the one standing exception and should be retired.)",
+        "section": "colors"
+      },
+      {
+        "name": "The Oxblood-Is-A-Floor Rule",
+        "body": "Alarm Oxblood is a fill. As text on Ink it measured 1.86:1 and was caught by the probe once already. Red *text* needs a lighter red that clears 4.5:1. The top bar's clamped-wpm figure and the \"Presence check missed\" toast still use it as text, and should be fixed.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Voices Rule",
+        "body": "Serif is only ever the text being read (and the RSVP word). Everything the app says (controls, counts, headings it recovered, feedback) is sans. Mixing them blurs the line between the document and the instrument.",
+        "section": "typography"
+      },
+      {
+        "name": "The 62ch Rule",
+        "body": "The reading measure is capped at 62 characters. A wide line is the enemy of pacing; never widen it to fill a pane.",
+        "section": "typography"
+      },
+      {
+        "name": "The 12px Floor",
+        "body": "The user's direction for controls is \"calm but unmistakable\", and dyslexia and reading load are hard requirements. The incumbent UI leans on 10px and 11px text (about 70 instances: badges, section metadata, key hints, node captions), which falls short of both. New work sets nothing below 12px. Existing micro-text is design debt, to be raised when touched.",
+        "section": "typography"
+      },
+      {
+        "name": "The Interruption Floats Rule",
+        "body": "Anything that floats over the reading is something the reader must deal with now. Nothing decorative floats. Keep this pairing if layering is introduced, so elevation keeps its meaning.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** keep Signal Amber for the reading position and for demands on the reader (the Signal Rule).",
+      "**Do** set prose being read in the serif at 17px / 1.85, capped at 62ch, and everything the app says in the system sans (the Two Voices Rule).",
+      "**Do** make interruptions full-screen or floating, and keep calm surfaces flat. If you add layering, elevation must still mean \"this needs you\".",
+      "**Do** use a dashed border for empty, optional or unverified states, and a solid one for settled structure.",
+      "**Do** give every reading and check action a visible key hint, and keep the 2px offset Focus Ring on every focusable control.",
+      "**Do** honour `prefers-reduced-motion`: any motion tied to the caret must have a still fallback.",
+      "**Do** show estimates as estimates (\"est.\", struck-through unreachable targets). Visual honesty is part of the system.",
+      "**Do** set new UI text at 12px or above, with hit targets that a tired or dyslexic reader cannot miss (the 12px Floor).",
+      "**Do** design both themes properly. Light is meant to be first-class and needs its own decisions, not an automatic inversion."
+    ],
+    "donts": [
+      "**Don't** use Alarm Oxblood as text on Ink (1.86:1). Use a red that clears 4.5:1.",
+      "**Don't** put a ticking clock or countdown in the field of view. Distances move only when a sentence ends.",
+      "**Don't** let the display change itself on a guess about attention (adaptive contrast boosting was refused because nothing can verify it).",
+      "**Don't** soften the caret: no rounding or transition on the block caret, and no easing between words.",
+      "**Don't** widen the reading measure to fill a pane, or set reading text in the UI sans.",
+      "**Don't** ship the light tokens as they stand. Signal Amber Light measures 1.57:1 on white and Entity Sky 2.86:1, so neither can be text in a light theme.",
+      "**Don't** centre content vertically with `justify-center` inside a scrolling container. It clips what overflows above and makes controls unreachable.",
+      "**Don't** let anything purely decorative float over the reading pane."
+    ]
+  }
+}
