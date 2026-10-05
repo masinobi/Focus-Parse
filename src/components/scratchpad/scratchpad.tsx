@@ -182,7 +182,7 @@ export function Scratchpad() {
             onClick={() => setShowParked((v) => !v)}
             aria-pressed={showParked}
             className={cn(
-              "flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] tabular-nums",
+              "flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs tabular-nums",
               showParked
                 ? "border-primary/50 bg-primary/10 text-foreground"
                 : "text-muted-foreground hover:bg-accent"
@@ -206,7 +206,7 @@ export function Scratchpad() {
                 key={id}
                 variant={mode === id ? "secondary" : "ghost"}
                 size="sm"
-                className="h-6 gap-1 px-1.5 text-[11px]"
+                className="h-6 gap-1 px-1.5 text-xs"
                 onClick={() => setMode(id)}
                 aria-pressed={mode === id}
                 title={`${label} view`}
@@ -222,7 +222,7 @@ export function Scratchpad() {
               key={tag}
               variant={counts[tag] > 0 ? tag : "outline"}
               className={cn(
-                "gap-1 px-1.5 py-0 text-[10px] tabular-nums",
+                "gap-1 px-1.5 py-0 text-xs tabular-nums",
                 counts[tag] === 0 && "text-muted-foreground"
               )}
             >
@@ -240,7 +240,7 @@ export function Scratchpad() {
           would start competing for the attention it exists to protect. */}
       {showParked && parked.length > 0 && (
         <div className="fp-scroll max-h-48 shrink-0 overflow-y-auto border-b bg-background/40 px-4 py-3">
-          <p className="mb-2 text-[11px] text-muted-foreground">
+          <p className="mb-2 text-xs text-muted-foreground">
             Parked while reading. Not part of the map.
             {doc && tokenIndex >= doc.tokens.length - 1 && (
               <span className="ml-1">That is the end of the document.</span>
@@ -256,7 +256,7 @@ export function Scratchpad() {
                   title={`Back to ${sectionTitle(node.section)}`}
                 >
                   <span className="block">{node.text}</span>
-                  <span className="block truncate text-[10px] text-muted-foreground">
+                  <span className="block truncate text-xs text-muted-foreground">
                     {sectionTitle(node.section)}
                   </span>
                 </button>
@@ -290,7 +290,10 @@ export function Scratchpad() {
       ) : (
       <div ref={listRef} className="fp-scroll flex-1 space-y-2.5 overflow-y-auto px-4 py-4">
         {nodes.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+          // `min-h-full`, not `h-full`: a centred box pinned to the scroller's
+          // height overflows above its origin on a short pane, where no scroll
+          // can reach it. Growing with its content centres only spare space.
+          <div className="flex min-h-full flex-col items-center justify-center gap-3 text-center">
             <p className="max-w-xs text-sm text-muted-foreground">
               Restate what you hear, in your own words, while it is still moving.
             </p>
@@ -304,30 +307,32 @@ export function Scratchpad() {
                 </span>{" "}
                 makes
               </figcaption>
-              <p className="mt-2 flex items-start gap-2 text-sm">
+              {/* A div: Badge renders one, and a div inside a <p> is invalid
+                  HTML that React reports as a hydration error. */}
+              <div className="mt-2 flex items-start gap-2 text-sm">
                 <Badge variant="mechanism" className="shrink-0 px-1.5 py-0 text-xs">
                   Mechanism
                 </Badge>
                 <span>attention fails first</span>
-              </p>
+              </div>
             </figure>
             <div className="space-y-1.5 text-left text-xs text-muted-foreground">
               {(Object.keys(TAG_META) as LogicTag[]).map((tag) => (
                 <p key={tag} className="flex items-center gap-2">
-                  <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-[10px]">
+                  <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-xs">
                     {TAG_META[tag].key}
                   </kbd>
                   <span>{TAG_META[tag].label}</span>
                 </p>
               ))}
               <p className="flex items-center gap-2 pt-1">
-                <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-[10px]">
+                <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-xs">
                   Enter
                 </kbd>
                 <span>Untagged note</span>
               </p>
               <p className="flex items-center gap-2">
-                <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-[10px]">
+                <kbd className="rounded border bg-background px-1.5 py-0.5 font-mono text-xs">
                   /p
                 </kbd>
                 <span>Park an off-topic thought</span>
@@ -358,7 +363,7 @@ export function Scratchpad() {
             hands the chain to the new node, so /e /m /o in a row builds
             entity → mechanism → output with no extra keystrokes. */}
         {headNode ? (
-          <div className="mb-2 flex items-center gap-2 rounded border border-primary/40 bg-primary/5 px-2 py-1 text-[11px]">
+          <div className="mb-2 flex items-center gap-2 rounded border border-primary/40 bg-primary/5 px-2 py-1 text-xs">
             <Link2 className="h-3 w-3 shrink-0 text-primary" />
             <span className="shrink-0 text-muted-foreground">Chaining from</span>
             <span className="min-w-0 flex-1 truncate">{headNode.text}</span>
@@ -377,7 +382,7 @@ export function Scratchpad() {
             <button
               type="button"
               onClick={() => setChainHead(nodes[nodes.length - 1].id)}
-              className="mb-2 flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+              className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
               title="Attach the next capture to the last one"
             >
               <Link2 className="h-3 w-3" />
@@ -417,7 +422,7 @@ export function Scratchpad() {
             );
           })}
 
-          <span className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
             <CornerDownLeft className="h-3 w-3" />
             commit · Shift+Enter newline
           </span>

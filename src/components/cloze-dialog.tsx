@@ -106,9 +106,9 @@ export function ClozeDialog() {
         onEscapeKeyDown={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
-        className="flex h-[100dvh] max-h-none w-screen max-w-none flex-col justify-center overflow-y-auto rounded-none border-0 p-0 sm:rounded-none"
+        className="flex h-[100dvh] max-h-none w-screen max-w-none flex-col overflow-y-auto rounded-none border-0 p-0 sm:rounded-none"
       >
-        <div className="mx-auto w-full max-w-2xl px-6 py-10">
+        <div className="mx-auto my-auto w-full max-w-2xl px-6 py-10">
           <DialogHeader className="text-left">
             <div className="mb-3 flex items-center gap-2">
               <SquarePen className="h-4 w-4 text-[hsl(var(--pace-active))]" />
@@ -157,7 +157,7 @@ export function ClozeDialog() {
                         "mx-1 w-40 rounded-[3px] border-b-2 bg-transparent px-1 py-0 font-sans text-base outline-none transition-colors",
                         state === null && "border-[hsl(var(--pace-active))] focus:bg-accent/40",
                         state === true && "border-output text-output",
-                        state === false && "border-destructive text-destructive line-through"
+                        state === false && "border-destructive text-alarm line-through"
                       )}
                     />
                     {after}
@@ -165,7 +165,7 @@ export function ClozeDialog() {
 
                   {state === false && (
                     <p className="mt-1.5 flex items-center gap-2 text-sm">
-                      <X className="h-3.5 w-3.5 shrink-0 text-destructive" />
+                      <X className="h-3.5 w-3.5 shrink-0 text-alarm" />
                       <span className="text-muted-foreground">
                         It was <span className="text-foreground">{blank.answer}</span>.
                       </span>

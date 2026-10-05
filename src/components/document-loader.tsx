@@ -121,17 +121,22 @@ export function DocumentLoader() {
     };
   }, []);
 
+  // An empty library: `FirstRun` stands in for the home, and a document opened
+  // from it reads without the reader's chrome until its first check (see
+  // `firstSession` in the store).
+  const firstRun = recent.length === 0 && due === 0 && papers === 0;
+
   const ingest = React.useCallback(
     (source: string, name?: string) => {
       if (!source.trim()) return;
       const doc = parseDocument(source, name);
-      loadDoc(doc);
+      loadDoc(doc, { firstSession: firstRun });
       // A freshly parsed document has no stored session, but the session
       // writer waits on hydration having happened at all — so every load path
       // goes through it, including the one with nothing to restore.
       void hydrateSession(doc.id);
     },
-    [loadDoc, hydrateSession]
+    [loadDoc, hydrateSession, firstRun]
   );
 
   const readFile = React.useCallback(
@@ -271,7 +276,7 @@ export function DocumentLoader() {
   // an exam date with nothing to schedule, a backup of nothing — so none of it
   // is shown until there is something for it to be about. Reviews due or a
   // paper sat count as a library: deleting every document must not hide them.
-  if (recent.length === 0 && due === 0 && papers === 0) {
+  if (firstRun) {
     return (
       <FirstRun
         ingest={ingest}
@@ -557,7 +562,7 @@ export function DocumentLoader() {
           )}
 
           {error && (
-            <p className="mt-3 max-w-sm text-center text-xs text-destructive">
+            <p className="mt-3 max-w-sm text-center text-xs text-alarm">
               {error}
             </p>
           )}
@@ -670,7 +675,7 @@ export function DocumentLoader() {
                   <button
                     type="button"
                     onClick={() => void forget(item.id)}
-                    className="mr-2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+                    className="mr-2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/15 hover:text-alarm focus:opacity-100 group-hover:opacity-100"
                     aria-label={`Remove ${item.title}`}
                     title="Remove from this list"
                   >

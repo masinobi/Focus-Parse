@@ -57,7 +57,7 @@ const VERDICT_META: Record<
 > = {
   accurate: { label: "Accurate", icon: Check, tone: "text-output" },
   partial: { label: "Partial", icon: TriangleAlert, tone: "text-[hsl(var(--pace-active))]" },
-  off_track: { label: "Off track", icon: AlertTriangle, tone: "text-destructive" },
+  off_track: { label: "Off track", icon: AlertTriangle, tone: "text-alarm" },
 };
 
 /**
@@ -363,9 +363,9 @@ export function InterceptDialog() {
         onPointerDownOutside={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
         data-check="intercept"
-        className="flex h-[100dvh] max-h-none w-screen max-w-none flex-col justify-center overflow-y-auto rounded-none border-0 p-0 sm:rounded-none"
+        className="flex h-[100dvh] max-h-none w-screen max-w-none flex-col overflow-y-auto rounded-none border-0 p-0 sm:rounded-none"
       >
-        <div className="mx-auto w-full max-w-2xl px-6 py-10">
+        <div className="mx-auto my-auto w-full max-w-2xl px-6 py-10">
           <DialogHeader className="text-left">
             {/* No label above the question: the shield and the question say
                 what this is, and "intercept" is the app's word, not the
@@ -389,14 +389,17 @@ export function InterceptDialog() {
               {section
                 ? `${section.wordCount.toLocaleString()} words just went past. `
                 : ""}
-              Write it from memory, before you look back at the text. Playback stays
-              paused until you do.
+              Write it from memory.
             </DialogDescription>
+            {/* The rule, said once, and in the same breath as the way out —
+                so the exit below reads as part of the rule rather than as a
+                bluff called on it. */}
             {firstTime && (
               <p className="mt-3 rounded-md border border-dashed px-3 py-2 text-sm leading-relaxed text-muted-foreground">
-                <span className="text-foreground">This is a check.</span> One
-                sentence, at least four words, about what you just heard. There is
-                no skipping it: answering is how the section counts as read.
+                <span className="text-foreground">This is a check.</span> Answering
+                is how the section counts as read, and reading goes on past it once
+                you have. Not now? Come back to it later: the section plays again
+                from its start.
               </p>
             )}
           </DialogHeader>
@@ -424,8 +427,10 @@ export function InterceptDialog() {
 
           <div className="mt-2 flex items-center gap-3 text-xs">
             <span
+              id="intercept-count"
+              aria-live="polite"
               className={
-                touched && !valid ? "text-destructive" : "text-muted-foreground"
+                touched && !valid ? "text-alarm" : "text-muted-foreground"
               }
             >
               {words} {words === 1 ? "word" : "words"}
@@ -441,7 +446,7 @@ export function InterceptDialog() {
                 onClick={toggleListening}
                 aria-pressed={listening}
                 className={cn(
-                  "flex items-center gap-1.5 rounded border px-1.5 py-0.5",
+                  "flex items-center gap-1.5 rounded border px-2 py-1",
                   listening
                     ? "border-destructive/60 bg-destructive/20 text-foreground"
                     : "text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -469,7 +474,7 @@ export function InterceptDialog() {
               <button
                 type="button"
                 onClick={() => setStuck(true)}
-                className="flex items-center gap-1.5 rounded border px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                className="flex items-center gap-1.5 rounded border px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground"
                 title="Show the terms this section used. Recorded with your answer, because it makes this a cued recall."
               >
                 <LifeBuoy className="h-3 w-3" />
@@ -524,7 +529,7 @@ export function InterceptDialog() {
               data-anchor-panel
               className="mt-3 rounded-md border border-dashed bg-muted/20 p-3"
             >
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 This section talked about
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -564,14 +569,14 @@ export function InterceptDialog() {
                   {node.tag ? (
                     <Badge
                       variant={node.tag}
-                      className="mt-[2px] shrink-0 px-1.5 py-0 text-[10px]"
+                      className="mt-[2px] shrink-0 px-1.5 py-0 text-xs"
                     >
                       {TAG_META[node.tag].label}
                     </Badge>
                   ) : (
                     <Badge
                       variant="outline"
-                      className="mt-[2px] shrink-0 px-1.5 py-0 text-[10px] font-normal"
+                      className="mt-[2px] shrink-0 px-1.5 py-0 text-xs font-normal"
                     >
                       note
                     </Badge>
@@ -602,7 +607,7 @@ export function InterceptDialog() {
                   how a reader learns to stop believing the check. */}
               {verdict.rationale !== "not_stated" && (
                 <div className="mt-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {verdict.rationale === "captured"
                       ? "You got the why"
                       : "The why"}
@@ -625,7 +630,7 @@ export function InterceptDialog() {
 
               {verdict.missed.length > 0 && (
                 <div className="mt-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Missed
                   </p>
                   <ul className="mt-1 space-y-0.5">
@@ -640,7 +645,7 @@ export function InterceptDialog() {
 
               {verdict.contradictions.length > 0 && (
                 <div className="mt-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-destructive">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-alarm">
                     Not supported by the text
                   </p>
                   <ul className="mt-1 space-y-0.5">
@@ -656,11 +661,14 @@ export function InterceptDialog() {
           )}
 
           {checkError && (
-            <p className="mt-3 text-xs text-destructive">{checkError}</p>
+            <p className="mt-3 text-xs text-alarm">{checkError}</p>
           )}
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <Button onClick={submit} disabled={!valid} className="gap-2">
+            {/* Never greyed out. A disabled primary left the exit as the
+                brightest thing on the page at the moment the answer matters
+                most; pressed too early, it says what is missing instead. */}
+            <Button onClick={submit} aria-describedby="intercept-count" className="gap-2">
               Log it and resume
             </Button>
 
@@ -681,8 +689,13 @@ export function InterceptDialog() {
               </Button>
             )}
 
-            <Button variant="ghost" onClick={abandonIntercept}>
-              Stop reading here
+            <Button
+              variant="ghost"
+              onClick={abandonIntercept}
+              className="text-muted-foreground"
+              title="Pauses at the start of this section. Press Play to hear it again."
+            >
+              Come back to this later
             </Button>
 
             <span className="ml-auto hidden text-xs text-muted-foreground sm:block">

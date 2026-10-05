@@ -61,7 +61,7 @@ const VERDICT_STYLE: Record<Verdict, { label: string; className: string }> = {
     label: "Estimator only",
     className: "text-muted-foreground border-muted-foreground",
   },
-  failed: { label: "Failed", className: "text-destructive border-destructive" },
+  failed: { label: "Failed", className: "text-alarm border-destructive" },
 };
 
 export default function VoiceCheckPage() {
@@ -175,7 +175,7 @@ export default function VoiceCheckPage() {
         {supported === null ? (
           <p className="mt-6 text-sm text-muted-foreground">Checking for speech support&hellip;</p>
         ) : !supported ? (
-          <p className="mt-6 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          <p className="mt-6 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-alarm">
             This browser exposes no speech synthesis, so there is nothing to measure.
           </p>
         ) : (

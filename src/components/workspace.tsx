@@ -23,17 +23,37 @@ import { useSpeechEngine } from "@/hooks/useSpeechEngine";
 import { useReentry } from "@/hooks/useReentry";
 import { useVigilance } from "@/hooks/useVigilance";
 import { db } from "@/lib/db";
+import { cn } from "@/lib/utils";
 import { useFocusStore } from "@/store/useFocusStore";
 
 const SESSION_WRITE_DEBOUNCE_MS = 700;
 
-const KEY_HINTS: [string, string][] = [
-  ["Space", "play / pause"],
-  ["← →", "sentence"],
-  ["⇧ ← →", "section"],
-  ["↑ ↓", "words per minute"],
-  ["V", "presence check"],
+/** The third field marks the keys a first session shows: the ones for listening. */
+const KEY_HINTS: [string, string, boolean][] = [
+  ["Space", "play / pause", true],
+  ["← →", "sentence", true],
+  ["⇧ ← →", "section", false],
+  ["↑ ↓", "words per minute", true],
+  ["V", "presence check", false],
 ];
+
+/**
+ * Below this the split cannot hold a reading column: at 375px the reader came
+ * out 0px wide and set one word per line. One pane at a time instead.
+ */
+const NARROW = "(max-width: 767px)";
+
+function useNarrow(): boolean {
+  return React.useSyncExternalStore(
+    (notify) => {
+      const query = window.matchMedia(NARROW);
+      query.addEventListener("change", notify);
+      return () => query.removeEventListener("change", notify);
+    },
+    () => window.matchMedia(NARROW).matches,
+    () => false
+  );
+}
 
 export function Workspace() {
   const doc = useFocusStore((s) => s.doc);
@@ -44,6 +64,9 @@ export function Workspace() {
   const gridAttempts = useFocusStore((s) => s.gridAttempts);
   const clozeChecks = useFocusStore((s) => s.clozeChecks);
   const hydrated = useFocusStore((s) => s.hydrated);
+  const firstSession = useFocusStore((s) => s.firstSession);
+  const narrow = useNarrow();
+  const [pane, setPane] = React.useState<"read" | "notes">("read");
 
   const refreshWeakTerms = useFocusStore((s) => s.refreshWeakTerms);
   const hydratePace = useFocusStore((s) => s.hydratePace);
@@ -107,6 +130,31 @@ export function Workspace() {
     );
   }
 
+  const nodeCount = nodes.filter((n) => !n.parked).length;
+
+  // The structure map, the reader and the key strip: one pane on a phone, the
+  // left half of the split everywhere else. The strip is for keyboards, so a
+  // touch screen does not get it.
+  const reading = (
+    <div className="flex h-full flex-col">
+      <div className="relative flex min-h-0 flex-1">
+        <StructureSidebar />
+        <div className="min-w-0 flex-1">
+          <ReaderPane />
+        </div>
+      </div>
+
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t px-4 py-1.5 text-xs text-muted-foreground [@media(pointer:coarse)]:hidden">
+        {KEY_HINTS.filter(([, , listening]) => listening || !firstSession).map(([key, label]) => (
+          <span key={key} className="flex items-center gap-1.5">
+            <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">{key}</kbd>
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <main className="flex h-[100dvh] flex-col">
       <TopBar
@@ -116,39 +164,54 @@ export function Workspace() {
         noise={noise}
       />
 
-      <div className="min-h-0 flex-1">
-        <ResizablePanelGroup direction="horizontal" autoSaveId="focusparse:panes">
-          {/* Ingestion */}
-          <ResizablePanel defaultSize={55} minSize={35}>
-            <div className="flex h-full flex-col">
-              <div className="flex min-h-0 flex-1">
-                <StructureSidebar />
-                <div className="min-w-0 flex-1">
-                  <ReaderPane />
-                </div>
-              </div>
-
-              <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t px-4 py-1.5 text-[11px] text-muted-foreground">
-                {KEY_HINTS.map(([key, label]) => (
-                  <span key={key} className="flex items-center gap-1.5">
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
-                      {key}
-                    </kbd>
-                    {label}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </ResizablePanel>
-
-          <ResizableHandle withHandle />
-
-          {/* Kinetic re-encoding */}
-          <ResizablePanel defaultSize={45} minSize={25}>
+      {narrow ? (
+        /* Both panes stay mounted, so a half-typed note and the reader's
+           scroll survive switching. The switch sits at the bottom, under the
+           thumb; the audio carries on through it. */
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className={cn("min-h-0 flex-1", pane !== "read" && "hidden")}>{reading}</div>
+          <div className={cn("min-h-0 flex-1", pane !== "notes" && "hidden")}>
             <Scratchpad />
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
+          </div>
+          <nav aria-label="Panes" className="grid shrink-0 grid-cols-2 border-t bg-background">
+            {(
+              [
+                ["read", "Reading"],
+                ["notes", nodeCount ? `Notes (${nodeCount})` : "Notes"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={pane === id}
+                onClick={() => setPane(id)}
+                className={cn(
+                  "h-12 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                  pane === id ? "bg-secondary text-foreground" : "text-muted-foreground"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1">
+          <ResizablePanelGroup direction="horizontal" autoSaveId="focusparse:panes">
+            {/* Reading */}
+            <ResizablePanel defaultSize={55} minSize={35}>
+              {reading}
+            </ResizablePanel>
+
+            <ResizableHandle withHandle />
+
+            {/* Notes */}
+            <ResizablePanel defaultSize={45} minSize={25}>
+              <Scratchpad />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
+      )}
 
       <InterceptDialog />
       <GridCheckDialog />

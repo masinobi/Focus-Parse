@@ -190,7 +190,7 @@ export function ReviewSession({ onDone }: ReviewSessionProps) {
               <p
                 className={cn(
                   "flex items-center gap-2 text-sm",
-                  marked ? "text-output" : "text-destructive"
+                  marked ? "text-output" : "text-alarm"
                 )}
               >
                 {marked ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
@@ -281,7 +281,7 @@ function ClozeReview({
             "mx-1 inline-flex h-8 w-48 border-0 border-b-2 bg-transparent px-1 font-sans text-base",
             marked === null && "border-[hsl(var(--pace-active))]",
             marked === true && "border-output text-output",
-            marked === false && "border-destructive text-destructive line-through"
+            marked === false && "border-destructive text-alarm line-through"
           )}
         />
         {after}

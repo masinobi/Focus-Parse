@@ -133,7 +133,7 @@ const SectionRow = React.memo(function SectionRow({
           ) : verified === "verified" && !section.furniture ? (
             <Check className="h-3 w-3 text-output" />
           ) : verified === "unchecked" ? (
-            <CircleAlert className="h-3 w-3 text-destructive/70" />
+            <CircleAlert className="h-3 w-3 text-alarm/70" />
           ) : verified === "partial" ? (
             <span className="block h-3 w-3 rounded-full border border-output bg-output/30" />
           ) : (
@@ -142,7 +142,7 @@ const SectionRow = React.memo(function SectionRow({
         </span>
         <span className="min-w-0 flex-1">
           {chapter && (
-            <span className="block truncate text-[10px] uppercase tracking-wide text-muted-foreground/70">
+            <span className="block truncate text-xs uppercase tracking-wide text-muted-foreground/70">
               {chapter}
             </span>
           )}
@@ -159,23 +159,23 @@ const SectionRow = React.memo(function SectionRow({
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-5">
-        <span className="text-[11px] tabular-nums text-muted-foreground">
+        <span className="text-xs tabular-nums text-muted-foreground">
           {wordCount.toLocaleString()}w · {formatDuration(seconds)}
         </span>
         {parts > 1 && (
-          <span className="text-[10px] text-muted-foreground/70">
+          <span className="text-xs text-muted-foreground/70">
             {parts} checkpoints
           </span>
         )}
         {section.furniture && (
-          <span className="rounded bg-muted px-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span className="rounded bg-muted px-1 text-xs uppercase tracking-wide text-muted-foreground">
             skipped
           </span>
         )}
         {section.tier && (
           <span
             className={cn(
-              "rounded px-1 text-[10px] uppercase tracking-wide",
+              "rounded px-1 text-xs uppercase tracking-wide",
               TIER_TONE[section.tier].on
             )}
             title={
@@ -190,7 +190,7 @@ const SectionRow = React.memo(function SectionRow({
         {summary !== "n/a" && !section.furniture && (
           <span
             className={cn(
-              "rounded px-1 text-[10px] uppercase tracking-wide",
+              "rounded px-1 text-xs uppercase tracking-wide",
               summary === "done"
                 ? "bg-output/15 text-output"
                 : "bg-muted text-muted-foreground"
@@ -202,7 +202,7 @@ const SectionRow = React.memo(function SectionRow({
         {gridsTotal > 0 && (
           <span
             className={cn(
-              "flex items-center gap-0.5 text-[10px] tabular-nums",
+              "flex items-center gap-0.5 text-xs tabular-nums",
               gridsPassed === gridsTotal ? "text-output" : "text-muted-foreground"
             )}
             title={`${gridsPassed} of ${gridsTotal} tables answered`}
@@ -213,7 +213,7 @@ const SectionRow = React.memo(function SectionRow({
         )}
         {clozeWindows > 0 && (
           <span
-            className="flex items-center gap-0.5 text-[10px] tabular-nums text-muted-foreground"
+            className="flex items-center gap-0.5 text-xs tabular-nums text-muted-foreground"
             title={
               recall >= 0
                 ? `${clozeWindows} spot ${clozeWindows === 1 ? "check" : "checks"}, ${Math.round(recall * 100)}% recalled`
@@ -223,7 +223,7 @@ const SectionRow = React.memo(function SectionRow({
             <SquarePen className="h-2.5 w-2.5" />
             {clozeWindows}
             {recall >= 0 && (
-              <span className={cn(recall < 0.5 ? "text-destructive" : "text-output")}>
+              <span className={cn(recall < 0.5 ? "text-alarm" : "text-output")}>
                 {" "}
                 {Math.round(recall * 100)}%
               </span>
@@ -281,11 +281,38 @@ const TIER_SHORT: Record<Tier, string> = {
   best: "best practice",
 };
 
+/** The reader's own choice of map open or folded, once they have made one. */
+const MAP_KEY = "focusparse:map";
+
+/**
+ * Whether the map starts open.
+ *
+ * Closed on a first session: a map of six unread sections and a row of zeros
+ * is nothing to look at before the first check, and it stays as the reader
+ * left it when that session ends, so the column never moves under them. On a
+ * phone it opens over the reader rather than beside it, so it starts closed.
+ * Otherwise the reader's last choice holds; with none, it opens only where the
+ * split leaves room for both. Open beside a 55% panel it left the reading
+ * column 233px at 1024 wide and about 41 characters at 1280 — the 62ch measure
+ * is the point of the column, and a map nobody asked for was spending it.
+ */
+function initiallyOpen(): boolean {
+  if (useFocusStore.getState().firstSession) return false;
+  if (window.matchMedia("(max-width: 767px)").matches) return false;
+  try {
+    const stored = window.localStorage.getItem(MAP_KEY);
+    if (stored === "open" || stored === "closed") return stored === "open";
+  } catch {
+    /* no storage: fall through to the default */
+  }
+  return window.matchMedia("(min-width: 1440px)").matches;
+}
+
 /**
  * Deliberately not red and green.
  *
  * The tier is not a pass or a failure, and the map already spends
- * `text-destructive` on "read but never checked" and `text-output` on
+ * `text-alarm` on "read but never checked" and `text-output` on
  * "verified". A tier badge in either colour would read as a verdict on the
  * reader rather than a fact about the document.
  */
@@ -295,7 +322,16 @@ const TIER_TONE: Record<Tier, { on: string }> = {
 };
 
 export function StructureSidebar() {
-  const [open, setOpen] = React.useState(true);
+  // Only rendered with a document open, so never on the server.
+  const [open, setOpenState] = React.useState(initiallyOpen);
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    try {
+      window.localStorage.setItem(MAP_KEY, next ? "open" : "closed");
+    } catch {
+      /* private mode: the default decides next time, which is harmless */
+    }
+  };
   const [query, setQuery] = React.useState("");
   /**
    * Show only one GCDMP tier, or all of them.
@@ -496,7 +532,7 @@ export function StructureSidebar() {
   }
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/20">
+    <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/20 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-10 max-md:w-[min(16rem,85vw)] max-md:bg-background">
       <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
         <p className="truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Structure
@@ -525,7 +561,7 @@ export function StructureSidebar() {
           {formatDuration((remaining / wpm) * 60)} left
         </p>
         {skipped > 0 && (
-          <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+          <p className="mt-0.5 text-xs text-muted-foreground/70">
             {skipped.toLocaleString()} more in front matter and references,
             skipped
           </p>
@@ -564,7 +600,7 @@ export function StructureSidebar() {
 
         {stop && (stop.toCheck !== null || stop.toSummary !== null) && (
           <p
-            className="mt-1.5 text-[11px] text-muted-foreground/80"
+            className="mt-1.5 text-xs text-muted-foreground/80"
             title="A spot check needs something in the passage worth asking about; when there is nothing, the engine slides the window on rather than stopping. Both figures are the earliest a stop can come, not a promise that it will."
           >
             {stop.toCheck !== null && (
@@ -611,15 +647,15 @@ export function StructureSidebar() {
 
           <CoverageBar coverage={coverage} />
 
-          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
             {coverage.verified} verified · {coverage.partial} partly ·{" "}
-            <span className={cn(coverage.unchecked > 0 && "text-destructive")}>
+            <span className={cn(coverage.unchecked > 0 && "text-alarm")}>
               {coverage.unchecked} read but unchecked
             </span>{" "}
             · {coverage.unread} unread
           </p>
 
-          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground/80">
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground/80">
             {coverage.summaries.given}/
             {coverage.summaries.given + coverage.summaries.owed} summaries ·{" "}
             {coverage.grids.passed}/{coverage.grids.total} tables ·{" "}
@@ -644,10 +680,10 @@ export function StructureSidebar() {
             >
               <Target className="mt-[2px] h-3 w-3 shrink-0 text-primary" />
               <span className="min-w-0 flex-1">
-                <span className="block text-[11px] font-medium leading-tight">
+                <span className="block text-xs font-medium leading-tight">
                   {next.title}
                 </span>
-                <span className="block text-[10px] text-muted-foreground">
+                <span className="block text-xs text-muted-foreground">
                   {next.state === "unchecked"
                     ? `read, never asked about · ${next.words.toLocaleString()}w`
                     : next.state === "partial"
@@ -692,7 +728,7 @@ export function StructureSidebar() {
           </div>
           {hits !== null && hits.length > 0 && (
             <p
-              className="mt-1.5 text-[11px] text-muted-foreground"
+              className="mt-1.5 text-xs text-muted-foreground"
               title="A heading matches on its own name or on its chapter's, so typing a chapter name brings the whole chapter back rather than one row."
             >
               {hits.length} of {rows.length} sections
@@ -703,7 +739,7 @@ export function StructureSidebar() {
 
       {tiersPresent.size > 0 && (
         <div className="flex items-center gap-1.5 border-b px-3 py-2">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">
             Tier
           </span>
           {(["minimum", "best"] as Tier[])
@@ -716,7 +752,7 @@ export function StructureSidebar() {
                 aria-pressed={tierFilter === tier}
                 aria-label={`Show only ${TIER_LABEL[tier]} sections`}
                 className={cn(
-                  "rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide transition-colors",
+                  "rounded px-1.5 py-0.5 text-xs uppercase tracking-wide transition-colors",
                   tierFilter === tier
                     ? TIER_TONE[tier].on
                     : "bg-muted text-muted-foreground hover:text-foreground"
@@ -726,7 +762,7 @@ export function StructureSidebar() {
               </button>
             ))}
           {tierFilter && (
-            <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
+            <span className="ml-auto text-xs tabular-nums text-muted-foreground">
               {shown.length} of {rows.length}
             </span>
           )}
@@ -785,7 +821,7 @@ export function StructureSidebar() {
         })}
       </nav>
 
-      <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+      <div className="border-t px-3 py-2 text-xs text-muted-foreground">
         Measured pace: <span className="tabular-nums text-foreground">{wpm}</span> wpm
       </div>
     </aside>

@@ -210,7 +210,7 @@ export function AcronymDrill({ onDone }: AcronymDrillProps) {
           <span
             className={cn(
               "flex items-center gap-1",
-              tally.wrong > 0 ? "text-destructive" : "text-muted-foreground"
+              tally.wrong > 0 ? "text-alarm" : "text-muted-foreground"
             )}
           >
             <X className="h-3.5 w-3.5" />
@@ -261,7 +261,7 @@ export function AcronymDrill({ onDone }: AcronymDrillProps) {
                     state === null && "hover:border-foreground/40 hover:bg-accent/40",
                     state === "right" && "border-output bg-output/10 text-output",
                     state === "wrong" &&
-                      "border-destructive bg-destructive/10 text-destructive",
+                      "border-destructive bg-destructive/10 text-alarm",
                     state === "quiet" && "opacity-50"
                   )}
                 >

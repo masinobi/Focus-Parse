@@ -194,6 +194,34 @@ async function capture(text, trigger) {
 console.log(`\n=== lane graph ===`);
 await loadDocument();
 
+/* ---- First session ------------------------------------------------------ *
+ *
+ * This context starts on an empty library, so the document just opened is a
+ * first session: the reader holds back its tuning controls and folds the map
+ * until the first check is raised (`firstSession` in the store). Asserted on
+ * both sides — a view switch that is present proves nothing about one that is
+ * absent — and the map is then unfolded the way a reader would, because every
+ * block below reads it. That choice is remembered (`focusparse:map`), which is
+ * what keeps it open for them: below 1440px wide a map nobody has opened starts
+ * folded. Later blocks open documents into a library and get the full reader.
+ */
+const unfold = page.locator('button[aria-label="Show structure map"]');
+check(
+  "a first session holds back the view switch",
+  (await page.locator("header").getByRole("button", { name: "RSVP", exact: true }).count()) === 0
+);
+// Not "the map is folded": at this probe's 1280px a map nobody has opened
+// starts folded for everyone, so that assertion passed with the first session
+// switched off. The key strip's held-back keys are the first session's alone.
+check(
+  "a first session holds back the section and presence keys",
+  await page.evaluate(() => {
+    const keys = [...document.querySelectorAll("main kbd")].map((k) => k.textContent);
+    return keys.includes("Space") && !keys.includes("V") && !keys.some((k) => k.startsWith("⇧"));
+  })
+);
+await unfold.click();
+
 await capture("The sponsor keeps accountability", "/e");
 await page.locator('button[aria-label="Chain from here"]').first().click();
 await capture("Qualification audit before selection", "/m");

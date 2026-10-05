@@ -131,7 +131,7 @@ export function BackupControls({ onRestored, variant = "full" }: BackupControlsP
             type="button"
             disabled={busy !== null}
             onClick={() => fileRef.current?.click()}
-            className="rounded-sm text-foreground underline decoration-muted-foreground/50 underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
+            className="inline-block rounded-sm py-0.5 text-foreground underline decoration-muted-foreground/50 underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
           >
             Restore from a backup
           </button>
@@ -165,7 +165,7 @@ export function BackupControls({ onRestored, variant = "full" }: BackupControlsP
         )}
 
         {error && (
-          <p className="mt-2 text-[hsl(0_84%_70%)]" role="alert">
+          <p className="mt-2 text-alarm" role="alert">
             {error}
           </p>
         )}
@@ -257,7 +257,7 @@ export function BackupControls({ onRestored, variant = "full" }: BackupControlsP
               here
             </li>
             {summary.skipped > 0 && (
-              <li className="text-destructive">
+              <li className="text-alarm">
                 {summary.skipped} malformed {summary.skipped === 1 ? "record" : "records"}{" "}
                 skipped
               </li>
@@ -266,7 +266,7 @@ export function BackupControls({ onRestored, variant = "full" }: BackupControlsP
         </div>
       )}
 
-      {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
+      {error && <p className="mt-3 text-xs text-alarm">{error}</p>}
     </div>
   );
 }

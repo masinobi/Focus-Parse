@@ -307,7 +307,7 @@ function EntityRow({
 
         {lapses > 0 && (
           <span
-            className="rounded border border-destructive/40 px-1.5 py-0 text-[10px] text-destructive"
+            className="rounded border border-destructive/40 px-1.5 py-0 text-[10px] text-alarm"
             title="You have failed this in review"
           >
             lost {lapses}×

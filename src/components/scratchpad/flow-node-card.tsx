@@ -87,26 +87,26 @@ export function FlowNodeCard({
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex flex-wrap items-center gap-1.5">
               {node.tag && meta && Icon ? (
-                <Badge variant={node.tag} className="gap-1 px-1.5 py-0 text-[10px]">
+                <Badge variant={node.tag} className="gap-1 px-1.5 py-0 text-xs">
                   <Icon className="h-2.5 w-2.5" />
                   {meta.label}
                 </Badge>
               ) : (
-                <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">
+                <Badge variant="outline" className="px-1.5 py-0 text-xs font-normal">
                   note
                 </Badge>
               )}
               <button
                 type="button"
                 onClick={() => onSeek(node.tokenIndex)}
-                className="truncate text-[10px] text-muted-foreground hover:text-foreground hover:underline"
+                className="truncate text-xs text-muted-foreground hover:text-foreground hover:underline"
                 title={`Jump to where this was captured — ${sectionTitle}`}
               >
                 {sectionTitle}
               </button>
               {outgoing > 0 && (
                 <span
-                  className="flex items-center gap-0.5 text-[10px] text-muted-foreground"
+                  className="flex items-center gap-0.5 text-xs text-muted-foreground"
                   title={`Links out to ${outgoing} ${outgoing === 1 ? "node" : "nodes"}`}
                 >
                   <Link2 className="h-2.5 w-2.5" />
@@ -158,7 +158,7 @@ export function FlowNodeCard({
             <button
               type="button"
               onClick={() => onRemove(node.id)}
-              className="rounded p-1 text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+              className="rounded p-1 text-muted-foreground hover:bg-destructive/15 hover:text-alarm"
               aria-label="Delete node"
             >
               <Trash2 className="h-3 w-3" />

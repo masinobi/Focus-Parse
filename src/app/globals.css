@@ -20,6 +20,8 @@
     --accent-foreground: 240 5.9% 10%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
+    /* Red for text. --destructive is a fill, 1.86:1 as text on Ink. */
+    --alarm: 0 72% 42%;
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: 240 10% 3.9%;
@@ -52,6 +54,8 @@
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
+    /* Red for text. --destructive is a fill, 1.86:1 as text on Ink. */
+    --alarm: 0 84% 70%;
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
@@ -154,7 +158,7 @@
   }
   .fp-badge-standard { color: hsl(var(--entity)); }
   .fp-badge-data { color: hsl(var(--mechanism)); }
-  .fp-badge-regulatory { color: hsl(var(--destructive)); }
+  .fp-badge-regulatory { color: hsl(var(--alarm)); }
   .fp-badge-operational { color: hsl(var(--output)); }
   .fp-badge-safety { color: hsl(var(--pace-active)); }
 

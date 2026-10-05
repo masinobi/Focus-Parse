@@ -333,7 +333,7 @@ export function ExamSession({ onDone }: ExamSessionProps) {
                 <>Level with the one before.</>
               ) : (
                 <>
-                  <span className={trend.delta > 0 ? "text-output" : "text-destructive"}>
+                  <span className={trend.delta > 0 ? "text-output" : "text-alarm"}>
                     {trend.delta > 0 ? "Up" : "Down"} {Math.abs(trend.delta)}
                   </span>{" "}
                   on the one before.
@@ -402,7 +402,7 @@ export function ExamSession({ onDone }: ExamSessionProps) {
         <span
           className={cn(
             "ml-auto flex items-center gap-1.5 text-sm tabular-nums",
-            low ? "text-destructive" : "text-muted-foreground"
+            low ? "text-alarm" : "text-muted-foreground"
           )}
         >
           <Timer className="h-3.5 w-3.5" />
@@ -485,7 +485,7 @@ function Breakdown({ title, rows }: { title: string; rows: { label: string; corr
               <span
                 className={cn(
                   "w-10 shrink-0 text-right text-xs tabular-nums",
-                  pct >= 70 ? "text-output" : "text-destructive"
+                  pct >= 70 ? "text-output" : "text-alarm"
                 )}
               >
                 {pct}%

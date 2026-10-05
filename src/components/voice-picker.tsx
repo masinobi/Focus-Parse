@@ -116,7 +116,7 @@ export function VoicePicker({ voices, voiceURI, onSelect }: VoicePickerProps) {
             )}
           </div>
 
-          <p className="text-[11px] text-muted-foreground" data-voice-count>
+          <p className="text-xs text-muted-foreground" data-voice-count>
             {query ? `${shown.length} of ${voices.length}` : `${voices.length} voices`}
           </p>
 
@@ -153,11 +153,11 @@ export function VoicePicker({ voices, voiceURI, onSelect }: VoicePickerProps) {
                     <span className="block truncate text-sm">
                       {shortVoiceName(voice.name)}
                     </span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
+                    <span className="block truncate text-xs text-muted-foreground">
                       {voice.name}
                     </span>
                   </span>
-                  <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <span className="shrink-0 text-xs uppercase tracking-wide text-muted-foreground">
                     {voice.lang}
                   </span>
                   <span

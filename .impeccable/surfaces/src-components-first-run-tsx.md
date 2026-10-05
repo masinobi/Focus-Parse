@@ -39,4 +39,8 @@ The scratchpad's empty state shows one worked example capture (dashed, never sto
 
 - Exam date and export stay hidden on a first visit, but a quiet "Used FocusParse before? Restore from a backup" link sits under the dashed row; a restore that brings a library ends the first run.
 - The scratchpad pane is titled "Notes" (was "Re-encoding").
+- The first session keeps the home's single focus (critique, 5 Oct 2026: 29 controls on arrival): the structure map starts folded, and the top bar and key strip show only transport, speed, voice and New until the first check of any rung is raised. The rest arrives behind that check, so the reading column never moves under the caret.
+- "First check in about N seconds" now reads "First check after N words" until the voice has been heard: an unheard voice is assumed to read at the target, and the measured case promised 20 seconds and arrived at 36. Seconds return once the voice is calibrated.
+- Below 768px the first session is the reader alone with a bottom Reading / Notes switch; the home itself was already sound on a phone.
+- The first check's exit is "Come back to this later", which pauses at the start of the section being asked about.
 - The plain line is the user's wording: "FocusParse reads a document aloud and keeps your place word by word. It stops at the end of each section to ask what you just heard."

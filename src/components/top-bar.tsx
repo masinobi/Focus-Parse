@@ -18,6 +18,7 @@ import {
   Focus,
   Tags,
   Hand,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { EditableTitle } from "@/components/editable-title";
@@ -86,6 +87,9 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
   const renameDoc = useFocusStore((s) => s.renameDoc);
   const vigilance = useFocusStore((s) => s.vigilance);
   const toggleVigilance = useFocusStore((s) => s.toggleVigilance);
+  const firstSession = useFocusStore((s) => s.firstSession);
+  /** Phones only: the tuning controls fold behind one button (see below). */
+  const [options, setOptions] = React.useState(false);
 
   if (!doc) return null;
 
@@ -103,13 +107,15 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
 
   return (
     <header className="shrink-0 border-b bg-background">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <AudioLines className="h-4 w-4 shrink-0 text-primary" />
-          <span className="shrink-0 text-sm font-semibold tracking-tight">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 sm:px-4">
+        {/* On a phone the mark keeps its icon and gives its width to the
+            document's own name. */}
+        <div className="flex min-w-0 items-center gap-2 max-sm:w-full">
+          <AudioLines className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <span className="shrink-0 text-sm font-semibold tracking-tight max-sm:sr-only">
             FocusParse
           </span>
-          <Separator orientation="vertical" className="h-4" />
+          <Separator orientation="vertical" className="h-4 max-sm:hidden" />
           <EditableTitle
             value={doc.title}
             onCommit={renameDoc}
@@ -135,6 +141,7 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
             className="h-8 w-[5.5rem] gap-1.5"
             onClick={togglePlaying}
             disabled={!supported}
+            aria-keyshortcuts="Space"
           >
             {isPlaying ? (
               <>
@@ -146,6 +153,11 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
               </>
             )}
           </Button>
+          {/* Space toggles playback from anywhere, so the change has to be
+              said: nothing else a screen reader can see moves when it does. */}
+          <span role="status" className="sr-only">
+            {isPlaying ? "Reading aloud" : "Paused"}
+          </span>
 
           <Button
             variant="ghost"
@@ -166,11 +178,11 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
         <div className="flex items-center gap-2" title={speedTitle}>
           <span className="flex w-[4.5rem] shrink-0 items-baseline justify-end gap-1 text-sm font-medium tabular-nums">
             {solved.clamped && (
-              <span className="text-[11px] font-normal text-muted-foreground line-through">
+              <span className="text-xs font-normal text-muted-foreground line-through">
                 {targetWpm}
               </span>
             )}
-            <span className={cn(solved.clamped && "text-destructive")}>
+            <span className={cn(solved.clamped && "text-alarm")}>
               {solved.clamped ? solved.expectedWpm : targetWpm}
             </span>
           </span>
@@ -184,117 +196,126 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
             className="h-1 w-28 cursor-pointer appearance-none rounded-full bg-secondary accent-primary"
             aria-label="Reading speed, words per minute"
           />
-          <span className="shrink-0 text-[11px] text-muted-foreground">
+          <span className="shrink-0 text-xs text-muted-foreground">
             wpm
             {!solved.calibrated && (
-              <span className="ml-1 text-muted-foreground/60">est.</span>
+              <span className="ml-1">est.</span>
             )}
           </span>
         </div>
 
-        <div className="flex items-center rounded-md border p-0.5">
-          {VIEWS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setView(id)}
-              className={cn(
-                "flex items-center gap-1.5 rounded-[4px] px-2.5 py-1 text-xs font-medium transition-colors",
-                view === id
-                  ? "bg-secondary text-secondary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* Held back on a first session (see `firstSession` in the store):
+            views, anchors, presence checks and masking are ways to tune a
+            reading, and there is nothing to tune before the first check. On a
+            phone they fold behind "Options" afterwards too: unfolded, the bar
+            took 233 of 812px and left the reader the rest. */}
+        {!firstSession && (
+          <div id="reading-options" className={cn("contents", !options && "max-sm:hidden")}>
+            <div className="flex items-center rounded-md border p-0.5">
+              {VIEWS.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setView(id)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-[4px] px-2.5 py-1 text-xs font-medium transition-colors",
+                    view === id
+                      ? "bg-secondary text-secondary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
 
-        <div className="flex items-center rounded-md border p-0.5">
-          {ANCHORS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => toggleAnchor(id)}
-              aria-pressed={anchors[id]}
-              aria-label={label}
-              title={label}
-              className={cn(
-                "rounded-[4px] p-1.5 transition-colors",
-                anchors[id]
-                  ? "bg-secondary text-secondary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Icon className="h-3.5 w-3.5" />
-            </button>
-          ))}
-        </div>
+            <div className="flex items-center rounded-md border p-0.5">
+              {ANCHORS.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => toggleAnchor(id)}
+                  aria-pressed={anchors[id]}
+                  aria-label={label}
+                  title={label}
+                  className={cn(
+                    "rounded-[4px] p-1.5 transition-colors",
+                    anchors[id]
+                      ? "bg-secondary text-secondary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </button>
+              ))}
+            </div>
 
-        {/* Presence check. The count is the point of showing it at all: a
-            session with misses in it covered ground nobody was there for. */}
-        <Button
-          variant={vigilance.enabled ? "secondary" : "ghost"}
-          size="sm"
-          className="h-8 gap-1.5 px-2"
-          onClick={toggleVigilance}
-          aria-pressed={vigilance.enabled}
-          title={
-            vigilance.enabled
-              ? "Presence checks on — press V when prompted"
-              : "Presence checks off"
-          }
-        >
-          <Hand
-            className={cn(
-              "h-3.5 w-3.5",
-              !vigilance.enabled && "text-muted-foreground",
-              vigilance.phase === "waiting" && "text-[hsl(var(--pace-active))]",
-              vigilance.phase === "lapsed" && "text-destructive"
-            )}
-          />
-          {vigilance.enabled && (vigilance.answered > 0 || vigilance.missed > 0) && (
-            <span className="text-[11px] tabular-nums">
-              {vigilance.answered}
-              {vigilance.missed > 0 && (
-                <span className="text-destructive"> / {vigilance.missed}</span>
-              )}
-            </span>
-          )}
-        </Button>
-
-        {noise.supported && (
-          <div className="flex items-center gap-2">
+            {/* Presence check. The count is the point of showing it at all: a
+                session with misses in it covered ground nobody was there for. */}
             <Button
-              variant={noise.enabled ? "secondary" : "ghost"}
-              size="icon"
-              className="h-8 w-8"
-              onClick={noise.toggle}
-              aria-pressed={noise.enabled}
-              aria-label={
-                noise.enabled ? "Turn off masking noise" : "Turn on masking noise"
+              variant={vigilance.enabled ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 gap-1.5 px-2"
+              onClick={toggleVigilance}
+              aria-pressed={vigilance.enabled}
+              title={
+                vigilance.enabled
+                  ? "Presence checks on — press V when prompted"
+                  : "Presence checks off"
               }
-              title="Brown-noise sensory masking"
             >
-              <Waves
-                className={cn("h-4 w-4", !noise.enabled && "text-muted-foreground")}
+              <Hand
+                className={cn(
+                  "h-3.5 w-3.5",
+                  !vigilance.enabled && "text-muted-foreground",
+                  vigilance.phase === "waiting" && "text-[hsl(var(--pace-active))]",
+                  vigilance.phase === "lapsed" && "text-alarm"
+                )}
               />
+              {vigilance.enabled && (vigilance.answered > 0 || vigilance.missed > 0) && (
+                <span className="text-xs tabular-nums">
+                  {vigilance.answered}
+                  {vigilance.missed > 0 && (
+                    <span className="text-alarm"> / {vigilance.missed}</span>
+                  )}
+                </span>
+              )}
             </Button>
 
-            {noise.enabled && (
-              <div className="flex items-center gap-1.5">
-                <Volume2 className="h-3 w-3 shrink-0 text-muted-foreground" />
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={noise.volume}
-                  onChange={(e) => noise.setVolume(Number(e.target.value))}
-                  className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-secondary accent-primary"
-                  aria-label="Masking noise volume"
-                />
+            {noise.supported && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={noise.enabled ? "secondary" : "ghost"}
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={noise.toggle}
+                  aria-pressed={noise.enabled}
+                  aria-label={
+                    noise.enabled ? "Turn off masking noise" : "Turn on masking noise"
+                  }
+                  title="Brown-noise sensory masking"
+                >
+                  <Waves
+                    className={cn("h-4 w-4", !noise.enabled && "text-muted-foreground")}
+                  />
+                </Button>
+
+                {noise.enabled && (
+                  <div className="flex items-center gap-1.5">
+                    <Volume2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={noise.volume}
+                      onChange={(e) => noise.setVolume(Number(e.target.value))}
+                      className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-secondary accent-primary"
+                      aria-label="Masking noise volume"
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -302,21 +323,39 @@ export function TopBar({ voices, supported, estimating, noise }: TopBarProps) {
 
         <div className="ml-auto flex items-center gap-2">
           {estimating && (
-            <Badge variant="outline" className="border-dashed text-[10px] font-normal">
+            <Badge variant="outline" className="border-dashed text-xs font-normal">
               estimated pacing
             </Badge>
           )}
 
           {/* Measured, not asked for. The control on the left is the target;
               this is what the reading is actually coming out at, and the two
-              being different is information rather than a defect. */}
-          <span
-            className="text-xs tabular-nums text-muted-foreground"
-            title="Measured pace, from the synthesizer's own word boundaries"
-          >
-            {tokenIndex.toLocaleString()} / {doc.wordCount.toLocaleString()} ·{" "}
-            <span className="text-foreground">{wpm}</span> wpm read
-          </span>
+              being different is information rather than a defect. Not on a
+              first session, where a count that moves with every word is the
+              one thing in view competing with the caret. */}
+          {!firstSession && (
+            <span
+              className="text-xs tabular-nums text-muted-foreground max-sm:hidden"
+              title="Measured pace, from the synthesizer's own word boundaries"
+            >
+              {tokenIndex.toLocaleString()} / {doc.wordCount.toLocaleString()} ·{" "}
+              <span className="text-foreground">{wpm}</span> wpm read
+            </span>
+          )}
+
+          {!firstSession && (
+            <Button
+              variant={options ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 gap-1.5 px-2 sm:hidden"
+              onClick={() => setOptions((o) => !o)}
+              aria-expanded={options}
+              aria-controls="reading-options"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
+              Options
+            </Button>
+          )}
 
           <VoicePicker
             voices={voices}

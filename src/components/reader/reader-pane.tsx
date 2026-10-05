@@ -186,7 +186,16 @@ export function ReaderPane() {
   const flow = nodes;
 
   return (
-    <div ref={scrollRef} className="fp-scroll h-full overflow-y-auto px-8 py-10">
+    // `data-reader` is where focus goes when the first-run home hands over, so
+    // a screen reader lands on the document rather than on <body>.
+    <div
+      ref={scrollRef}
+      data-reader
+      tabIndex={-1}
+      role="region"
+      aria-label={doc.title}
+      className="fp-scroll h-full overflow-y-auto px-5 py-8 focus:outline-none sm:px-8 sm:py-10"
+    >
       <article
         style={{ "--fp-pulse-ms": `${pulseMs}ms` } as React.CSSProperties}
         className={cn(

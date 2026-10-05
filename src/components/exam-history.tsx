@@ -180,7 +180,7 @@ function Figure({
           className={cn(
             "text-xs tabular-nums",
             noteTone === "up" && "text-output",
-            noteTone === "down" && "text-destructive",
+            noteTone === "down" && "text-alarm",
             noteTone === "flat" && "text-muted-foreground"
           )}
         >

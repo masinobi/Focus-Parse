@@ -44,7 +44,7 @@ const STATE_META: Record<
   absent: {
     label: "Not in your library",
     icon: CircleSlash,
-    tone: "text-destructive",
+    tone: "text-alarm",
     hint: "No document matches this chapter.",
   },
   unread: {

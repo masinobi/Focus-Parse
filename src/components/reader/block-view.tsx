@@ -20,7 +20,7 @@ function TierBadge({ tier }: { tier: Tier }) {
     <span
       data-tier={tier}
       className={cn(
-        "ml-2 select-none align-middle rounded px-1.5 py-0.5 font-sans text-[10px] font-medium uppercase tracking-wide",
+        "ml-2 select-none align-middle rounded px-1.5 py-0.5 font-sans text-xs font-medium uppercase tracking-wide",
         tier === "minimum"
           ? "bg-primary/15 text-primary"
           : "bg-muted text-muted-foreground"
@@ -160,7 +160,7 @@ const BlockViewImpl = ({
         <pre className="fp-scroll overflow-x-auto rounded-md border border-dashed bg-muted/40 p-4 font-mono text-xs leading-relaxed text-muted-foreground">
           {block.raw}
         </pre>
-        <span className="absolute right-2 top-2 rounded bg-background/80 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <span className="absolute right-2 top-2 rounded bg-background/80 px-1.5 py-0.5 text-xs uppercase tracking-wider text-muted-foreground">
           not spoken
         </span>
       </div>

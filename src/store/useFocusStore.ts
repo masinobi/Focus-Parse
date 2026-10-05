@@ -208,12 +208,28 @@ interface FocusState {
    * could not say which of it anybody had been made to account for.
    */
   clozeChecks: Record<number, ClozeResult>;
+  /**
+   * The reader's first document, opened from the empty-library home, and no
+   * check has been raised in it yet.
+   *
+   * The first-run home promises one thing to look at — the caret — and the
+   * reader used to break that promise on arrival with three panes and a top bar
+   * of a dozen controls. While this is set the chrome holds back everything
+   * that is not reading. It ends when the first check of any rung is *raised*,
+   * not answered: every check covers the screen or veils it, so the controls
+   * arrive behind it and the reading column never moves under the caret.
+   *
+   * In memory only. A reload lands on the returning home anyway, because the
+   * library is no longer empty.
+   */
+  firstSession: boolean;
 
   wordsSpoken: number;
   activeMs: number;
   lastTickAt: number | null;
 
-  loadDoc: (doc: ParsedDoc) => void;
+  /** `firstSession` is passed only by the empty-library home; see the field. */
+  loadDoc: (doc: ParsedDoc, opts?: { firstSession?: boolean }) => void;
   clearDoc: () => void;
   renameDoc: (title: string) => void;
   hydrateSession: (docId: string) => Promise<void>;
@@ -402,12 +418,13 @@ export const useFocusStore = create<FocusState>((set, get) => ({
   gridsPassed: {},
   gridAttempts: {},
   clozeChecks: {},
+  firstSession: false,
 
   wordsSpoken: 0,
   activeMs: 0,
   lastTickAt: null,
 
-  loadDoc: (doc) => {
+  loadDoc: (doc, opts) => {
     // Past the citation line, the author list and the abstract — where a
     // published chapter starts saying anything. A stored session overrides this
     // a tick later, so resuming a document is unaffected.
@@ -430,6 +447,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       gridsPassed: {},
       gridAttempts: {},
       clozeChecks: {},
+      firstSession: opts?.firstSession ?? false,
       wordsSpoken: 0,
       activeMs: 0,
       lastTickAt: null,
@@ -455,6 +473,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       gridsPassed: {},
       gridAttempts: {},
       clozeChecks: {},
+      firstSession: false,
     }),
 
   renameDoc: (title) => {
@@ -671,6 +690,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       isPlaying: false,
       lastTickAt: null,
       intercept: { open: true, section, resumeChunk },
+      firstSession: false,
     }),
 
   submitSummary: (text, cued = false) => {
@@ -725,17 +745,32 @@ export const useFocusStore = create<FocusState>((set, get) => ({
     }
   },
 
+  /**
+   * "Come back to this later": paused at the start of the section being asked
+   * about, not past it. Coming back is hearing the section again and meeting
+   * the same check at its end — a replay rather than a blank page, and never a
+   * way round the question. A deliberate seek, so it starts a fresh leg
+   * (`lastCheckToken`) like any other.
+   */
   abandonIntercept: () => {
     const { intercept, doc } = get();
+    const section = intercept.section !== null ? doc?.sections[intercept.section] : undefined;
+    const start = section ? doc?.tokens[section.tokenStart] : undefined;
     const resume = intercept.resumeChunk;
     set({
       intercept: { open: false, section: null, resumeChunk: null },
       isPlaying: false,
       lastTickAt: null,
       seekNonce: get().seekNonce + 1,
-      ...(resume !== null && doc?.chunks[resume]
-        ? { chunkIndex: resume, tokenIndex: doc.chunks[resume].tokenStart }
-        : {}),
+      ...(section && start
+        ? {
+            chunkIndex: start.chunk,
+            tokenIndex: section.tokenStart,
+            lastCheckToken: section.tokenStart,
+          }
+        : resume !== null && doc?.chunks[resume]
+          ? { chunkIndex: resume, tokenIndex: doc.chunks[resume].tokenStart }
+          : {}),
     });
   },
 
@@ -746,6 +781,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       isPlaying: false,
       lastTickAt: null,
       check: { kind: "grid", block, cloze: null, resumeChunk },
+      firstSession: false,
       gridAttempts: {
         ...s.gridAttempts,
         [block]: (s.gridAttempts[block] ?? 0) + 1,
@@ -757,6 +793,7 @@ export const useFocusStore = create<FocusState>((set, get) => ({
       isPlaying: false,
       lastTickAt: null,
       check: { kind: "cloze", block: null, cloze, resumeChunk },
+      firstSession: false,
     }),
 
   passCheck: () => {

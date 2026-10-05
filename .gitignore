@@ -30,7 +30,9 @@ scripts/.*
 # a project, plus an anonymous client id. Machine-specific, never shared.
 .vercel
 
-# Impeccable working files: review captures, decision logs, hook cache
+# Impeccable working files: review captures, decision logs, hook cache, and
+# critique snapshots (they record the absolute path of what was assessed)
 .impeccable/review/
 .impeccable/questions/
 .impeccable/hook.cache.json
+.impeccable/critique/

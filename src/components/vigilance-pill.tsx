@@ -38,7 +38,7 @@ export function VigilancePill() {
       >
         <Hand className="h-4 w-4" />
         <span className="font-medium">Still there?</span>
-        <kbd className="rounded border border-current px-1.5 py-0.5 font-mono text-[10px]">
+        <kbd className="rounded border border-current px-1.5 py-0.5 font-mono text-xs">
           V
         </kbd>
       </button>
@@ -47,9 +47,9 @@ export function VigilancePill() {
 
   return (
     <div className="fixed bottom-6 right-6 z-40 flex max-w-sm animate-node-in items-start gap-3 rounded-lg border border-destructive bg-background px-4 py-3 shadow-lg">
-      <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+      <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-alarm" />
       <div className="min-w-0">
-        <p className="text-sm font-medium text-destructive">Presence check missed</p>
+        <p className="text-sm font-medium text-alarm">Presence check missed</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           Playback stopped. Nothing between here and the last check was verified —
           consider stepping back a section.

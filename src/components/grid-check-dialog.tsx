@@ -104,9 +104,9 @@ export function GridCheckDialog() {
         onEscapeKeyDown={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
-        className="flex h-[100dvh] max-h-none w-screen max-w-none flex-col justify-center overflow-y-auto rounded-none border-0 bg-black p-0 sm:rounded-none"
+        className="flex h-[100dvh] max-h-none w-screen max-w-none flex-col overflow-y-auto rounded-none border-0 bg-black p-0 sm:rounded-none"
       >
-        <div className="mx-auto w-full max-w-2xl px-6 py-10">
+        <div className="mx-auto my-auto w-full max-w-2xl px-6 py-10">
           <DialogHeader className="text-left">
             <div className="mb-3 flex items-center gap-2">
               <Table2 className="h-4 w-4 text-[hsl(var(--pace-active))]" />
@@ -155,13 +155,13 @@ export function GridCheckDialog() {
                     settled && !isAnswer && !isPicked && "opacity-40"
                   )}
                 >
-                  <kbd className="shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                  <kbd className="shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
                     {i + 1}
                   </kbd>
                   <span className="min-w-0 flex-1">{option}</span>
                   {settled && isAnswer && <Check className="h-4 w-4 shrink-0 text-output" />}
                   {settled && isPicked && !isAnswer && (
-                    <X className="h-4 w-4 shrink-0 text-destructive" />
+                    <X className="h-4 w-4 shrink-0 text-alarm" />
                   )}
                 </button>
               );
@@ -170,7 +170,7 @@ export function GridCheckDialog() {
 
           {picked !== null && (
             <div className="mt-6">
-              <p className={cn("text-sm", correct ? "text-output" : "text-destructive")}>
+              <p className={cn("text-sm", correct ? "text-output" : "text-alarm")}>
                 {correct
                   ? "Correct."
                   : exhausted

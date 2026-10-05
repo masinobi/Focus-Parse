@@ -119,6 +119,17 @@ async function measure(mode) {
     buffer: Buffer.from(WARMUP, "utf8"),
   });
   await waitForReader(page, 120_000);
+  // Opened from an empty library, that was a first session, which holds back
+  // the view switch until a check is raised. Opened again from the library it
+  // is not, and the header is whole.
+  await page.locator("header").getByRole("button", { name: "New" }).click();
+  await page.waitForTimeout(600);
+  await page.setInputFiles('input[type="file"][accept*="pdf"]', {
+    name: "warmup.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from(WARMUP, "utf8"),
+  });
+  await waitForReader(page, 120_000);
   if (mode === "rsvp") {
     if (!(await clickHeader(page, "RSVP"))) throw new Error("no RSVP control");
     await page.waitForTimeout(500);

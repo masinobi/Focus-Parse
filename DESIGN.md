@@ -16,6 +16,7 @@ colors:
   output-green: "hsl(142 69% 58%)"
   output-green-ink: "hsl(142 80% 8%)"
   alarm-oxblood: "hsl(0 62.8% 30.6%)"
+  alarm: "hsl(0 84% 70%)"
   paper-light: "hsl(0 0% 100%)"
   ink-light: "hsl(240 10% 3.9%)"
   mist-light: "hsl(240 4.8% 95.9%)"
@@ -215,6 +216,10 @@ the reader's own captures.
 - **Focus Ring** (`focus-ring`): the 2px keyboard focus ring, offset by 2px.
 - **Alarm Oxblood** (`alarm-oxblood`): the destructive fill. It is a *background*
   red.
+- **Alarm** (`--alarm`, `text-alarm`): red for *text*: errors, a missed count,
+  an unreachable speed, "read but never checked". `0 84% 70%` on Ink measures
+  7.07:1; the light value is `0 72% 42%`. The regulatory acronym badge uses it
+  too.
 - **Light-theme set** (`*-light`): the shadcn zinc defaults that sit unused in
   `:root`. They are recorded so a light theme can start from them, not because
   they have been designed (see Do's and Don'ts).
@@ -227,9 +232,10 @@ the reading position nor a demand for a response is present. (The acronym
 should be retired.)
 
 **The Oxblood-Is-A-Floor Rule.** Alarm Oxblood is a fill. As text on Ink it
-measured 1.86:1 and was caught by the probe once already. Red *text* needs a
-lighter red that clears 4.5:1. The top bar's clamped-wpm figure and the
-"Presence check missed" toast still use it as text, and should be fixed.
+measured 1.86:1 and was caught by the probe once already. Red *text* is
+`text-alarm`, never `text-destructive`; every text use in the app was moved to
+it on 5 Oct 2026, including the top bar's clamped-wpm figure and the "Presence
+check missed" toast.
 
 ## Typography
 
@@ -266,12 +272,14 @@ instrument.
 **The 62ch Rule.** The reading measure is capped at 62 characters. A wide line
 is the enemy of pacing; never widen it to fill a pane.
 
-**The 12px Floor (target, not yet true).** The user's direction for controls is
-"calm but unmistakable", and dyslexia and reading load are hard requirements.
-The incumbent UI leans on 10px and 11px text (about 70 instances: badges,
-section metadata, key hints, node captions), which falls short of both. New
-work sets nothing below 12px. Existing micro-text is design debt, to be raised
-when touched.
+**The 12px Floor.** The user's direction for controls is "calm but
+unmistakable", and dyslexia and reading load are hard requirements. Nothing in
+the reader, the structure map, Notes, the top bar or the three checks is set
+below 12px (measured: zero elements under 12px with a check open over the
+reader). The library-side tools (review, corpus index, citation index,
+blueprint, compare, `/voice-check`) still carry thirteen 10–11px labels;
+that is the remaining debt, to be raised when touched. New work sets nothing
+below 12px.
 
 ## Layout
 
@@ -281,7 +289,9 @@ horizontal resizable split remembers its sizes: the **reading pane** starts at 5
 (minimum 35%) and the **scratchpad** at 45% (minimum 25%), joined by a gripped
 handle. The reading pane holds the structure map as a collapsible left sidebar
 and the reader column, with a strip of key hints pinned to its foot. Each region
-scrolls on its own.
+scrolls on its own. A first session (a document opened from the first-run home)
+starts with the map folded and the top bar cut to transport, speed, voice and
+New; the rest arrives behind the first check, never mid-reading.
 
 **The home screen is a single column.** It is at most 672px wide, centred with
 32px padding, and scrolls. Vertical centring uses `my-auto` inside the scroller,
@@ -299,11 +309,23 @@ pop-up over the work.
 `10px 16px`, control groups 4px apart). Content blocks use 24 to 40px (heading
 margins of 28, 36 and 40px). Dialog panels pad 24px.
 
-**Responsive behaviour is desktop-first and largely unexamined.** The top bar
-wraps, and the lane graph has a deliberate 124px lane floor below which it
-scrolls rather than squeezing. There is no established phone layout. The
-resizable split assumes a laptop or larger, which matches how the product is
-used (long sessions at a desk).
+**Responsive behaviour is desktop-first, with a phone layout.** Long sessions at
+a desk are the use, so the split is the primary layout. Three rules keep the
+reading column its own:
+- **The map opens where there is room.** It opens by default only at 1440px
+  and wider; below that it starts folded to its rail, and the reader's own
+  choice is remembered (`focusparse:map`). Open beside the 55% panel it left the
+  column 233px at 1024 wide.
+- **Below 768px it is one pane at a time.** Reader or Notes, switched from a
+  48px bar at the bottom, both kept mounted so a half-typed note survives. The
+  map opens *over* the reader. The top bar drops the wordmark text and the word
+  counter, and folds views, anchors, presence and noise behind "Options". The
+  key strip is not shown on touch.
+- **Scrolling containers centre with `my-auto` or `min-h-full`, never a pinned
+  `justify-center`.** The home, the three checks and the Notes empty state all
+  clipped their own tops once.
+The lane graph keeps its deliberate 124px lane floor, below which it scrolls
+rather than squeezing.
 
 ## Elevation & Depth
 
@@ -376,8 +398,7 @@ segment fills with Graphite. The List/Graph toggle exposes `aria-pressed`.
 - **Acronym badges:** outlined in `currentColor`, 0.82em, semibold, uppercase,
   tracked. Their colour follows the acronym's category.
 - **Status chips** in the structure map (SKIPPED, INTERCEPT, LOGGED, tier badges)
-  are Graphite-filled, uppercase and tracked, currently at 10px (see the 12px
-  Floor).
+  are Graphite-filled, uppercase and tracked, at 12px.
 
 ### Inputs / Fields
 - **Style:** an Ink fill, a 1px Graphite stroke, 6px radius, 40px tall. Text
@@ -418,8 +439,12 @@ beside the 1.5rem question title, and the chapter follows below it in sentence
 case ("In …"). A large summary box comes next, with quiet secondary affordances
 in a row beneath it: dictation, "Stuck?" anchors, and show/hide your captures.
 Until the reader has answered one in this browser, the intercept adds one
-dashed note stating the rule (one sentence, at least four words, no skipping). The reader's own captures stay hidden
-behind a toggle so recall comes first.
+dashed note stating the rule once, together with the way out. The reader's own
+captures stay hidden behind a toggle so recall comes first. The primary ("Log
+it and resume") is never greyed out: pressed too early, the word count beneath
+the box says what is missing. The only exit is a muted ghost, "Come back to
+this later", which pauses at the start of the section being asked about, so
+coming back means hearing it again and meeting the same check.
 
 ### The Presence Pill (signature)
 A fully rounded pill fixed 24px from the bottom-right corner. It is outlined and
@@ -463,7 +488,7 @@ moves at sentence ends, never a clock.
   its own decisions, not an automatic inversion.
 
 ### Don't:
-- **Don't** use Alarm Oxblood as text on Ink (1.86:1). Use a red that clears
+- **Don't** use Alarm Oxblood as text on Ink (1.86:1). Use `text-alarm`, a red that clears
   4.5:1.
 - **Don't** put a ticking clock or countdown in the field of view. Distances
   move only when a sentence ends.

@@ -260,7 +260,7 @@ export function FlowGraph({
         {lanes.map((lane, i) => (
           <div
             key={lane}
-            className="absolute text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+            className="absolute text-xs font-semibold uppercase tracking-wider text-muted-foreground"
             style={{ left: PAD + i * (nodeW + COL_GAP), top: PAD, width: nodeW }}
           >
             {LANE_LABEL[lane]}
@@ -375,10 +375,18 @@ function GraphNode({
           type="button"
           onClick={() => onSeek(node.tokenIndex)}
           title={`Jump to where this was captured — ${sectionTitle}`}
-          className="min-w-0 flex-1 truncate text-left text-[10px] text-muted-foreground hover:text-foreground hover:underline"
+          className="min-w-0 flex-1 truncate text-left text-xs text-muted-foreground hover:text-foreground hover:underline"
         >
           {sectionTitle}
         </button>
+
+        {/* In the top row: the card is a fixed 66px and its two lines of text
+            fill the rest, so a count pinned to the corner had to be 9px. */}
+        {outgoing.length > 1 && (
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            {outgoing.length} out
+          </span>
+        )}
 
         {linkableFrom && (
           <button
@@ -421,7 +429,7 @@ function GraphNode({
           type="button"
           onClick={() => onRemove(node.id)}
           aria-label="Delete node"
-          className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/15 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+          className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/15 hover:text-alarm focus:opacity-100 group-hover:opacity-100"
         >
           <X className="h-3 w-3" />
         </button>
@@ -434,12 +442,6 @@ function GraphNode({
       >
         {node.text}
       </p>
-
-      {outgoing.length > 1 && (
-        <span className="absolute bottom-0.5 right-1.5 text-[9px] tabular-nums text-muted-foreground">
-          {outgoing.length} out
-        </span>
-      )}
 
       <span className="sr-only">{LANE_LABEL[lane]}</span>
     </div>
