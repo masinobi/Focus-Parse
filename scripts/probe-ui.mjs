@@ -1035,7 +1035,9 @@ const dialogText = async () =>
 let opened = false;
 for (let i = 0; i < 24 && !opened; i++) {
   await page.waitForTimeout(2500);
-  opened = /Cognitive intercept/.test(await dialogText());
+  // By the dialog's own hook rather than by its wording, which is copy and
+  // changes: the eyebrow this used to match was removed.
+  opened = await page.evaluate(() => document.querySelector('[data-check="intercept"]') !== null);
 }
 
 check(
