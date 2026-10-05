@@ -48,6 +48,9 @@ import { readingNodes, useFocusStore } from "@/store/useFocusStore";
 /** A summary shorter than this is a keystroke, not a recall. */
 const MIN_WORDS = 4;
 
+/** Set once the reader has answered an intercept, so the rule is explained once. */
+const MET_KEY = "focusparse:intercept-met";
+
 const VERDICT_META: Record<
   Verdict["verdict"],
   { label: string; icon: React.ElementType; tone: string }
@@ -166,6 +169,21 @@ export function InterceptDialog() {
       cancelled = true;
     };
   }, []);
+
+  /**
+   * Whether this is the first intercept this browser has shown. The first-run
+   * home promises a check and says only that it will come; the rule for
+   * answering it is said here, once, at the moment it applies.
+   */
+  const [firstTime, setFirstTime] = React.useState(false);
+  React.useEffect(() => {
+    if (!intercept.open) return;
+    try {
+      setFirstTime(window.localStorage.getItem(MET_KEY) === null);
+    } catch {
+      setFirstTime(false);
+    }
+  }, [intercept.open]);
 
   React.useEffect(() => {
     if (intercept.open) {
@@ -287,6 +305,11 @@ export function InterceptDialog() {
     setTouched(true);
     stopListening();
     if (!valid) return;
+    try {
+      window.localStorage.setItem(MET_KEY, String(Date.now()));
+    } catch {
+      /* private mode: it will be explained again, which is harmless */
+    }
     submitSummary(text, stuck);
   };
 
@@ -339,29 +362,28 @@ export function InterceptDialog() {
         onEscapeKeyDown={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
+        data-check="intercept"
         className="flex h-[100dvh] max-h-none w-screen max-w-none flex-col justify-center overflow-y-auto rounded-none border-0 p-0 sm:rounded-none"
       >
         <div className="mx-auto w-full max-w-2xl px-6 py-10">
           <DialogHeader className="text-left">
-            <div className="mb-3 flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-[hsl(var(--pace-active))]" />
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Cognitive intercept
-              </span>
-            </div>
-
-            {/* The chapter above the heading, the way the structure map names
-                the same row. Without it the reader is asked to summarize "Best
-                Practices" with no way to tell which of the nineteen it is. */}
-            {chapter && (
-              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {chapter}
-              </span>
-            )}
-
-            <DialogTitle className="text-2xl leading-tight">
-              Summarize “{section?.title ?? "this section"}” in one sentence.
+            {/* No label above the question: the shield and the question say
+                what this is, and "intercept" is the app's word, not the
+                reader's. */}
+            <DialogTitle className="flex items-start gap-3 text-2xl leading-tight">
+              <ShieldAlert
+                aria-hidden
+                className="mt-1.5 h-5 w-5 shrink-0 text-[hsl(var(--pace-active))]"
+              />
+              <span>Summarize “{section?.title ?? "this section"}” in one sentence.</span>
             </DialogTitle>
+
+            {/* The chapter, the way the structure map names the same row.
+                Without it the reader is asked to summarize "Best Practices"
+                with no way to tell which of the nineteen it is. */}
+            {chapter && (
+              <p className="text-sm text-muted-foreground">In {chapter}</p>
+            )}
 
             <DialogDescription className="pt-1">
               {section
@@ -370,6 +392,13 @@ export function InterceptDialog() {
               Write it from memory, before you look back at the text. Playback stays
               paused until you do.
             </DialogDescription>
+            {firstTime && (
+              <p className="mt-3 rounded-md border border-dashed px-3 py-2 text-sm leading-relaxed text-muted-foreground">
+                <span className="text-foreground">This is a check.</span> One
+                sentence, at least four words, about what you just heard. There is
+                no skipping it: answering is how the section counts as read.
+              </p>
+            )}
           </DialogHeader>
 
           <Textarea
