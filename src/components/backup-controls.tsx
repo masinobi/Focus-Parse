@@ -25,9 +25,15 @@ import { db } from "@/lib/db";
 interface BackupControlsProps {
   /** Called after a restore, so the loader can re-read its lists. */
   onRestored: () => void;
+  /**
+   * `restore` is the first-run form: one quiet link and nothing to export,
+   * because a first visit has nothing to back up — but someone whose browser
+   * was wiped still needs a way back to their library.
+   */
+  variant?: "full" | "restore";
 }
 
-export function BackupControls({ onRestored }: BackupControlsProps) {
+export function BackupControls({ onRestored, variant = "full" }: BackupControlsProps) {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState<Backup | null>(null);
   const [summary, setSummary] = React.useState<ImportSummary | null>(null);
@@ -101,6 +107,72 @@ export function BackupControls({ onRestored }: BackupControlsProps) {
     }
   };
 
+  const fileInput = (
+    <input
+      ref={fileRef}
+      type="file"
+      accept="application/json,.json"
+      className="hidden"
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        if (file) void choose(file);
+        e.target.value = "";
+      }}
+    />
+  );
+
+  if (variant === "restore") {
+    return (
+      <div className="mt-6 text-sm text-muted-foreground">
+        {fileInput}
+        <p>
+          Used FocusParse before?{" "}
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => fileRef.current?.click()}
+            className="rounded-sm text-foreground underline decoration-muted-foreground/50 underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
+          >
+            Restore from a backup
+          </button>
+        </p>
+
+        {busy && (
+          <p className="mt-2 flex items-center gap-2" role="status">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            {busy}
+          </p>
+        )}
+
+        {pending && (
+          <div className="mt-3 rounded-md border border-primary/40 bg-primary/5 p-3">
+            <p className="text-foreground">{describeBackup(pending)}</p>
+            <p className="mt-1">It merges into this browser; nothing here is deleted.</p>
+            <div className="mt-3 flex items-center gap-2">
+              <Button size="sm" disabled={busy !== null} onClick={() => void applyPending()}>
+                Restore it
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy !== null}
+                onClick={() => setPending(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <p className="mt-2 text-[hsl(0_84%_70%)]" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="mt-10">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -119,17 +191,7 @@ export function BackupControls({ onRestored }: BackupControlsProps) {
           Export everything
         </Button>
 
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void choose(file);
-            e.target.value = "";
-          }}
-        />
+        {fileInput}
         <Button
           variant="outline"
           size="sm"

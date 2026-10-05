@@ -171,7 +171,7 @@ export function Scratchpad() {
     <div className="flex h-full flex-col bg-muted/10">
       <div className="flex items-center gap-2 border-b px-4 py-2.5">
         <PenLine className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Re-encoding</span>
+        <span className="text-sm font-medium">Notes</span>
         <span className="text-xs text-muted-foreground">
           {nodes.length} {nodes.length === 1 ? "node" : "nodes"}
         </span>
@@ -294,6 +294,23 @@ export function Scratchpad() {
             <p className="max-w-xs text-sm text-muted-foreground">
               Restate what you hear, in your own words, while it is still moving.
             </p>
+            {/* One worked capture, until the reader has one of their own.
+                Dashed, because it is not a node: nothing here is stored. */}
+            <figure className="w-full max-w-xs rounded-md border border-dashed px-3 py-2.5 text-left">
+              <figcaption className="text-xs text-muted-foreground">
+                Typing{" "}
+                <span className="font-mono text-foreground">
+                  attention fails first /m
+                </span>{" "}
+                makes
+              </figcaption>
+              <p className="mt-2 flex items-start gap-2 text-sm">
+                <Badge variant="mechanism" className="shrink-0 px-1.5 py-0 text-xs">
+                  Mechanism
+                </Badge>
+                <span>attention fails first</span>
+              </p>
+            </figure>
             <div className="space-y-1.5 text-left text-xs text-muted-foreground">
               {(Object.keys(TAG_META) as LogicTag[]).map((tag) => (
                 <p key={tag} className="flex items-center gap-2">
