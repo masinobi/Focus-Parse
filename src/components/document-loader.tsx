@@ -26,6 +26,7 @@ import { CitationIndex } from "@/components/citation-index";
 import { CorpusIndex } from "@/components/corpus-index";
 import { ExamHistory } from "@/components/exam-history";
 import { ExamSession } from "@/components/exam-session";
+import { FirstRun, SAMPLE_TITLE } from "@/components/first-run";
 import { Readiness } from "@/components/readiness";
 import { ReviewSession } from "@/components/review-session";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,8 @@ export function DocumentLoader() {
   /** How many mock papers have been sat, for the history entry. */
   const [papers, setPapers] = React.useState(0);
   const [swept, setSwept] = React.useState<SweepReport | null>(null);
+  /** Whether the library has been read yet; until then nothing is known to hide. */
+  const [listed, setListed] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   const loadDoc = useFocusStore((s) => s.loadDoc);
@@ -73,9 +76,11 @@ export function DocumentLoader() {
   const refreshWeakTerms = useFocusStore((s) => s.refreshWeakTerms);
 
   React.useEffect(() => {
-    void db.listDocs().then(setRecent);
-    void db.countDue().then(setDue);
-    void db.countExams().then(setPapers);
+    void Promise.all([
+      db.listDocs().then(setRecent),
+      db.countDue().then(setDue),
+      db.countExams().then(setPapers),
+    ]).finally(() => setListed(true));
   }, []);
 
   /**
@@ -252,6 +257,32 @@ export function DocumentLoader() {
           void db.countDue().then(setDue);
           // A warm-up is where most lapses are recorded, so the reading engine's
           // idea of what this reader keeps losing is stale the moment it ends.
+          void refreshWeakTerms();
+        }}
+      />
+    );
+  }
+
+  // Nothing has been listed yet: rendering either home now would flash the
+  // wrong one for a frame.
+  if (!listed) return <div className="h-full" />;
+
+  // A first visit. Everything below is about documents the reader already has —
+  // an exam date with nothing to schedule, a backup of nothing — so none of it
+  // is shown until there is something for it to be about. Reviews due or a
+  // paper sat count as a library: deleting every document must not hide them.
+  if (recent.length === 0 && due === 0 && papers === 0) {
+    return (
+      <FirstRun
+        ingest={ingest}
+        readFile={readFile}
+        busy={busy}
+        error={error}
+        onRestored={() => {
+          // A restored library ends the first run: these are what decide it.
+          void db.listDocs().then(setRecent);
+          void db.countDue().then(setDue);
+          void db.countExams().then(setPapers);
           void refreshWeakTerms();
         }}
       />
@@ -568,7 +599,7 @@ export function DocumentLoader() {
           <Button
             variant="ghost"
             className="gap-2"
-            onClick={() => ingest(SAMPLE_DOCUMENT, "The Drift Problem")}
+            onClick={() => ingest(SAMPLE_DOCUMENT, SAMPLE_TITLE)}
           >
             <Sparkles className="h-4 w-4" />
             Load the sample
